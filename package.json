@@ -1,0 +1,74 @@
+{
+  "name": "muse-agent",
+  "productName": "Muse Agent",
+  "version": "0.1.0",
+  "description": "Personal AI agent - Electron shell + Node harness + Python hands sidecar",
+  "license": "MIT",
+  "main": "app/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "agent": "node app/harness/cli.js",
+    "test": "node --test app/harness/test/*.test.js app/renderer/test/*.test.js",
+    "dist": "node scripts/check-native.js && electron-builder --win",
+    "dist:portable": "node scripts/check-native.js && electron-builder --win portable",
+    "dist:dir": "node scripts/check-native.js && electron-builder --win --dir",
+    "postinstall": "electron-builder install-app-deps",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:electron": "electron-builder install-app-deps"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "cn.muse.agent",
+    "productName": "Muse Agent",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "app/**/*",
+      "config.example.toml",
+      "!app/harness/test/**"
+    ],
+    "extraResources": [
+      {
+        "from": "config.example.toml",
+        "to": "template.toml"
+      },
+      {
+        "from": "python",
+        "to": "python",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Muse Agent",
+      "uninstallDisplayName": "Muse Agent ${version}"
+    },
+    "portable": {
+      "artifactName": "MuseAgent-${version}-portable.exe"
+    },
+    "npmRebuild": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ]
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0"
+  }
+}

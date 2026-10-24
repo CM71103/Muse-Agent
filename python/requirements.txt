@@ -1,0 +1,6 @@
+# Hands sidecar runtime deps. Core server runs on stdlib alone (fallback);
+# these power the actions + nicer HTTP.
+aiohttp>=3.9
+mss>=9.0
+pyautogui>=0.9.54
+Pillow>=10.0

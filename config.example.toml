@@ -1,0 +1,94 @@
+# Muse Agent configuration
+# Lives at ~/.muse-agent/config.toml (or $MUSE_HOME/config.toml)
+# Copy this file there, or the app creates it on first run.
+# Syntax: [section] headers, key = value. Arrays: ["a", "b"]. # = comment.
+
+[llm]
+# OpenAI-compatible endpoint. Works with DeepSeek, OpenAI, OpenRouter,
+# vLLM, LM Studio, Ollama (http://localhost:11434/v1), SiliconFlow, etc.
+provider = "openai-compat"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+# API key: prefer the env var named below (never stored in this file).
+api_key_env = "MUSE_LLM_API_KEY"
+# Or hard-set a key here (not recommended):
+# api_key = "sk-..."
+temperature = 0.3
+max_tokens = 8192
+
+# --- common presets, uncomment and fill in ---
+# OpenAI:      base_url = "https://api.openai.com/v1"           model = "gpt-4o"
+# OpenRouter:  base_url = "https://openrouter.ai/api/v1"        model = "anthropic/claude-sonnet-4"
+# Ollama:      base_url = "http://localhost:11434/v1"           model = "qwen2.5:14b"
+# LM Studio:   base_url = "http://localhost:1234/v1"            model = "whatever-is-loaded"
+
+[agent]
+# Hard cap on tool loop per user message.
+max_turns = 40
+# Auto-deny approval after this many seconds (nanoMuse default: 1 hour).
+approval_timeout_s = 3600
+# Tools that always require explicit approval. Add "hands" to gate computer
+# control twice, or remove "shell" to trust shell calls (not recommended).
+always_ask_tools = ["shell"]
+# Sandbox: none on Windows (approved commands run unsandboxed — same reality
+# as nanoMuse). Bubblewrap mode is Linux-only and not implemented in v0.1.
+sandbox = "none"
+
+[sentinel]
+# "ask" = always_ask_tools prompt the user. "auto" = no prompts, deny-rules only.
+# Keep "ask". Do not set "auto".
+mode = "ask"
+# Glob patterns matched against the whole rendered tool call (* = any text).
+deny_rules = [
+  "*rm -rf*",
+  "*del /s*",
+  "*format *",
+  "*Remove-Item -Recurse*",
+  "*shutdown*",
+  "*reg delete*",
+]
+# After the agent reads a private file, web_fetch is limited to these hosts.
+egress_allowlist = ["duckduckgo.com", "wikipedia.org", "github.com", "pypi.org"]
+
+[hands]
+# Computer control (screenshot + mouse + keyboard) via the Python sidecar.
+# OFF by default. Toggle with the "hands" chip in the app header.
+# Each hands action still requires approval while shell/hands are in always_ask_tools.
+enabled = false
+host = "127.0.0.1"
+port = 8788
+
+[log]
+level = "info"
+# dir = "C:/muse-logs"   # default ~/.muse-agent/logs
+
+[memory]
+# Adaptive memory layer (Phase 0 baseline). OFF by default — it stores your
+# conversation and tool results in ~/.muse-agent/memory/memory.json.
+enabled = false
+# Fixed token allowance for retrieved memories per turn (spec §4.3 clamp:
+# context_limit − other_input − output_reserve − 256, may clamp to 0).
+budget_tokens = 1200
+score_cutoff = 0.20
+# auto = Git root → opaque registry id (worktrees are separate scopes).
+# manual = requires project_id passed by the host; detection failure surfaces
+# a prompt, never a silent fallback.
+project_id_strategy = "auto"
+# Embeddings default to text-embedding-3-small (1536d) on the chat endpoint.
+# Point at a dedicated endpoint if yours lacks /embeddings:
+# embed_base_url = "https://api.openai.com/v1"
+embed_model = "text-embedding-3-small"
+embed_dims = 1536
+# Layer-own provider spend per UTC day (embeddings + extraction LLM), persisted
+# in the store. Refusal at the cap is a disclosed degrade, never a silent bypass.
+daily_token_cap = 200000
+# Adaptive-policy flags (spec section 9). All default false. Enabling any starts
+# a NEW policy/evidence version (baseline feedback is never replayed into
+# evidence afterward); disabling restores baseline serving, nothing deleted.
+adaptive_ranking = false
+adaptive_budget = false
+query_clustering = false
+cluster_floor = 0.35
+# Session-end extraction LLM (defaults to the [llm] endpoint/model when unset).
+llm_base_url = ""
+llm_model = ""
