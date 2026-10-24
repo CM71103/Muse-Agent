@@ -72,18 +72,42 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// IPC caller check: only our own top-level frame may invoke handlers.
-const RENDERER_URL = (() => {
-  const p = path.join(__dirname, '..', 'renderer', 'index.html').replace(/\\/g, '/');
-  return 'file://' + p;
-})();
+// IPC caller check: only our own top-level renderer frame may invoke handlers.
+// Comparison is resilient rather than exact: file URLs differ in drive-letter
+// case, slash direction and percent-encoding depending on how the page loaded.
+const RENDERER_PATH = path.resolve(__dirname, '..', 'renderer', 'index.html').replace(/\\/g, '/').toLowerCase();
+
+function isRendererUrl(u) {
+  try {
+    const url = new URL(String(u));
+    if (url.protocol !== 'file:') return false;
+    let p = decodeURIComponent(url.pathname).replace(/\\/g, '/').toLowerCase();
+    if (/^\/[a-z]:/.test(p)) p = p.slice(1);          // file:///D:/... -> d:/...
+    p = p.replace(/\/{2,}/g, '/');                     // collapse doubled slashes
+    return p === RENDERER_PATH;
+  } catch { return false; }
+}
 
 function trustedSender(e) {
   try {
-    const f = e.senderFrame;                       // correct API: event.frame / senderFrame
-    if (!f || f.parent) return false;              // sub-frames and missing frames are never trusted
-    return String(f.url || '').replace(/\\/g, '/').toLowerCase() === RENDERER_URL.toLowerCase();
-  } catch { return false; }
+    const f = e.senderFrame;
+    if (!f || f.parent) return false;                  // sub-frames never trusted
+    if (!isRendererUrl(f.url)) return false;
+    // Sender must be our main window's webContents (not devtools/other windows).
+    return mainWindow && !mainWindow.isDestroyed() && e.sender === mainWindow.webContents;
+  } catch (err) {
+    console.error('[ipc] sender check exception:', err && err.message);
+    return false;
+  }
+}
+function requireTrusted(e) {
+  if (!trustedSender(e)) {
+    // Diagnostic only — never logs payloads, just channel + frame URL shape.
+    let frameUrl = 'unknown';
+    try { frameUrl = String(e.senderFrame && e.senderFrame.url || 'no-frame'); } catch { frameUrl = 'frame-error'; }
+    console.error(`[ipc] rejected caller: frame=${frameUrl}`);
+    throw new Error('untrusted IPC caller');
+  }
 }
 function requireTrusted(e) { if (!trustedSender(e)) throw new Error('untrusted IPC caller'); }
 
