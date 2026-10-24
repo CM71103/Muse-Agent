@@ -59,9 +59,8 @@ function createWindow() {
 
   // Navigation/popup policy: this is a single-page local app. Deny everything
   // that is not our own page; hand real http(s) links to the system browser.
-  const appUrl = 'file://' + path.join(__dirname, '..', 'renderer', 'index.html');
   mainWindow.webContents.on('will-navigate', (e, url) => {
-    if (url === appUrl) return;
+    if (String(url).replace(/\\/g, '/').toLowerCase() === RENDERER_URL.toLowerCase()) return;
     e.preventDefault();
     if (/^https?:\/\//i.test(url)) shell.openExternal(url);
   });
@@ -74,11 +73,16 @@ function createWindow() {
 }
 
 // IPC caller check: only our own top-level frame may invoke handlers.
+const RENDERER_URL = (() => {
+  const p = path.join(__dirname, '..', 'renderer', 'index.html').replace(/\\/g, '/');
+  return 'file://' + p;
+})();
+
 function trustedSender(e) {
   try {
-    const wc = e.sender;
-    const u = new URL(wc.getURL());
-    return u.protocol === 'file:' && u.pathname.replace(/\\/g, '/').endsWith('/renderer/index.html') && wc.frame.mainFrame === null || wc.frame.mainFrame;
+    const f = e.senderFrame;                       // correct API: event.frame / senderFrame
+    if (!f || f.parent) return false;              // sub-frames and missing frames are never trusted
+    return String(f.url || '').replace(/\\/g, '/').toLowerCase() === RENDERER_URL.toLowerCase();
   } catch { return false; }
 }
 function requireTrusted(e) { if (!trustedSender(e)) throw new Error('untrusted IPC caller'); }
