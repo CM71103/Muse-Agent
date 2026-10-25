@@ -63,6 +63,47 @@ function renderEmpty() {
   box.append(hero, title, text, starters); transcript.append(box);
 }
 
+// Mini spark mark: the agent's logo chip (sidebar brand + message pip).
+// Reuses the hero emblem geometry at small scale; colors via CSS vars so
+// themes restyle. Pure geometry — no text, safe anywhere.
+function mkSparkSvg(size = 16) {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 32 32');
+  svg.setAttribute('width', size);
+  svg.setAttribute('height', size);
+  svg.setAttribute('aria-hidden', 'true');
+  const mk = (tag, attrs) => {
+    const el = document.createElementNS(svgNS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  };
+  // 8 rays around center (16,16): long at 0/90/180/270, short diagonals
+  for (let k = 0; k < 8; k++) {
+    const long = k % 2 === 0;
+    const lime = k === 0;
+    const len = long ? 9.5 : 5.5;
+    const halfW = long ? 1.7 : 1.25;
+    const a = Math.PI * 2 * k / 8 - Math.PI / 2;
+    const tipX = 16 + len * Math.cos(a), tipY = 16 + len * Math.sin(a);
+    // base two points perpendicular to ray direction
+    const px = Math.cos(a + Math.PI / 2), py = Math.sin(a + Math.PI / 2);
+    const baseC = 3.2;   // distance from center where ray starts
+    const bx1 = 16 + baseC * Math.cos(a) + halfW * px, by1 = 16 + baseC * Math.sin(a) + halfW * py;
+    const bx2 = 16 + baseC * Math.cos(a) - halfW * px, by2 = 16 + baseC * Math.sin(a) - halfW * py;
+    const path = mk('path', {
+      d: `M${bx1.toFixed(2)} ${by1.toFixed(2)} L${tipX.toFixed(2)} ${tipY.toFixed(2)} L${bx2.toFixed(2)} ${by2.toFixed(2)} Z`,
+    });
+    path.setAttribute('fill', lime ? 'currentColor' : 'currentColor');
+    if (lime) path.setAttribute('data-lime', '1');
+    svg.append(path);
+  }
+  const center = mk('circle', { cx: 16, cy: 16, r: 1.9 });
+  center.setAttribute('data-lime', '1');
+  svg.append(center);
+  return svg;
+}
+
 // Hero emblem: charcoal ring, white disc, 8-ray spark mark with lime accents.
 // Colors come from CSS vars (--hero-ink/disc/lime) so themes restyle it.
 function buildHeroEmblem() {
@@ -204,6 +245,8 @@ function addMsg(role, text) {
   who.className = 'who';
   if (role === 'assistant') {
     const i = document.createElement('i');
+    i.setAttribute('aria-hidden', 'true');
+    i.append(mkSparkSvg());
     who.append(i, document.createTextNode('Muse'));
   } else {
     who.textContent = 'You';
@@ -1543,6 +1586,14 @@ window.addEventListener('keydown', e => {
 /* ---------- boot ---------- */
 if (window.MuseI18n) window.MuseI18n.applyDom();
 renderEmpty();
+// Swap the sidebar brand glyph for the spark mark (theme-aware via CSS).
+try {
+  const brandMark = document.querySelector('.brand-mark');
+  if (brandMark) {
+    brandMark.replaceChildren();
+    brandMark.append(mkSparkSvg(20));
+  }
+} catch {}
 setWorkbenchCollapsed(typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches);
 
 refreshStatus();
