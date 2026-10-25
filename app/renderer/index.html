@@ -38,6 +38,7 @@
   --hero-ink:#26251f;
   --hero-disc:#ffffff;
   --hero-lime:#80e044;
+  --splash-dot:rgba(38,37,31,.13);
   /* layered surfaces */
   --color-surface-app:var(--color-background);
   --color-surface-sidebar:#fafafa;
@@ -638,6 +639,7 @@ kbd{background:var(--color-surface-subtle);padding:2px 7px;border:1px solid var(
   --hero-ink:#f4f4f5;
   --hero-disc:#18181b;
   --hero-lime:#8be94f;
+  --splash-dot:rgba(255,255,255,.12);
 }
 
 /* Ambient layer v2: static aurora wash + two drifting light glows + fine grain.
@@ -777,7 +779,68 @@ footer{background:transparent;padding:14px 24px 18px}.inputwrap{box-shadow:0 2px
   .thinking .shimmer-text::after{animation:none;opacity:0}
   .thinking .bar i{animation-duration:2.4s}
 }
+
+/* ---------- boot splash: particle reconstruction of the emblem ---------- */
+#splash{
+  position:fixed; inset:0; z-index:200;
+  background:var(--color-surface-app);
+  display:grid; place-items:center;
+  opacity:1; transition:opacity .45s ease;
+}
+#splash.gone{ opacity:0; pointer-events:none; }
+#splash .s-dots{
+  position:absolute; inset:0;
+  background-image:radial-gradient(circle, var(--splash-dot) 1px, transparent 1.4px);
+  background-size:26px 26px;
+}
+#splash .s-frame{ position:relative; width:min(42vmin,340px); aspect-ratio:1; }
+#splash .s-fx{ position:absolute; inset:0; width:100%; height:100%; }
+#splash .s-logo{ position:absolute; inset:0; opacity:0; }
+#splash .s-logo.show{ transition:opacity .34s linear; opacity:1; }
+#splash .s-logo svg{ display:block; width:100%; height:100%; overflow:visible; }
+#splash .s-logo .sq-disc{ fill:var(--hero-disc); }
+#splash .s-logo .sq-ring{ stroke:var(--hero-ink); }
+#splash .s-logo .sq-char{ fill:var(--hero-ink); }
+#splash .s-logo .sq-charo{ stroke:var(--hero-ink); fill:none; }
+#splash .s-logo .sq-lime{ fill:var(--hero-lime); }
+#splash.skip .s-fx{ display:none; }
+#splash.skip .s-logo{ opacity:1; }
+@media (prefers-reduced-motion: reduce){
+  #splash .s-fx{ display:none; }
+  #splash .s-logo{ opacity:1; }
+}
 </style></head><body>
+
+<div id="splash" aria-hidden="true">
+  <div class="s-dots"></div>
+  <div class="s-frame">
+    <canvas class="s-fx"></canvas>
+    <div class="s-logo">
+      <svg viewBox="0 0 440 440">
+        <circle class="sq-disc" cx="220" cy="220" r="158"/>
+        <circle class="sq-ring" cx="220" cy="220" r="158" stroke-width="13" pathLength="1000"/>
+        <g class="sq-orbit">
+          <circle class="sq-charo" cx="220" cy="220" r="137" stroke-width="1.2" stroke-dasharray="1.5 6" stroke-opacity=".22"/>
+          <circle class="sq-char" cx="325.1" cy="131.9" r="2.6" fill-opacity=".35"/>
+          <circle class="sq-char" cx="85.5" cy="251.4" r="2.6" fill-opacity=".3"/>
+          <circle class="sq-lime" cx="153.9" cy="95.2" r="3.2"/>
+        </g>
+        <g class="sq-spark">
+          <g class="sq-lime"><path d="M212 186 L220 96 L228 186 Z"/><circle cx="220" cy="96" r="4.6"/></g>
+          <path class="sq-char" d="M213.8 187.4 L220 124 L226.2 187.4 Z" transform="rotate(45 220 220)"/>
+          <g class="sq-char"><path d="M212 186 L220 96 L228 186 Z" transform="rotate(90 220 220)"/><circle cx="220" cy="96" r="4.6" transform="rotate(90 220 220)"/></g>
+          <path class="sq-char" d="M213.8 187.4 L220 124 L226.2 187.4 Z" transform="rotate(135 220 220)"/>
+          <g class="sq-char"><path d="M212 186 L220 96 L228 186 Z" transform="rotate(180 220 220)"/><circle cx="220" cy="96" r="4.6" transform="rotate(180 220 220)"/></g>
+          <path class="sq-char" d="M213.8 187.4 L220 124 L226.2 187.4 Z" transform="rotate(225 220 220)"/>
+          <g class="sq-char"><path d="M212 186 L220 96 L228 186 Z" transform="rotate(270 220 220)"/><circle cx="220" cy="96" r="4.6" transform="rotate(270 220 220)"/></g>
+          <path class="sq-char" d="M213.8 187.4 L220 124 L226.2 187.4 Z" transform="rotate(315 220 220)"/>
+          <circle class="sq-lime" cx="220" cy="220" r="8.5"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+</div>
+
 <div class="aurora" aria-hidden="true"></div>
 <div class="aurora-drift" aria-hidden="true"></div>
 <div class="aurora-drift d2" aria-hidden="true"></div>

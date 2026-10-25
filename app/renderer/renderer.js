@@ -1617,6 +1617,183 @@ window.addEventListener('keydown', e => {
   if (!dialog && e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); exportTranscript(); }
 });
 
+
+/* ---------- boot splash: particle reconstruction (click to skip) ---------- */
+(function bootSplash() {
+  const splash = document.getElementById && document.getElementById('splash');
+  if (!splash || !splash.querySelector) return;
+  const frameEl = splash.querySelector('.s-frame');
+  const canvas = splash.querySelector('.s-fx');
+  const logoEl = splash.querySelector('.s-logo');
+  if (!frameEl || !canvas || !logoEl || typeof canvas.getContext !== 'function') return;
+  const ctx = canvas.getContext('2d', { alpha: true });
+  const RM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const T = { convStart: 260, glitchStart: 1100, glitchEnd: 1800, seat: 1850, swap: 2050, end: 2800 };
+
+  let W = 0, H = 0, particles = [], startTime = 0, raf = 0, running = false, done = false;
+
+  function cssVar(name, fallback) {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch { return fallback; }
+  }
+
+  function dismiss() {
+    if (done) return;
+    done = true;
+    cancelAnimationFrame(raf);
+    splash.classList.add('gone');
+    setTimeout(() => { try { splash.remove(); } catch {} }, 500);
+  }
+
+  function sampleParticles() {
+    const S = 220;
+    const off = document.createElement('canvas');
+    off.width = S; off.height = S;
+    const octx = off.getContext('2d');
+    const svg = logoEl.querySelector('svg');
+    const xml = new XMLSerializer().serializeToString(svg)
+      .replace('<svg ', '<svg width="220" height="220" xmlns="http://www.w3.org/2000/svg" ');
+    const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' }));
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          octx.clearRect(0, 0, S, S);
+          octx.drawImage(img, 0, 0, S, S);
+          const data = octx.getImageData(0, 0, S, S).data;
+          const inkC = cssVar('--hero-ink', '#26251f');
+          const limeC = cssVar('--hero-lime', '#80e044');
+          const inkRGB = hexToRgb(inkC), limeRGB = hexToRgb(limeC);
+          const pts = [];
+          for (let y = 0; y < S; y += 2) {
+            for (let x = 0; x < S; x += 2) {
+              const i = (y * S + x) * 4;
+              const a = data[i + 3];
+              if (a < 40) continue;
+              const r = data[i], g = data[i + 1], b = data[i + 2];
+              const isLime = g > 150 && g > r * 1.6 && g > b * 1.6;
+              const isWhite = r > 200 && g > 200 && b > 200;
+              if (isWhite) continue;                 // disc = negative space
+              pts.push({ x, y, col: isLime ? limeRGB : inkRGB, size: isLime ? 2.1 : 1.7 });
+            }
+          }
+          resolve(pts);
+        } finally { URL.revokeObjectURL(url); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve([]); };
+      img.src = url;
+    });
+  }
+
+  function hexToRgb(h) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(h).trim().replace(/ /g, ''));
+    const hex = m ? m[1] : '26251f';
+    return [parseInt(hex.slice(0,2),16), parseInt(hex.slice(2,4),16), parseInt(hex.slice(4,6),16)];
+  }
+
+  function buildParticles(pts) {
+    const scale = W / 220;
+    particles = pts.map((p) => {
+      const tx = p.x * scale, ty = p.y * scale;
+      const ang = Math.random() * Math.PI * 2;
+      const dist = (0.5 + Math.random() * 1.1) * (W * 0.32);
+      return {
+        tx, ty,
+        sx: tx + Math.cos(ang) * dist,
+        sy: ty + Math.sin(ang) * dist,
+        size: p.size * scale * 0.9,
+        col: p.col,
+        delay: (p.x / 220) * 520 + Math.random() * 140,
+        jx: (Math.random() - 0.5) * 24, jy: (Math.random() - 0.5) * 24,
+        ph: Math.random() * Math.PI * 2,
+        flick: 0.4 + Math.random() * 0.6,
+      };
+    });
+  }
+
+  let glitchSeed = 0;
+  function glitchOffset(px, py, t) {
+    for (let b = 0; b < 3; b++) {
+      const seed = Math.sin((b + 1) * 12.9898 + glitchSeed) * 43758.5453;
+      const f = seed - Math.floor(seed);
+      const bandY = (0.2 + f * 0.6) * H;
+      const bandH = H * 0.03;
+      if (py > bandY && py < bandY + bandH) {
+        const amp = 14 * Math.sin(t * 0.02 + b * 3);
+        return amp * (1 - Math.abs((py - bandY) / bandH - 0.5) * 2);
+      }
+    }
+    return 0;
+  }
+
+  function easeOutCubic(x){ return 1 - Math.pow(1 - x, 3); }
+
+  function render(now) {
+    if (!running) return;
+    const t = now - startTime;
+    glitchSeed = Math.floor(t / 90);
+    ctx.clearRect(0, 0, W, H);
+    const glitchW = t > T.glitchStart && t < T.glitchEnd
+      ? Math.sin(((t - T.glitchStart) / (T.glitchEnd - T.glitchStart)) * Math.PI) : 0;
+    const swapW = Math.min(Math.max((t - T.swap) / (T.end - T.swap), 0), 1);
+    const rgb = (c) => 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')';
+    for (const p of particles) {
+      const localT = Math.min(Math.max((t - T.convStart - p.delay) / 620, 0), 1);
+      if (localT <= 0) {
+        const flick = 0.25 + 0.5 * Math.abs(Math.sin(t * 0.012 * p.flick + p.ph));
+        ctx.globalAlpha = flick * 0.55;
+        ctx.fillStyle = rgb(p.col);
+        ctx.fillRect(p.sx + Math.sin(t*0.002+p.ph)*6, p.sy + Math.cos(t*0.0023+p.ph)*6, p.size, p.size);
+        continue;
+      }
+      const e = easeOutCubic(localT);
+      let x = p.sx + (p.tx - p.sx) * e;
+      let y = p.sy + (p.ty - p.sy) * e;
+      const jdecay = (1 - localT) * (1 - glitchW * 0.6);
+      x += Math.sin(t*0.02+p.ph) * p.jx * jdecay;
+      y += Math.cos(t*0.023+p.ph) * p.jy * jdecay;
+      if (glitchW > 0) { x += glitchOffset(x, y, t) * glitchW; y += (Math.random()-0.5)*2.5*glitchW; }
+      let a = 0.5 + 0.5 * easeOutCubic(localT);
+      if (localT < 1 && Math.random() < 0.12 * (1 - localT)) a *= 0.3;
+      if (glitchW > 0 && Math.random() < 0.08) a *= 0.55;
+      a *= (1 - swapW);
+      if (a <= 0.01) continue;
+      ctx.globalAlpha = Math.min(a, 1);
+      ctx.fillStyle = rgb(p.col);
+      ctx.fillRect(x, y, p.size, p.size);
+    }
+    ctx.globalAlpha = 1;
+    if (t >= T.swap - 160) logoEl.classList.add('show');
+    if (t >= T.end) { dismiss(); return; }
+    raf = requestAnimationFrame(render);
+  }
+
+  async function play() {
+    if (RM) { splash.classList.add('skip'); setTimeout(dismiss, 700); return; }
+    const rect = frameEl.getBoundingClientRect();
+    const DPR = Math.min((typeof devicePixelRatio === 'number' ? devicePixelRatio : 1), 2);
+    canvas.width = Math.round(rect.width * DPR);
+    canvas.height = Math.round(rect.height * DPR);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(DPR, DPR);
+    W = rect.width; H = rect.height;
+    let pts = [];
+    try { pts = await sampleParticles(); } catch (e) { pts = []; }
+    if (!pts.length) { splash.classList.add('skip'); setTimeout(dismiss, 350); return; }
+    buildParticles(pts);
+    running = true;
+    startTime = performance.now();
+    raf = requestAnimationFrame(render);
+  }
+
+  splash.addEventListener('click', dismiss, { once: false });
+  if (document.readyState === 'complete' || document.readyState === 'interactive') play();
+  else document.addEventListener('DOMContentLoaded', () => play(), { once: true });
+})();
+
 /* ---------- boot ---------- */
 if (window.MuseI18n) window.MuseI18n.applyDom();
 renderEmpty();
