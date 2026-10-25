@@ -62,7 +62,7 @@ function createWindow() {
   // Navigation/popup policy: this is a single-page local app. Deny everything
   // that is not our own page; hand real http(s) links to the system browser.
   mainWindow.webContents.on('will-navigate', (e, url) => {
-    if (String(url).replace(/\\/g, '/').toLowerCase() === RENDERER_URL.toLowerCase()) return;
+    if (isRendererUrl(url)) return;
     e.preventDefault();
     if (/^https?:\/\//i.test(url)) shell.openExternal(url);
   });
@@ -111,7 +111,6 @@ function requireTrusted(e) {
     throw new Error('untrusted IPC caller');
   }
 }
-function requireTrusted(e) { if (!trustedSender(e)) throw new Error('untrusted IPC caller'); }
 
 function send(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -552,7 +551,8 @@ ipcMain.handle('project:get', async (e) => {
   return { ok: true, project: currentProjectDir, projectId: currentProjectId, name: currentProjectId ? projectStore.get(currentProjectId)?.name : null };
 });
 
-ipcMain.handle('config:get', async () => {
+ipcMain.handle('config:get', async (e) => {
+  requireTrusted(e);
   ensureConfigFile();
   const cfg = loadConfig();
   return {
@@ -568,7 +568,7 @@ ipcMain.handle('config:get', async () => {
   };
 });
 
-ipcMain.handle('sessions:list', async () => sessionStore.list());
+ipcMain.handle('sessions:list', async (e) => { requireTrusted(e); return sessionStore.list(); });
 
 ipcMain.handle('sessions:load', async (e, id) => {
   requireTrusted(e);
@@ -616,7 +616,8 @@ ipcMain.handle('config:toggleHands', async (e, enabled) => {
 const { fetchModels, originOf } = require('../harness/models');
 const { apiKey: apiKeyOf } = require('../harness/config');
 
-ipcMain.handle('settings:get', async () => {
+ipcMain.handle('settings:get', async (e) => {
+  requireTrusted(e);
   const cfg = loadConfig();
   return {
     base_url: cfg.llm.base_url,
@@ -684,7 +685,8 @@ ipcMain.handle('settings:fetchModels', async (e, { base_url, api_key } = {}) => 
 
 // ---- memory surface (renderer: grade, status, delete) ----
 
-ipcMain.handle('memory:status', async () => {
+ipcMain.handle('memory:status', async (e) => {
+  requireTrusted(e);
   const cfg = loadConfig();
   if (!cfg.memory || !cfg.memory.enabled) return { enabled: false };
   if (!agent) { try { agent=await mkAgent({ projectDir: currentProjectDir }); } catch(e) { memoryError=e.message; } }
@@ -703,7 +705,8 @@ ipcMain.handle('memory:status', async () => {
   };
 });
 
-ipcMain.handle('memory:list', async () => {
+ipcMain.handle('memory:list', async (e) => {
+  requireTrusted(e);
   if (!agent || !agent.memory) return { ok: false, error: 'memory disabled' };
   try {
     const rows = agent.memory.listMemories()
@@ -718,12 +721,14 @@ ipcMain.handle('memory:list', async () => {
   }
 });
 
-ipcMain.handle('memory:delete', async (_e, id) => {
+ipcMain.handle('memory:delete', async (e, id) => {
+  requireTrusted(e);
   if (!agent || !agent.memory) return { ok: false, error: 'memory disabled' };
   return agent.memory.deleteMemory(String(id), 'user-requested');
 });
 
-ipcMain.handle('memory:quarantine-review', async (_e, { id, verdict }) => {
+ipcMain.handle('memory:quarantine-review', async (e, { id, verdict }) => {
+  requireTrusted(e);
   if (!agent || !agent.memory) return { ok: false, error: 'memory disabled' };
   // spec §7: quarantined rows resolve only through explicit user review
   if (verdict === 'safe') {
@@ -754,19 +759,22 @@ ipcMain.handle('memory:scope', async (e, {strategy,project_id} = {}) => {
   } catch(err) {return {ok:false,error:String(err && err.message || err)};}
 });
 
-ipcMain.handle('memory:flags', async (_e, patch) => {
+ipcMain.handle('memory:flags', async (e, patch) => {
+  requireTrusted(e);
   if (!agent || !agent.memory) return { ok: false, error: 'memory disabled' };
   try { return agent.memory.setFlags(patch || {}); }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });
 
-ipcMain.handle('memory:deleted', async () => {
+ipcMain.handle('memory:deleted', async (e) => {
+  requireTrusted(e);
   if (!agent || !agent.memory) return { ok: false, error: 'memory disabled' };
   try { return { ok: true, deletions: agent.memory.listDeleted() }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });
 
-ipcMain.handle('memory:export', async () => {
+ipcMain.handle('memory:export', async (e) => {
+  requireTrusted(e);
   if (!agent || !agent.memory) return { ok: false, error: 'memory disabled' };
   try {
     const os = require('os');
@@ -776,7 +784,8 @@ ipcMain.handle('memory:export', async () => {
   } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
 });
 
-ipcMain.handle('memory:extract-now', async () => {
+ipcMain.handle('memory:extract-now', async (e) => {
+  requireTrusted(e);
   if (agentBusy || !agent || !agent.memory) return { ok: false, error: 'memory disabled or agent busy' };
   try { return { ok: true, ...(await agent.endSessionExtract()) }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }

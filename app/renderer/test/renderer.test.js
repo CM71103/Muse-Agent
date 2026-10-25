@@ -6,7 +6,7 @@ const vm=require('node:vm');
 const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../renderer.js'),'utf8');
 class Node {
-  constructor(tag='div'){this.tagName=tag;this.children=[];this.style={};this.listeners={};this.value='';this.textContent='';this.disabled=false;this.hidden=false;this.classes=new Set();this.classList={add:(x)=>this.classes.add(x),remove:(x)=>this.classes.delete(x),contains:(x)=>this.classes.has(x),toggle:(x,on)=>{const v=on===undefined?!this.classes.has(x):on;v?this.classes.add(x):this.classes.delete(x);return v;}};}
+  constructor(tag='div'){this.tagName=tag;this.children=[];this.style={};this.listeners={};this.value='';this._text='';this.disabled=false;this.hidden=false;this.classes=new Set();this.classList={add:(x)=>this.classes.add(x),remove:(x)=>this.classes.delete(x),contains:(x)=>this.classes.has(x),toggle:(x,on)=>{const v=on===undefined?!this.classes.has(x):on;v?this.classes.add(x):this.classes.delete(x);return v;}};const self=this;Object.defineProperty(this,'textContent',{get(){return self.children.length?self.children.map(c=>String(c.textContent??'')).join(''):self._text;},set(v){self._text=String(v);self.children=[];},configurable:true});}
   append(...n){for(const x of n){this.children.push(x);if(typeof x==='object')x.parent=this;}}
   prepend(n){this.children.unshift(n);n.parent=this;}
   replaceChildren(...n){this.children=[];this.append(...n);}
@@ -20,7 +20,7 @@ class Node {
   descendants(){const out=[];const walk=(n)=>{for(const c of n.children||[]){out.push(c);walk(c);}};walk(this);return out;}
 }
 function setup(overrides={}) {
-  const nodes=new Map();const document={activeElement:null,createElement:tag=>{const n=new Node(tag);n.doc=document;return n;},createTextNode:text=>({textContent:text}),getElementById:id=>{if(!nodes.has(id)){const n=document.createElement('div');n.id=id;nodes.set(id,n);}return nodes.get(id);}};
+  const nodes=new Map();const document={activeElement:null,createElement:tag=>{const n=new Node(tag);n.doc=document;return n;},createElementNS:(ns,tag)=>{const n=new Node(tag);n.doc=document;n.namespaceURI=ns;return n;},createTextNode:text=>({textContent:text}),getElementById:id=>{if(!nodes.has(id)){const n=document.createElement('div');n.id=id;nodes.set(id,n);}return nodes.get(id);}};
   document.body=document.createElement('body');
   document.querySelectorAll=(sel)=>document.body.querySelectorAll(sel);
   let event, approval;const muse={onAgentEvent:cb=>event=cb,onApprovalRequest:cb=>approval=cb,onSessionReset:()=>{},onQuestion:()=>()=>{},onApprovalExpired:()=>()=>{},cancel:async()=>({ok:true}),answerQuestion:async()=>({ok:true}),getConfig:async()=>({llm:{model:'test'},hands:{enabled:false},sentinel:{mode:'ask'}}),memoryStatus:async()=>({enabled:false}),listSessions:async()=>[],reset:async()=>({ok:true}),...overrides};

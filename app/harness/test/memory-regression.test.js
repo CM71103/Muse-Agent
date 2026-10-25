@@ -26,7 +26,13 @@ test('two fresh host sessions recall persisted user event after reopen; exact ac
 test('scope isolation, per-scope idempotency, no auto fallback',async t=>{
  const x=setup(t);let m=x.open();await m.ingest([{source_event_id:'same',text:'personal',provenance:'user'}]);x.close();
  m=x.open('work');await m.ingest([{source_event_id:'same',text:'work',provenance:'user'}]);assert.equal(m.listMemories().length,1);assert.equal(m.listMemories()[0].text,'work');x.close();
- assert.throws(()=>new MemoryLayer({...x.cfg,memory:{...x.cfg.memory,project_id_strategy:'auto'}},{dataDir:x.dir,cwd:x.dir}),/MEMORY_SCOPE_REQUIRED/);
+ // force git detection failure even when a parent directory is itself a repo
+ const prevGitDir=process.env.GIT_DIR;process.env.GIT_DIR='Z:/definitely-not-a-git-dir';
+ try {
+  assert.throws(()=>new MemoryLayer({...x.cfg,memory:{...x.cfg.memory,project_id_strategy:'auto'}},{dataDir:x.dir,cwd:x.dir}),/MEMORY_SCOPE_REQUIRED/);
+ } finally {
+  if (prevGitDir===undefined) delete process.env.GIT_DIR; else process.env.GIT_DIR=prevGitDir;
+ }
  m=x.open();assert.equal(m.listMemories()[0].text,'personal');
 });
 test('single owner refused same process and second process; reopen releases owner',t=>{

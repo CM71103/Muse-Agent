@@ -25,7 +25,9 @@ test('side-effect tools always ask even in auto mode', () => {
 
 test('read tools allowed only inside granted scope', () => {
   const s = new Sentinel(cfg());
-  s.addGrant('/home/user/project');
+  // grant must use the same platform shape as the resolved paths below
+  const root = process.platform==='win32' ? 'C:\\home\\user\\project' : '/home/user/project';
+  s.addGrant(root);
   const inside = process.platform==='win32' ? 'C:\\home\\user\\project\\a.txt' : '/home/user/project/a.txt';
   const outside = process.platform==='win32' ? 'C:\\windows\\system32\\x' : '/etc/passwd';
   // normalize like tools do (win grant lowercased containment)

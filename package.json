@@ -29,7 +29,8 @@
     "files": [
       "app/**/*",
       "config.example.toml",
-      "!app/harness/test/**"
+      "!app/harness/test/**",
+      "!app/renderer/test/**"
     ],
     "extraResources": [
       {

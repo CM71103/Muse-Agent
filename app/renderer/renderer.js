@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 // renderer.js - sidebar sessions, settings modal, transcript, approvals.
 // No framework, no deps.
 
@@ -28,12 +28,26 @@ const prefs = { compact: false, tools: true, enter: true };
 let dialogReturnFocus = null;
 function reportError(e) { addSysNote(String(e && e.message || e), true); }
 function guarded(fn) { return (...args) => Promise.resolve().then(() => fn(...args)).catch(reportError); }
+/* Entrance reveal for new transcript children. WAAPI when available, class
+   fallback otherwise; skipped under prefers-reduced-motion and in test DOMs. */
+const REDUCED_MOTION = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function reveal(el, fromY) {
+  if (!el || REDUCED_MOTION) return el;
+  el.classList.add('reveal');
+  if (typeof el.animate === 'function') {
+    try { el.animate([{ opacity: 0, transform: `translateY(${fromY || 14}px) scale(.985)` }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 340, easing: 'cubic-bezier(.22,.9,.32,1)' }); }
+    catch { /* older engine: class fallback only */ }
+  }
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => el.classList.add('reveal-in'));
+  else el.classList.add('reveal-in');
+  return el;
+}
 function resetTranscript() { transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null; renderEmpty(); }
 function renderEmpty() {
   if (projectHomeVisible && activeProjectId) { renderProjectHome(); return; }
   if (transcript.children.length) return;
   const box = document.createElement('section'); box.id = 'empty';
-  const mark = document.createElement('div'); mark.className = 'studio-mark';
+  const hero = buildHeroEmblem();
   const title = document.createElement('h1'); title.textContent = 'What are we working on?' ; title.style.whiteSpace = 'pre-line';
   const text = document.createElement('p'); text.textContent = 'A place for your projects, questions and next steps. Start a conversation or pick a task below.';
   const starters = document.createElement('div'); starters.className = 'starters';
@@ -46,7 +60,124 @@ function renderEmpty() {
     const small = document.createElement('span'); small.textContent = hint; b.append(small);
     b.addEventListener('click', () => { if (!busy && !loadingSession) { input.value = task; autosize(); input.focus(); } }); starters.append(b);
   }
-  box.append(mark, title, text, starters); transcript.append(box);
+  box.append(hero, title, text, starters); transcript.append(box);
+}
+
+// Hero emblem: charcoal ring, white disc, 8-ray spark mark with lime accents.
+// Colors come from CSS vars (--hero-ink/disc/lime) so themes restyle it.
+function buildHeroEmblem() {
+  const wrap = document.createElement('div');
+  wrap.className = 'hero';
+  const glow = document.createElement('div');
+  glow.className = 'edge-glow';
+  glow.append(document.createElement('b'));
+  wrap.append(glow);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', '0 0 440 440');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const defs = document.createElementNS(svgNS, 'defs');
+  const filter = document.createElementNS(svgNS, 'filter');
+  filter.setAttribute('id', 'heroGlow');
+  filter.setAttribute('x', '-60%'); filter.setAttribute('y', '-60%');
+  filter.setAttribute('width', '220%'); filter.setAttribute('height', '220%');
+  const blur = document.createElementNS(svgNS, 'feGaussianBlur');
+  blur.setAttribute('in', 'SourceGraphic'); blur.setAttribute('stdDeviation', '4.2');
+  blur.setAttribute('result', 'b');
+  const merge = document.createElementNS(svgNS, 'feMerge');
+  for (const node of ['b', 'b', 'SourceGraphic']) {
+    const mn = document.createElementNS(svgNS, 'feMergeNode');
+    mn.setAttribute('in', node);
+    merge.append(mn);
+  }
+  filter.append(blur, merge);
+  defs.append(filter);
+  svg.append(defs);
+
+  const mk = (tag, attrs) => {
+    const el = document.createElementNS(svgNS, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+  };
+
+  // disc + ring
+  svg.append(mk('circle', { class: 'disc', cx: '220', cy: '220', r: '158' }));
+  svg.append(mk('circle', { class: 'ring', cx: '220', cy: '220', r: '158', fill: 'none', 'stroke-width': '13', pathLength: '1000', 'stroke-dasharray': '1000', 'stroke-dashoffset': '0' }));
+
+  // micro-orbit
+  const orbit = document.createElementNS(svgNS, 'g');
+  orbit.setAttribute('class', 'orbit');
+  const orbRing = mk('circle', { cx: '220', cy: '220', r: '137', fill: 'none', 'stroke-width': '1.2', 'stroke-dasharray': '1.5 6', 'stroke-opacity': '.22' });
+  orbRing.setAttribute('class', 'charfill');
+  orbRing.setAttribute('stroke', 'var(--hero-ink)');
+  orbit.append(orbRing);
+  for (const [cx, cy, op] of [['325.1', '131.9', '.35'], ['85.5', '251.4', '.3']]) {
+    const c = mk('circle', { cx, cy, r: '2.6', 'fill-opacity': op });
+    c.setAttribute('class', 'charfill');
+    orbit.append(c);
+  }
+  const limeNode = document.createElementNS(svgNS, 'g');
+  limeNode.setAttribute('class', 'glowme');
+  const ln = mk('circle', { cx: '153.9', cy: '95.2', r: '3.2' });
+  ln.setAttribute('class', 'limefill');
+  limeNode.append(ln);
+  orbit.append(limeNode);
+  svg.append(orbit);
+
+  // spark: 8 tapered rays (long cardinal w/ tip nodes, short diagonal), top ray lime
+  const spark = document.createElementNS(svgNS, 'g');
+  spark.setAttribute('class', 'spark');
+  const rayLong = 'M212 186 L220 96 L228 186 Z';
+  const rayShort = 'M213.8 187.4 L220 124 L226.2 187.4 Z';
+  const mkRay = (d, rotate, cls, tipNode, lime) => {
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('class', 'ray');
+    let body;
+    if (lime) {
+      const lg = document.createElementNS(svgNS, 'g');
+      lg.setAttribute('class', 'glowme');
+      const path = mk('path', { d });
+      path.setAttribute('class', 'limefill');
+      lg.append(path);
+      if (tipNode) {
+        const c = mk('circle', { cx: '220', cy: '96', r: '4.6' });
+        c.setAttribute('class', 'limefill');
+        lg.append(c);
+      }
+      body = lg;
+    } else {
+      const path = mk('path', { d });
+      path.setAttribute('class', 'charfill');
+      if (tipNode) {
+        const c = mk('circle', { cx: '220', cy: '96', r: '4.6' });
+        c.setAttribute('class', 'charfill');
+        const holder = document.createElementNS(svgNS, 'g');
+        holder.append(path, c);
+        body = holder;
+      } else body = path;
+    }
+    if (rotate) body.setAttribute('transform', `rotate(${rotate} 220 220)`);
+    g.append(body);
+    return g;
+  };
+  spark.append(mkRay(rayLong, 0, null, true, true));        // top: lime
+  spark.append(mkRay(rayShort, 45, null, false, false));
+  spark.append(mkRay(rayLong, 90, null, true, false));
+  spark.append(mkRay(rayShort, 135, null, false, false));
+  spark.append(mkRay(rayLong, 180, null, true, false));
+  spark.append(mkRay(rayShort, 225, null, false, false));
+  spark.append(mkRay(rayLong, 270, null, true, false));
+  spark.append(mkRay(rayShort, 315, null, false, false));
+  const center = document.createElementNS(svgNS, 'g');
+  center.setAttribute('class', 'glowme');
+  const cd = mk('circle', { cx: '220', cy: '220', r: '8.5' });
+  cd.setAttribute('class', 'limefill center-dot');
+  center.append(cd);
+  spark.append(center);
+  svg.append(spark);
+  wrap.append(svg);
+  return wrap;
 }
 
 /* ---------- transcript rendering ---------- */
@@ -87,6 +218,7 @@ function addMsg(role, text) {
   }
   div.append(who, body);
   transcript.append(div);
+  reveal(div, role === 'user' ? 10 : 16);
   scrollDown();
 }
 
@@ -329,6 +461,7 @@ function addToolRow(ev) {
   }
   row.append(det);
   transcript.append(row);
+  reveal(row, 8);
   scrollDown();
 }
 
@@ -341,6 +474,7 @@ function addDeniedRow(toolName, reason) {
   tag.textContent = toolName;
   row.append(tag, ' ', document.createTextNode(`denied — ${reason}`));
   transcript.append(row);
+  reveal(row, 8);
   scrollDown();
 }
 
@@ -350,6 +484,7 @@ function addSysNote(text, warn, cls) {
   div.className = 'sysnote' + (warn ? ' warn' : '') + (cls ? ' ' + cls : '');
   div.textContent = text;
   transcript.append(div);
+  reveal(div, 6);
   scrollDown();
 }
 
@@ -358,11 +493,21 @@ function showThinking(on) {
   if (on && !thinkingEl) {
     thinkingEl = document.createElement('div');
     thinkingEl.className = 'thinking';
+    const label = document.createElement('span');
+    label.className = 'thinking-label';
+    label.textContent = 'LLM';
+    // Two-layer shimmer: a masked gradient sweeps the text (wensity
+    // text-shimmer port); falls back to plain label when motion is reduced.
+    const shimmer = document.createElement('span');
+    shimmer.className = 'shimmer-text';
+    shimmer.setAttribute('data-text', 'LLM');
+    shimmer.textContent = 'LLM';
     const bar = document.createElement('span');
     bar.className = 'bar';
     bar.append(document.createElement('i'), document.createElement('i'), document.createElement('i'), document.createElement('i'));
-    thinkingEl.append(document.createTextNode('LLM'), bar);
+    thinkingEl.append(label, shimmer, bar);
     transcript.append(thinkingEl);
+    reveal(thinkingEl, 8);
     scrollDown();
   } else if (!on && thinkingEl) {
     thinkingEl.remove();
@@ -554,6 +699,7 @@ async function refreshSessions() {
   catch (e) { $('sessions-empty').textContent = `History unavailable: ${e.message || e}`; $('sessions-empty').style.display = 'block'; }
 }
 function renderSessions() {
+  scheduleHeatmap();
   const query = $('session-search').value.trim().toLowerCase();
   const list = sessionCache.filter(s => (s.projectId || null) === activeProjectId && (s.title || 'Untitled').toLowerCase().includes(query) && ($('session-filter').value !== 'active' || s.id === activeSessionId));
   const wrap = $('sessions-list'); wrap.replaceChildren();
@@ -613,9 +759,12 @@ window.muse.onSessionReset(() => { if (!loadingSession && !busy && !currentAppro
 
 /* ---------- status: pips + tags ---------- */
 
+let statusCache = null;
+let statusMem = null;
 async function refreshStatus() {
   try {
   const cfg = await window.muse.getConfig();
+  statusCache = cfg;
   $('tag-model').textContent = cfg.llm.model || 'no model';
   $('tag-sentinel').textContent = `Safety: ${cfg.sentinel.mode}`;
   $('pip-llm').classList.toggle('on', true);
@@ -631,6 +780,7 @@ async function refreshStatus() {
   // memory pip: real layer status (enabled + attached), not session count
   try {
     const ms = await window.muse.memoryStatus();
+    statusMem = ms;
     const on = !!(ms && ms.enabled && ms.ready);
     $('pip-mem').classList.toggle('on', on);
     $('pip-mem').title = ms && ms.enabled
@@ -782,6 +932,7 @@ async function openMemory() {
   if (!memOpen) dialogReturnFocus = document.activeElement;
   if (settingsOpen) closeSettings();
   memOpen = true;
+  if (typeof setNav === 'function') { setNav('memory'); }
   $('mem-close').focus();
   $('mem-backdrop').classList.add('active');
   const sub = $('mem-status');
@@ -1001,6 +1152,7 @@ function renderFlagToggles(st) {
 
 function closeMemory() {
   memOpen = false;
+  if (typeof setNav === 'function') { setNav('chat'); }
   $('mem-backdrop').classList.remove('active');
   if (dialogReturnFocus) dialogReturnFocus.focus();
 }
@@ -1068,6 +1220,119 @@ function setWorkbenchCollapsed(collapsed) {
 }
 $('wb-close').addEventListener('click', () => setWorkbenchCollapsed(true));
 $('btn-workbench-toggle').addEventListener('click', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')));
+
+/* ---------- activity heatmap (wensity github-activity-grid port) -----------
+   15-week grid fed by sessions:list updatedAt timestamps. Static-friendly:
+   renders once per sessions refresh; level buckets mirror the 5-step scale. */
+const heatEl = document.getElementById('wb-heat');
+let heatTimer = null;
+function renderHeatmap() {
+  if (!heatEl || !heatEl.isConnected) return;
+  const counts = new Map(); // yyyy-mm-dd → session count
+  for (const s of sessionCache) {
+    if (!s.updatedAt) continue;
+    const d = new Date(s.updatedAt);
+    if (isNaN(d)) continue;
+    const key = d.toISOString ? d.toISOString().slice(0, 10) : d.toDateString();
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const today = new Date();
+  const cells = [];
+  const start = new Date(today);
+  start.setDate(start.getDate() - (7 * 15 - 1 - (6 - start.getDay())));
+  const max = Math.max(1, ...counts.values());
+  for (let i = 0; i < 15 * 7; i++) {
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    const key = day.toISOString().slice(0, 10);
+    const n = counts.get(key) || 0;
+    const level = n === 0 ? 0 : Math.min(4, Math.ceil((n / max) * 4));
+    cells.push({ level, title: `${key}: ${n} session${n === 1 ? '' : 's'}` });
+  }
+  heatEl.replaceChildren();
+  for (const c of cells) {
+    const el = document.createElement('i');
+    if (c.level) el.dataset.level = String(c.level);
+    el.title = c.title;
+    heatEl.append(el);
+  }
+  const countEl = document.getElementById('wb-heat-count');
+  if (countEl) countEl.textContent = `${sessionCache.length} sessions`;
+}
+function scheduleHeatmap() {
+  if (heatTimer) return;
+  heatTimer = setTimeout(() => { heatTimer = null; renderHeatmap(); }, 400);
+}
+
+/* ---------- gooey nav pill (wensity gooey-navigation-menu port) ----------
+   One liquid highlight slides behind the active nav link. Buttons toggle
+   aria-pressed, which drives both the pill position and the pressed color. */
+const navBtns = ['nav-chat', 'nav-projects', 'nav-activity', 'nav-memory'].map(id => $(id));
+const navPill = document.querySelector ? document.querySelector('.nav-pill') : null;
+function syncPill() {
+  if (!navPill || typeof navPill.getBoundingClientRect !== 'function') return; // test mock
+  const active = navBtns.find(b => b.getAttribute('aria-pressed') === 'true');
+  if (!active) return;
+  const r = active.getBoundingClientRect();
+  const wrap = active.parentElement.getBoundingClientRect();
+  navPill.style.transform = `translateX(${r.left - wrap.left}px)`;
+  navPill.style.width = `${r.width}px`;
+}
+function setNav(name) {
+  for (const b of navBtns) b.setAttribute('aria-pressed', String(((b.dataset && b.dataset.nav) || b.id.slice(4)) === name));
+  syncPill();
+}
+const NAV_ACTIONS = {
+  chat: () => { if (memOpen) closeMemory(); input.focus(); },
+  projects: () => { if (memOpen) closeMemory(); if (activeProjectId) { projectHomeVisible = true; renderProjectHome(); } else { const s = document.getElementById('session-search'); if (s) s.focus(); } },
+  activity: () => { if (memOpen) closeMemory(); setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); },
+  memory: () => { openMemory(); },
+};
+for (const b of navBtns) b.addEventListener('click', () => { const name = (b.dataset && b.dataset.nav) || b.id.slice(4); setNav(name); const act = NAV_ACTIONS[name]; if (act) act(); });
+if (window.addEventListener) window.addEventListener('resize', syncPill);
+syncPill();
+
+/* ---------- model context popover (wensity model-context-switcher port) ---------- */
+const modelPop = $('model-pop');
+function closeModelPop() {
+  if (modelPop) modelPop.hidden = true;
+  document.removeEventListener('click', onDocClickPop, true);
+  window.removeEventListener('resize', closeModelPop);
+  window.removeEventListener('keydown', onPopKey);
+}
+function onDocClickPop(e) { if (modelPop && !modelPop.contains(e.target) && e.target !== $('tag-model')) closeModelPop(); }
+function onPopKey(e) { if (e.key === 'Escape') closeModelPop(); }
+function openModelPop() {
+  if (!modelPop || !modelPop.hidden) return;
+  const cfg = statusCache || {};
+  const llm = cfg.llm || {};
+  const pop = (v) => (v == null || v === '' ? '—' : String(v));
+  const mpModel = $('mp-model'); if (mpModel) mpModel.textContent = pop(llm.model);
+  const mpUrl = $('mp-url'); if (mpUrl) mpUrl.textContent = pop(llm.base_url);
+  const mpKey = $('mp-key'); if (mpKey) mpKey.textContent = llm.has_key ? 'configured' : 'missing';
+  const mpSent = $('mp-sentinel'); if (mpSent) mpSent.textContent = cfg.sentinel ? pop(cfg.sentinel.mode) : '—';
+  const mpHands = $('mp-hands'); if (mpHands) mpHands.textContent = cfg.hands ? (cfg.hands.enabled ? 'enabled' : 'off') : '—';
+  const mpMem = $('mp-mem'); if (mpMem) mpMem.textContent = statusMem
+    ? (statusMem.enabled ? (statusMem.ready ? 'ready' + (statusMem.project_id ? ' · ' + String(statusMem.project_id).slice(0, 10) : '') : 'starting') : 'disabled')
+    : '—';
+  const anchor = $('tag-model');
+  if (anchor && typeof anchor.getBoundingClientRect === 'function') {
+    const r = anchor.getBoundingClientRect();
+    modelPop.style.top = `${Math.round(r.bottom + 10)}px`;
+    modelPop.style.right = `${Math.max(8, Math.round(window.innerWidth - r.right))}px`;
+  }
+  modelPop.hidden = false;
+  document.addEventListener('click', onDocClickPop, true);
+  window.addEventListener('resize', closeModelPop);
+  window.addEventListener('keydown', onPopKey);
+}
+const tm = $('tag-model');
+if (tm) tm.addEventListener('click', () => { modelPop && modelPop.hidden ? openModelPop() : closeModelPop(); });
+
+/* ---------- tooltips: enrich actionable chrome with data-tip ---------- */
+const TIPS = [['btn-project', 'Attach a working folder — reads inside it are automatic'], ['btn-leave-project', 'Detach the current project folder'], ['btn-workbench-toggle', 'Show or hide the right panel'], ['btn-focus', 'Distraction-free conversation view'], ['btn-export', 'Save the transcript as Markdown'], ['btn-command', 'Command palette — every action, one query'], ['btn-memory', 'Memory scopes, evidence and health'], ['btn-settings', 'Connection, workspace and shortcuts'], ['hands-toggle', 'Let the Python hands sidecar act on your machine'], ['btn-new', 'Start a fresh conversation'], ['send', 'Send message'], ['wb-close', 'Collapse the right panel']];
+for (const [id, tip] of TIPS) { const el = document.getElementById(id); if (el) el.setAttribute('data-tip', tip); }
+
 $('wb-open-mem').addEventListener('click', openMemory);
 async function refreshWorkbenchMemory() {
   try {
@@ -1233,13 +1498,21 @@ $('btn-project-create-save').addEventListener('click', guarded(async () => {
   $('project-name').value = ''; $('project-create').hidden = true;
   await openProject(res.record.id);
 }));
-const commands = [['New session', newSession], ['Open settings', openSettings], ['Open memory', openMemory], ['Toggle focus mode', toggleFocus], ['Export transcript as Markdown', exportTranscript], ['Focus composer', () => input.focus()], ['Cycle appearance', cycleTheme], ['Appearance: Nimbus', () => setTheme('nimbus')], ['Appearance: Shiva Blue', () => setTheme('shiva')], ['Appearance: Dusk', () => setTheme('dusk')], ['Appearance: Carbon', () => setTheme('carbon')]];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Nimbus', () => setTheme('nimbus'), ''], ['Appearance: Shiva Blue', () => setTheme('shiva'), ''], ['Appearance: Dusk', () => setTheme('dusk'), ''], ['Appearance: Carbon', () => setTheme('carbon'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {
   const wrap = $('palette-results'); wrap.replaceChildren();
   const matches = commands.filter(([label]) => label.toLowerCase().includes($('palette-query').value.toLowerCase()));
-  for (const [label, action] of matches) { const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', guarded(() => { closePalette(); return action(); })); wrap.append(b); }
+  for (const [label, action, keys] of matches) {
+    const b = document.createElement('button');
+    const span = document.createElement('span');
+    span.textContent = label;
+    b.append(span);
+    if (keys) { const k = document.createElement('kbd'); k.textContent = keys; b.append(k); }
+    b.addEventListener('click', guarded(() => { closePalette(); return action(); }));
+    wrap.append(b);
+  }
   if (!matches.length) wrap.textContent = 'No matching commands.';
 }
 function openPalette() {
@@ -1276,3 +1549,12 @@ refreshStatus();
 refreshSessions();
 refreshProject();
 input.focus();
+
+/* ---------- pointer highlight on starter cards ------------------------------- */
+document.body.addEventListener('pointermove', (e) => {
+  const card = e.target && e.target.closest && e.target.closest('.starter');
+  if (!card) return;
+  const r = card.getBoundingClientRect();
+  card.style.setProperty('--mx', `${((e.clientX - r.left) / Math.max(1, r.width)) * 100}%`);
+  card.style.setProperty('--my', `${((e.clientY - r.top) / Math.max(1, r.height)) * 100}%`);
+}, { passive: true });
