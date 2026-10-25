@@ -48,6 +48,7 @@ function renderEmpty() {
   if (transcript.children.length) return;
   const box = document.createElement('section'); box.id = 'empty';
   const hero = buildHeroEmblem();
+  attachSparkReplay(hero, false);
   const title = document.createElement('h1'); title.textContent = 'What are we working on?' ; title.style.whiteSpace = 'pre-line';
   const text = document.createElement('p'); text.textContent = 'A place for your projects, questions and next steps. Start a conversation or pick a task below.';
   const starters = document.createElement('div'); starters.className = 'starters';
@@ -102,6 +103,38 @@ function mkSparkSvg(size = 16) {
   center.setAttribute('data-lime', '1');
   svg.append(center);
   return svg;
+}
+
+// Hover replay (OpenDesign-style vanish/reappear): wrapper gets .replaying
+// (fades + freezes child animations), then .reborn (children restart entrance).
+// Guarded so it can't double-trigger while a replay is running.
+const _replaying = new WeakSet();
+function attachSparkReplay(holderEl, small) {
+  if (!holderEl) return;
+  holderEl.classList.add('spark-holder');
+  if (small) holderEl.classList.add('sm');
+  holderEl.addEventListener('mouseenter', () => {
+    if (_replaying.has(holderEl)) return;
+    _replaying.add(holderEl);
+    holderEl.classList.remove('reborn');
+    holderEl.classList.add('replaying');
+    const t1 = setTimeout(() => {
+      holderEl.classList.remove('replaying');
+      holderEl.classList.add('reborn');
+      const t2 = setTimeout(() => {
+        holderEl.classList.remove('reborn');
+        _replaying.delete(holderEl);
+      }, small ? 400 : 1600);
+      holderEl._replayT2 = t2;
+    }, small ? 180 : 240);
+    holderEl._replayT1 = t1;
+  });
+  holderEl.addEventListener('mouseleave', () => {
+    // early exit: snap to final state, allow next replay
+    clearTimeout(holderEl._replayT1); clearTimeout(holderEl._replayT2);
+    holderEl.classList.remove('replaying', 'reborn');
+    _replaying.delete(holderEl);
+  });
 }
 
 // Hero emblem: charcoal ring, white disc, 8-ray spark mark with lime accents.
@@ -246,6 +279,7 @@ function addMsg(role, text) {
   if (role === 'assistant') {
     const i = document.createElement('i');
     i.setAttribute('aria-hidden', 'true');
+    attachSparkReplay(i, true);
     i.append(mkSparkSvg());
     who.append(i, document.createTextNode('Muse'));
   } else {
@@ -1592,6 +1626,7 @@ try {
   if (brandMark) {
     brandMark.replaceChildren();
     brandMark.append(mkSparkSvg(20));
+    attachSparkReplay(brandMark, true);
   }
 } catch {}
 setWorkbenchCollapsed(typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches);
