@@ -58,6 +58,26 @@ enabled = false
 host = "127.0.0.1"
 port = 8788
 
+[mcp]
+# MCP (Model Context Protocol) servers — extend the agent with third-party
+# tools (Antigravity-style). Stdio transport only; OFF until you list servers.
+# Every MCP tool call still requires approval in the UI (conservative default).
+# servers = ["docs"]
+#
+# [mcp.server.docs]
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-filesystem", "D:/projects"]
+# env = []            # optional ["VAR=value"]
+# timeout_s = 60
+
+[bridge]
+# Host bridge: loopback HTTP API into the RUNNING agent (Antigravity host-bridge).
+# Scripts/hotkeys drive the same live instance the app uses.
+# Binds 127.0.0.1 only. Bearer token at ~/.muse-agent/bridge_token.
+# Port: 0 = ephemeral (printed to main-process log each start).
+enabled = true
+port = 0
+
 [log]
 level = "info"
 # dir = "C:/muse-logs"   # default ~/.muse-agent/logs

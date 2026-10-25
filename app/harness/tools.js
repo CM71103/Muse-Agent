@@ -285,8 +285,14 @@ function mkHandsTool(cfg) {
   };
 }
 
-function buildTools(cfg) {
+function buildTools(cfg, opts = {}) {
   const tools = [...mkFsTools(), mkWebTool(), mkShellTool(), mkHandsTool(cfg)];
+  // Subagent (Antigravity-style delegation). Not registered for child agents
+  // — mkSubagentTool's own depth check also fails closed.
+  if (!(opts.disableSubagent)) {
+    tools.push(require('./subagent').mkSubagentTool(opts.subagent || {}));
+    if (opts.mcp) tools.push(...require('./mcp').mkMcpTools(opts.mcp));
+  }
   const map = new Map(tools.map(t => [t.name, t]));
   return { tools, map };
 }

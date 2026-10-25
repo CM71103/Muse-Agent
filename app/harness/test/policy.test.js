@@ -103,5 +103,5 @@ test('write_file requires approval (gate integration)', async () => {
 test('tool registry keeps central policy (no alwaysAsk drift)', () => {
   const { tools } = buildTools(cfg());
   const names = tools.map(t=>t.name);
-  assert.deepEqual(names.sort(),['hands','list_dir','read_file','shell','web_fetch','write_file'].sort());
+  assert.deepEqual(names.sort(),['hands','list_dir','read_file','shell','spawn_agent','web_fetch','write_file'].sort());
 });

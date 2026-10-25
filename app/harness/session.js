@@ -38,6 +38,7 @@ function list() {
         created: s.created || null,
         updatedAt: s.updatedAt || null,
         turns: (s.history || []).length,
+        projectId: s.projectId || null,
       });
     } catch { /* skip corrupt file */ }
   }
@@ -62,6 +63,7 @@ function save(session) {
     title: session.title || (prev && prev.title) || 'untitled',
     created: session.created || (prev && prev.created) || now,
     updatedAt: now,
+    projectId: session.projectId === undefined ? ((prev && prev.projectId) || null) : (session.projectId || null),
     tainted: !!session.tainted,
     history: session.history || [],
   };

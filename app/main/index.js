@@ -2,7 +2,7 @@
 // app/main/index.js - Electron main. Thin shell, nanoMuse-style:
 // window + native menus minimal, agent runs in-process (renderer drives it over preload).
 
-const { app, BrowserWindow, Menu, dialog, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, safeStorage, Tray, nativeImage, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -19,6 +19,8 @@ let agentBusy = false;
 let pendingApproval = null; // {id, resolve, request}
 let pendingQuestion = null; // {id, resolve, q}
 let currentProjectDir = null;
+let currentProjectId = null;
+const projectStore = require('../harness/projects');
 
 function ensureConfigFile() {
   const file = userConfigFile();
@@ -132,14 +134,97 @@ function secureConfig() {
   return cfg;
 }
 
-function mkAgent(opts = {}) {
+// ---- tray + desktop notifications (Antigravity pattern) ----
+let tray = null;
+let trayBusy = false;         // last known busy state pushed to tray
+
+function windowUnfocused() {
+  return !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible() || mainWindow.isMinimized() || !mainWindow.isFocused();
+}
+
+function notify(title, body) {
+  try {
+    if (!Notification.isSupported()) return;
+    if (!windowUnfocused()) return;          // focused: skip, chat visible
+    const n = new Notification({ title, body, silent: false });
+    n.on('click', () => { try { showMainWindow(); } catch {} });
+    n.show();
+  } catch {}
+}
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function buildTray() {
+  try {
+    const iconPath = path.join(__dirname, '..', '..', 'build', 'icon.ico');
+    let image = null;
+    try { image = nativeImage.createFromPath(iconPath); } catch {}
+    if (!image || image.isEmpty()) image = nativeImage.createEmpty();
+    if (image && !image.isEmpty()) image = image.resize({ width: 16, height: 16 });
+    tray = new Tray(image);
+    tray.setToolTip('Muse Agent');
+    updateTray();
+    tray.on('click', () => showMainWindow());
+  } catch (e) {
+    console.error('[tray] failed:', e.message);
+    tray = null;
+  }
+}
+
+function updateTray() {
+  if (!tray || tray.isDestroyed()) return;
+  const label = agentBusy ? 'Muse — working…' : 'Muse — idle';
+  const cancelState = agentBusy ? 'enabled' : 'disabled';
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label, enabled: false },
+    { type: 'separator' },
+    { label: 'Show window', click: () => showMainWindow() },
+    { label: 'New session', enabled: !agentBusy, click: () => { if (agentBusy) return; agent && agent.reset(); send('session-reset', {}); } },
+    { label: 'Cancel current turn', enabled: agentBusy, click: () => { if (agent && agentBusy) agent.requestCancel(); } },
+    { type: 'separator' },
+    { label: 'Quit', click: () => { try { app.quit(); } catch {} } },
+  ]));
+  tray.setToolTip(label);
+}
+
+function setBusyState(busy) {
+  agentBusy = busy;
+  if (busy !== trayBusy) { trayBusy = busy; updateTray(); }
+}
+
+// MCP servers start once per app run (Antigravity-style tool extensibility).
+// Idempotent; failures degrade to no MCP tools, never block the agent.
+let mcpStarted = false;
+let mcpPromise = null;
+function ensureMcp(cfg) {
+  if (mcpStarted) return mcpPromise;
+  if (!cfg.mcp || !Array.isArray(cfg.mcp.servers) || !cfg.mcp.servers.length) {
+    mcpStarted = true; mcpPromise = Promise.resolve([]);
+    return mcpPromise;
+  }
+  mcpStarted = true;
+  mcpPromise = require('../harness/mcp').startMcpServers(cfg, (msg) => {
+    console.log(msg);
+    send('agent-event', { type: 'info', text: msg });
+  }).catch(() => []);
+  return mcpPromise;
+}
+
+async function mkAgent(opts = {}) {
   const cfg = secureConfig();
   memoryError = null;
+  await ensureMcp(cfg);   // tool discovery must precede tool registry build
   const a = new Agent(cfg, {
     approver: (request) => new Promise((resolve) => {
       const id = crypto.randomUUID();
       pendingApproval = { id, resolve, request };
-      send('approval-request', { id, tool: request.tool, args: request.args });
+      notify('Muse needs approval', `Tool "${request.tool}" is waiting for you${request.subagent ? ' (subagent)' : ''}`);
+      send('approval-request', { id, tool: request.tool, args: request.args, subagent: !!request.subagent });
     }),
     questionAsker: (q) => new Promise((resolve) => {
       const id = crypto.randomUUID();
@@ -152,9 +237,13 @@ function mkAgent(opts = {}) {
         send('agent-event', { ...ev, type: 'info' });
         return;
       }
+      // Desktop notifications (Antigravity pattern): surface approval requests
+      // and turn completion when the window is unfocused/minimized.
+      if (ev && ev.type === 'done') notify('Muse finished', 'Turn complete.');
       send('agent-event', ev);
     },
   });
+  a.projectId = currentProjectId;
   // Restore project scope + grants from previous agent (settings/scope rebuilds).
   if (opts.projectDir) a.setProjectScope(opts.projectDir);
   if (opts.history) a.history = opts.history;
@@ -219,14 +308,88 @@ const menu = Menu.buildFromTemplate([
   },
 ]);
 
-app.whenReady().then(() => {
+// ---- host bridge: loopback HTTP API into the running agent ----
+// Antigravity-style: external local tools/scripts drive the SAME live agent.
+// Bearer-token gated; bind 127.0.0.1 only; off-by-default port (config) or
+// ephemeral. Started with the app; failure logs, never blocks startup.
+let bridge = null;
+async function startBridgeIfConfigured() {
+  const cfg = loadConfig();
+  const bp = cfg.bridge || {};
+  if (bp.enabled === false) return null;          // explicit opt-out
+  try {
+    const { startBridge } = require('../harness/bridge');
+    bridge = await startBridge({
+      port: Number(bp.port) || 0,
+      deps: {
+        getStatus: () => ({
+          busy: agentBusy,
+          version: app.getVersion ? app.getVersion() : '0.1.3',
+          sessionId: agent ? agent.sessionId : null,
+          projectDir: currentProjectDir,
+          tools: agent ? agent.tools.map(t => t.name) : [],
+        }),
+        send: async (text) => {
+          // Reuse the same IPC path logic minus the IPC layer: guard busy twice.
+          if (agentBusy) return { ok: false, error: 'Agent busy; wait for current turn.' };
+          if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
+          const raw = String(text).slice(0, 100000);
+          setBusyState(true);
+          try {
+            const res = await agent.run(raw, {});
+            await agent.ingestUserTurn(raw);
+            return { ok: true, text: res.text, turns: res.turns };
+          } catch (e) {
+            send('agent-event', { type: 'error', text: String(e && e.message || e) });
+            return { ok: false, error: String(e && e.message || e) };
+          } finally { setBusyState(false); }
+        },
+        cancel: async () => {
+          if (agent && agentBusy) agent.requestCancel();
+          return { ok: true };
+        },
+        reset: async () => {
+          if (agent) {
+            const events = (agent._sourceEvents || []).slice();
+            agent._sourceEvents = [];
+            if (agent.memory && events.length) agent.memory.extractSession(events).catch(() => {});
+            agent.reset();
+            agent.sentinel.clearGrants();
+            agent.setProjectScope(currentProjectDir);
+          }
+          return { ok: true };
+        },
+        listSessions: async () => sessionStore.list(),
+      },
+    });
+    console.log(`[bridge] host bridge listening on 127.0.0.1:${bridge.port} (token: ${bridge.tokenFile})`);
+    return bridge;
+  } catch (e) {
+    console.error('[bridge] failed to start:', e.message);
+    bridge = null;
+    return null;
+  }
+}
+
+app.whenReady().then(async () => {
   ensureConfigFile();
   Menu.setApplicationMenu(menu);
   createWindow();
+  buildTray();
+  // Hands sidecar supervision notes -> UI info events (crash/restart events)
+  try {
+    require('../harness/hands_client').supervisor.onSupervision = (msg) => {
+      send('agent-event', { type: 'info', text: `hands: ${msg}` });
+    };
+  } catch {}
+  startBridgeIfConfigured();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
-app.on('before-quit', () => { if (agent && agent.memory) agent.memory.close(); });
+app.on('before-quit', () => {
+  if (agent && agent.memory) agent.memory.close();
+  if (bridge) { try { bridge.close(); } catch {} }
+});
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
@@ -236,7 +399,7 @@ const { ipcMain } = require('electron');
 ipcMain.handle('agent:send', async (e, text) => {
   requireTrusted(e);
   if (agentBusy) return {ok:false,error:'Agent busy; wait for current turn.'};
-  if (!agent) agent = mkAgent({ projectDir: currentProjectDir });
+  if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
   const raw = String(text || '').slice(0, 100000);
   try {
     // /good /bad — grade the most recent graded-eligible turn (R-49 obligation 6)
@@ -257,8 +420,10 @@ ipcMain.handle('agent:send', async (e, text) => {
       send('agent-event', { type: 'info', text: note });
       return { ok: true, text: note, turns: 0 };
     }
-    agentBusy = true;
-    const res = await agent.run(raw);
+    setBusyState(true);
+    const project = currentProjectId ? projectStore.get(currentProjectId) : null;
+    const projectInstructions = project && project.instructions ? `User project instructions (do not override tool approval or safety rules):\n${project.instructions}` : '';
+    const res = await agent.run(raw, { systemExtra: projectInstructions });
     // remember the turn id for /good /bad grading
     agent.lastMemoryTurnId = res.memory_turn_id || agent.lastMemoryTurnId;
     await agent.ingestUserTurn(raw);   // fire-and-forget ingestion (obligation 1)
@@ -266,18 +431,29 @@ ipcMain.handle('agent:send', async (e, text) => {
   } catch (e) {
     send('agent-event', { type: 'error', text: String(e && e.message || e) });
     return { ok: false, error: String(e && e.message || e) };
-  } finally { agentBusy = false; }
+  } finally { setBusyState(false); }
 });
 
 ipcMain.handle('agent:reset', async (e) => {
   requireTrusted(e);
   if (agentBusy) return {ok:false,error:'Agent busy'};
   if (agent) {
-    if (agent.memory) await agent.endSessionExtract();   // session-end extraction (spec §2)
+    // Session-end extraction must not block the UI reset: on slow/reasoning
+    // extraction models the LLM call alone can take ~30-90s (30s timeout x
+    // retries). Snapshot events, reset immediately, extract in the background
+    // (extraction is fire-and-forget by contract — failures log, never throw).
+    const events = (agent._sourceEvents || []).slice();
+    agent._sourceEvents = [];
+    if (agent.memory && events.length) {
+      agent.memory.extractSession(events).catch(() => {});   // self-logs failures
+    }
     agent.reset();
     agent.sentinel.clearGrants();
     agent.setProjectScope(currentProjectDir);
   }
+  if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
+  agent.projectId = currentProjectId;
+  sessionStore.save({ id: agent.sessionId, projectId: currentProjectId, title: 'New session', history: agent.history, created: agent.sessionCreated });
   return { ok: true };
 });
 
@@ -308,11 +484,56 @@ ipcMain.handle('question:respond', async (e, { id, answer, cancelled }) => {
 
 // Project / no-project scope. '' or null = no-project mode (chat works, reads
 // ask per path). A folder path grants automatic reads/listing inside it.
+function activateProject(id) {
+  const p = id ? projectStore.get(id) : null;
+  if (id && !p) throw Error('Project not found');
+  if (agent) agent.persist();
+  currentProjectId = p ? p.id : null;
+  currentProjectDir = p ? p.folder : null;
+  if (agent) { agent.reset(); agent.projectId = currentProjectId; agent.setProjectScope(currentProjectDir); }
+  return { ok: true, project: currentProjectDir, projectId: currentProjectId, name: p ? p.name : null };
+}
+ipcMain.handle('projects:list', async e => { requireTrusted(e); return projectStore.list(); });
+ipcMain.handle('projects:update', async (e,id,patch) => {
+  requireTrusted(e);
+  if(agentBusy)return {ok:false,error:'Agent busy'};
+  try{return {ok:true,record:projectStore.update(id,patch || {})};}catch(err){return {ok:false,error:err.message};}
+});
+ipcMain.handle('projects:create', async (e, name) => {
+  requireTrusted(e);
+  if (agentBusy) return {ok:false,error:'Agent busy'};
+  try { const p=projectStore.create(name); return {...activateProject(p.id),record:p}; }
+  catch(err){return {ok:false,error:err.message};}
+});
+ipcMain.handle('projects:select', async (e,id) => {
+  requireTrusted(e);
+  if(agentBusy)return {ok:false,error:'Agent busy'};
+  try{return activateProject(id || null);}catch(err){return {ok:false,error:err.message};}
+});
+
+ipcMain.handle('project:browse', async (e) => {
+  requireTrusted(e);
+  if (agentBusy) return { ok: false, error: 'Agent busy' };
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose project folder',
+    properties: ['openDirectory', 'dontAddToRecent'],
+    defaultPath: currentProjectDir || undefined,
+  });
+  if (agentBusy) return { ok: false, error: 'Agent busy' };
+  if (res.canceled || !res.filePaths.length) return { ok: false, error: 'cancelled' };
+  const p = path.resolve(res.filePaths[0]);
+  currentProjectDir = p;
+  if (currentProjectId) projectStore.setFolder(currentProjectId,p);
+  if (agent) agent.setProjectScope(p);
+  return { ok: true, project: p };
+});
+
 ipcMain.handle('project:set', async (e, dir) => {
   requireTrusted(e);
   if (agentBusy) return { ok: false, error: 'Agent busy' };
   if (dir == null || dir === '') {
     currentProjectDir = null;
+    if (currentProjectId) projectStore.setFolder(currentProjectId,null);
     if (agent) agent.setProjectScope(null);
     return { ok: true, project: null };
   }
@@ -321,13 +542,14 @@ ipcMain.handle('project:set', async (e, dir) => {
   try { st = await fs.promises.stat(p); } catch { return { ok: false, error: 'folder not found' }; }
   if (!st.isDirectory()) return { ok: false, error: 'not a folder' };
   currentProjectDir = p;
+  if (currentProjectId) projectStore.setFolder(currentProjectId,p);
   if (agent) agent.setProjectScope(p);
   return { ok: true, project: p };
 });
 
 ipcMain.handle('project:get', async (e) => {
   requireTrusted(e);
-  return { ok: true, project: currentProjectDir };
+  return { ok: true, project: currentProjectDir, projectId: currentProjectId, name: currentProjectId ? projectStore.get(currentProjectId)?.name : null };
 });
 
 ipcMain.handle('config:get', async () => {
@@ -351,8 +573,14 @@ ipcMain.handle('sessions:list', async () => sessionStore.list());
 ipcMain.handle('sessions:load', async (e, id) => {
   requireTrusted(e);
   if(agentBusy)return {ok:false,error:'Agent busy'};
-  if (!agent) agent = mkAgent({ projectDir: currentProjectDir });
+  if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
   try {
+    const stored = sessionStore.load(String(id));
+    if (!stored) throw Error('Session not found');
+    const project = stored.projectId ? projectStore.get(stored.projectId) : null;
+    currentProjectId = project ? project.id : null;
+    currentProjectDir = project ? project.folder : null;
+    agent.setProjectScope(currentProjectDir);
     const s = agent.restore(String(id));
     // replay the restored transcript into the renderer
     for (const m of s.history || []) {
@@ -426,7 +654,7 @@ ipcMain.handle('settings:save', async (e, patch) => {
     const keepTaint = agent ? agent.tainted : false;
     const keepMemTurn = agent ? agent.lastMemoryTurnId : null;
     if (agent && agent.memory) agent.memory.close();
-    agent = mkAgent({ projectDir: currentProjectDir, skipMemory: false, history: keepHist && keepHist.length ? keepHist : undefined, sessionId: keepId, tainted: keepTaint, memoryTurnId: keepMemTurn });
+    agent = await mkAgent({ projectDir: currentProjectDir, skipMemory: false, history: keepHist && keepHist.length ? keepHist : undefined, sessionId: keepId, tainted: keepTaint, memoryTurnId: keepMemTurn });
     return { ok: true, base_url: cfg.llm.base_url, model: cfg.llm.model, has_key: !!(cfg.llm.api_key || process.env[cfg.llm.api_key_env]) };
   } catch (e) {
     return { ok: false, error: String(e && e.message || e) };
@@ -459,7 +687,7 @@ ipcMain.handle('settings:fetchModels', async (e, { base_url, api_key } = {}) => 
 ipcMain.handle('memory:status', async () => {
   const cfg = loadConfig();
   if (!cfg.memory || !cfg.memory.enabled) return { enabled: false };
-  if (!agent) { try { agent=mkAgent(); } catch(e) { memoryError=e.message; } }
+  if (!agent) { try { agent=await mkAgent({ projectDir: currentProjectDir }); } catch(e) { memoryError=e.message; } }
   if (!agent || !agent.memory) return { enabled: true, ready: false, error: memoryError };
   const h = agent.memory.healthMetrics();
   return {
@@ -520,7 +748,7 @@ ipcMain.handle('memory:scope', async (e, {strategy,project_id} = {}) => {
     const keepTaint = agent ? agent.tainted : false;
     const keepMemTurn = agent ? agent.lastMemoryTurnId : null;
     if(agent && agent.memory)agent.memory.close();
-    agent=mkAgent({ projectDir: currentProjectDir, history: keepHist && keepHist.length ? keepHist : undefined, sessionId: keepId, tainted: keepTaint, memoryTurnId: keepMemTurn });
+    agent=await mkAgent({ projectDir: currentProjectDir, history: keepHist && keepHist.length ? keepHist : undefined, sessionId: keepId, tainted: keepTaint, memoryTurnId: keepMemTurn });
     if(!agent.memory)throw new Error(memoryError);
     return {ok:true};
   } catch(err) {return {ok:false,error:String(err && err.message || err)};}

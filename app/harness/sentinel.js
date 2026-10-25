@@ -20,6 +20,10 @@ class Sentinel {
     // Central policy. Tool registry `alwaysAsk` is advisory; this is the law.
     this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell', 'hands']);
     this.readTools = new Set(['read_file', 'list_dir']);
+    // MCP tools are dynamic: server-provided names get the mcp__ prefix at
+    // registration and are side-effect by default (fail-safe; a server that
+    // only reads still asks — we cannot prove it reads-only from the outside).
+    this.mcpSideEffects = true;
     this.approver = opts.approver || null;
     this.grants = [];            // [{root}] absolute normalized paths
     this.handsRevoked = false;   // live switch, flipped by host on toggle-off
@@ -107,6 +111,15 @@ class Sentinel {
         return { decision: 'allow', reason: 'read inside granted scope' };
       }
       return { decision: 'ask', reason: 'read outside granted scope' };
+    }
+    // MCP tools (mcp__server__tool): side-effect by default when registered.
+    if (this.mcpSideEffects && typeof request.tool === 'string' && request.tool.startsWith('mcp__')) {
+      return { decision: 'ask', reason: 'MCP tool requires approval (dynamic server tool — conservative default)' };
+    }
+    // Subagent delegation spawns LLM turns under the user's key: ask once per
+    // spawn, then the child's own tool calls gate normally.
+    if (request.tool === 'spawn_agent') {
+      return { decision: 'ask', reason: 'subagent spawn consumes LLM turns under your key; child tool calls gate separately' };
     }
     // Unknown tool names: fail closed.
     return { decision: 'deny', reason: `unknown tool "${request.tool}" (fail closed)` };

@@ -9,13 +9,19 @@ const { Sentinel } = require('./sentinel');
 const session = require('./session');
 const { MemoryLayer } = require('../memory/layer');
 
-function systemPrompt(cfg, extra) {
+function systemPrompt(cfg, extra, projectDir = null, hasSubagent = false) {
   const platform = process.platform === 'win32' ? 'Windows (cmd.exe, commands run unsandboxed)'
     : process.platform === 'darwin' ? 'macOS' : 'Linux';
   return [
     'You are Muse, a personal AI agent running on the user\'s own computer.',
-    `Platform: ${platform}. Working directory: ${process.cwd()}.`,
+    `Platform: ${platform}. Working directory: ${projectDir || process.cwd()}.`,
+    projectDir
+      ? `Selected project folder: ${projectDir}. Resolve relative file paths against this folder. When asked to read or list the project, start with list_dir path ".". Do not substitute the application launch directory or its parent.`
+      : 'No project selected. Normal chat is available. Do not assume the application launch directory is the user\'s project; ask which folder or file they mean before browsing files.',
     'You have tools: read_file, write_file, list_dir, web_fetch, shell, hands (computer control).',
+    ...(hasSubagent ? [
+      'You also have spawn_agent: it runs a focused subtask in a fresh child agent (own context, tighter turn budget) and returns the child\'s summary. Use it for independent, self-contained subtasks (e.g. "survey all config files", "research X on the web") to keep your own context small. Give the child complete instructions — it sees only the task text you pass. Children cannot spawn children.',
+    ] : []),
     'Rules:',
     '- Ask before doing anything destructive; the user approves tool calls in the UI.',
     '- Prefer reading before writing. Prefer small, reversible actions.',
@@ -29,7 +35,12 @@ class Agent {
   constructor(cfg, opts = {}) {
     this.cfg = cfg;
     this.llm = new LlmClient(cfg);
-    const { tools, map } = buildTools(cfg);
+    // Subagent children construct with opts.disableSubagent so the child's
+    // tool registry excludes spawn_agent (no nesting, enforced twice).
+    const { tools, map } = buildTools(cfg, {
+      disableSubagent: !!opts.disableSubagent,
+      mcp: cfg.mcp && Array.isArray(cfg.mcp.servers) && cfg.mcp.servers.length ? cfg.mcp : null,
+    });
     this.tools = tools; this.toolMap = map;
     this.sentinel = new Sentinel(cfg, { approver: opts.approver });
     this.maxTurns = cfg.agent.max_turns || 40;
@@ -39,6 +50,7 @@ class Agent {
     this.history = [];                   // full OpenAI-format message history
     this.sessionId = opts.sessionId || session.newId();   // set when resuming a saved session
     this.sessionCreated = new Date().toISOString();
+    this.projectId = opts.projectId || null;
     this.memory = null;                  // MemoryLayer, attached via attachMemory()
     this.memoryTurns = new Map();        // per-run memory turn ids (turnIndex -> turn_id)
     this._sourceEvents = [];             // source events for session-end extraction
@@ -181,12 +193,14 @@ class Agent {
       title: this._title,
       history: this.history,
       tainted: this.tainted,
+      projectId: this.projectId,
     });
   }
 
   restore(sessionId) {
     const s = session.load(sessionId);
     if (!s) throw new Error(`session not found: ${sessionId}`);
+    this.projectId = s.projectId || null;
     this.sessionId = s.id;
     if (this.memory) this.memory.startSession(s.id);
     this.sessionCreated = s.created;
@@ -219,8 +233,8 @@ class Agent {
 
     // Scope-aware gate: read tools are checked against their resolved path.
     let resolvedPath = null;
-    if ((name === 'read_file' || name === 'list_dir' || name === 'write_file') && args && typeof args.path === 'string') {
-      try { resolvedPath = require('path').resolve(this.cwdOverride || process.cwd(), args.path); } catch {}
+    if ((name === 'read_file' || name === 'list_dir' || name === 'write_file') && args && (typeof args.path === 'string' || (name === 'list_dir' && args.path == null))) {
+      try { resolvedPath = require('path').resolve(this.cwdOverride || process.cwd(), args.path || '.'); } catch {}
     }
     const gate = await this.sentinel.gate({ tool: name, args, resolvedPath });
     if (gate.decision === 'deny') {
@@ -236,6 +250,7 @@ class Agent {
       tainted: this.tainted,
       netPolicy: this.netPolicy || { allowLocal: false },
       onPrivateRead: (p) => this.markTainted(p),
+      agent: this,            // subagent tool needs the parent handle
     };
     try {
       const result = await tool.run(args, ctx);
@@ -253,7 +268,7 @@ class Agent {
 
   // Main loop. userText or null to continue.
   async run(userText, opts = {}) {
-    const sys = systemPrompt(this.cfg, opts.systemExtra);
+    const sys = systemPrompt(this.cfg, opts.systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'));
     if (this.history.length === 0) {
       this.history.push({ role: 'system', content: sys });
     }
@@ -424,6 +439,7 @@ class Agent {
 
   reset() {
     this.history = [];
+    this.sessionCreated = new Date().toISOString();
     this.tainted = false;
     this.sessionId = session.newId();
     if (this.memory) this.memory.startSession(this.sessionId);

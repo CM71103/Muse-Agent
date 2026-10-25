@@ -1,7 +1,7 @@
 {
   "name": "muse-agent",
   "productName": "Muse Agent",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Personal AI agent - Electron shell + Node harness + Python hands sidecar",
   "license": "MIT",
   "main": "app/main/index.js",

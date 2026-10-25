@@ -30,6 +30,25 @@ function ensureToken() {
 
 let starting = null;
 
+// --- sidecar supervisor (Antigravity languageServer.js pattern) ---
+// Watch spawned sidecar processes: track exits, restart within a sliding
+// window, give up after max restarts. State surfaces via onSupervision so the
+// host can notify/log. Spawn is a module-global: the supervisor survives
+// handsClient() re-construction (client is created per tool call today).
+const supervisor = {
+  proc: null,
+  restarts: 0,
+  windowStart: 0,
+  onSupervision: null,             // set by host: (msg) => void
+  RESTART_WINDOW_MS: 5 * 60 * 1000,
+  MAX_RESTARTS: 3,
+};
+
+function superviseNote(msg) {
+  try { if (supervisor.onSupervision) supervisor.onSupervision(msg); } catch {}
+  try { console.log(`[hands] ${msg}`); } catch {}
+}
+
 async function waitForHealth(base, token, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -42,16 +61,41 @@ async function waitForHealth(base, token, timeoutMs = 15000) {
   return false;
 }
 
-function startSidecar() {
-  if (starting) return starting;
+function spawnSidecarProcess() {
   const pyExe = process.env.MUSE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
   const proc = spawn(pyExe, ['-m', 'muse_hands.server'], {
     cwd: SIDECAR_DIR,
     stdio: 'ignore',
     detached: process.platform === 'win32' ? false : true,
   });
-  proc.on('error', () => { starting = null; });
+  proc.on('error', () => { starting = null; superviseNote('sidecar spawn error (python not found?)'); });
+  // Supervision: unexpected exit -> restart within window, cap max restarts.
+  proc.on('exit', (code) => {
+    if (supervisor.proc !== proc) return;      // replaced already
+    supervisor.proc = null;
+    starting = null;
+    const now = Date.now();
+    if (supervisor.windowStart === 0 || now - supervisor.windowStart > supervisor.RESTART_WINDOW_MS) {
+      supervisor.windowStart = now;
+      supervisor.restarts = 0;
+    }
+    supervisor.restarts++;
+    if (supervisor.restarts > supervisor.MAX_RESTARTS) {
+      superviseNote(`sidecar exited (code ${code}) — restart cap reached (${supervisor.MAX_RESTARTS}); giving up. Toggle hands off/on to retry.`);
+      return;
+    }
+    superviseNote(`sidecar exited unexpectedly (code ${code}) — restarting (${supervisor.restarts}/${supervisor.MAX_RESTARTS})`);
+    setImmediate(() => { try { startSidecar(); } catch {} });
+  });
+  supervisor.proc = proc;
+  supervisor.restarts = 0;
   proc.unref();
+  return proc;
+}
+
+function startSidecar() {
+  if (starting) return starting;
+  const proc = spawnSidecarProcess();
   starting = new Promise(r => r(proc.pid));
   return starting;
 }
@@ -95,3 +139,4 @@ function handsClient(handsCfg) {
 }
 
 module.exports = handsClient;
+module.exports.supervisor = supervisor;    // host sets onSupervision for UI/log

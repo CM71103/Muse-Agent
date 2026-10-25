@@ -16,7 +16,13 @@ let settingsOpen = false;
 let loadingSession = false;
 let restoredEvents = [];
 let activeSessionId = null;
+let crumbTitle = 'New session';   // declared: assigned in strict mode at 5 places (load/new/reset paths)
 let sessionCache = [];
+let activeProjectId = null;
+let projectCache = [];
+let projectHomeVisible = false;
+let showArchivedProjects = false;
+let projectEditorId = null;
 let transcriptMessages = [];
 const prefs = { compact: false, tools: true, enter: true };
 let dialogReturnFocus = null;
@@ -24,6 +30,7 @@ function reportError(e) { addSysNote(String(e && e.message || e), true); }
 function guarded(fn) { return (...args) => Promise.resolve().then(() => fn(...args)).catch(reportError); }
 function resetTranscript() { transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null; renderEmpty(); }
 function renderEmpty() {
+  if (projectHomeVisible && activeProjectId) { renderProjectHome(); return; }
   if (transcript.children.length) return;
   const box = document.createElement('section'); box.id = 'empty';
   const mark = document.createElement('div'); mark.className = 'studio-mark';
@@ -50,6 +57,9 @@ function scrollDown() {
 }
 
 function clearEmpty() {
+  projectHomeVisible = false;
+  const home = document.getElementById('project-home');
+  if (home && home.parentNode) home.remove();
   const e = $('empty');
   if (e) e.remove();
 }
@@ -540,12 +550,12 @@ input.addEventListener('input', autosize);
 /* ---------- sidebar sessions ---------- */
 
 async function refreshSessions() {
-  try { sessionCache = await window.muse.listSessions(); renderSessions(); }
+  try { sessionCache = await window.muse.listSessions(); renderSessions(); if(window.muse.listProjects)renderProjects(); if(projectHomeVisible)renderProjectHome(); }
   catch (e) { $('sessions-empty').textContent = `History unavailable: ${e.message || e}`; $('sessions-empty').style.display = 'block'; }
 }
 function renderSessions() {
   const query = $('session-search').value.trim().toLowerCase();
-  const list = sessionCache.filter(s => (s.title || 'Untitled').toLowerCase().includes(query) && ($('session-filter').value !== 'active' || s.id === activeSessionId));
+  const list = sessionCache.filter(s => (s.projectId || null) === activeProjectId && (s.title || 'Untitled').toLowerCase().includes(query) && ($('session-filter').value !== 'active' || s.id === activeSessionId));
   const wrap = $('sessions-list'); wrap.replaceChildren();
   $('sessions-empty').style.display = list.length ? 'none' : 'block';
   $('sessions-empty').textContent = sessionCache.length ? t('sidebar.noMatch', 'No matching sessions.') : t('sidebar.empty', 'No saved sessions yet. Complete a task to keep it here.');
@@ -576,21 +586,23 @@ async function loadSession(s) {
   try {
     const res = await window.muse.loadSession(s.id);
     if (!res || !res.ok) throw new Error(res && res.error || 'Session could not be loaded');
-    transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null;
+    projectHomeVisible = false; transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null;
     const events = restoredEvents; loadingSession = false;
     events.forEach(handleAgentEvent); renderEmpty();
-    activeSessionId = s.id; crumbTitle = res.title || 'Session'; $('crumb').textContent = crumbTitle; wbCounters = { msgs: 0, tools: 0 }; wbUpdateDetails(); wbEvent('session loaded: ' + crumbTitle); renderSessions();
+    activeSessionId = s.id; crumbTitle = res.title || 'Session'; $('crumb').textContent = crumbTitle; wbCounters = { msgs: 0, tools: 0 }; wbUpdateDetails(); wbEvent('session loaded: ' + crumbTitle); await refreshProject(); renderSessions();
   } catch (e) { reportError(e); }
   finally { loadingSession = false; restoredEvents = []; setBusy(false); }
 }
 async function newSession() {
-  crumbTitle = 'New session'; wbCounters = { msgs: 0, tools: 0 }; wbUpdateDetails(); wbEvent('new session');
   if (busy || loadingSession || currentApproval) return;
-  loadingSession = true; setBusy(false);
+  projectHomeVisible = false; loadingSession = true; setBusy(false);
   try {
     const res = await window.muse.reset();
     if (!res || !res.ok) throw new Error(res && res.error || 'Session reset failed');
-    activeSessionId = null; resetTranscript(); $('crumb').textContent = 'New session'; await refreshSessions();
+    activeSessionId = null; crumbTitle = 'New session';
+    wbCounters = { msgs: 0, tools: 0 }; wbUpdateDetails(); wbEvent('new session');
+    input.value = ''; resetTranscript(); $('crumb').textContent = crumbTitle;
+    await refreshProject(); await refreshSessions();
   } catch (e) { reportError(e); }
   finally { loadingSession = false; setBusy(false); }
 }
@@ -1038,8 +1050,7 @@ function wbUpdateDetails() {
 }
 for (const name of ['activity', 'memory', 'details']) {
   $('wb-tab-' + name).addEventListener('click', () => {
-    $('workbench').classList.remove('collapsed');
-    $('wb-close').textContent = '›';
+    setWorkbenchCollapsed(false);
     for (const sec of ['activity', 'memory', 'details']) {
       $('wb-tab-' + sec).setAttribute('aria-selected', String(name === sec));
       $('wb-panel-' + sec).hidden = name !== sec;
@@ -1047,11 +1058,16 @@ for (const name of ['activity', 'memory', 'details']) {
     if (name === 'memory') refreshWorkbenchMemory();
   });
 }
-$('wb-close').addEventListener('click', () => {
-  const wb = $('workbench');
-  wb.classList.toggle('collapsed');
-  $('wb-close').textContent = wb.classList.contains('collapsed') ? '‹' : '›';
-});
+function setWorkbenchCollapsed(collapsed) {
+  $('workbench').classList.toggle('collapsed', collapsed);
+  $('workbench').setAttribute('aria-hidden', String(collapsed));
+  $('btn-workbench-toggle').setAttribute('aria-expanded', String(!collapsed));
+  $('btn-workbench-toggle').title = collapsed ? 'Show right panel' : 'Hide right panel';
+  $('wb-close').textContent = '›';
+  if (collapsed) $('btn-workbench-toggle').focus();
+}
+$('wb-close').addEventListener('click', () => setWorkbenchCollapsed(true));
+$('btn-workbench-toggle').addEventListener('click', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')));
 $('wb-open-mem').addEventListener('click', openMemory);
 async function refreshWorkbenchMemory() {
   try {
@@ -1091,6 +1107,132 @@ function exportTranscript() {
 $('btn-workspace').addEventListener('click', () => input.focus());
 $('btn-focus').addEventListener('click', toggleFocus);
 $('btn-export').addEventListener('click', exportTranscript);
+
+/* ---------- project scope ---------- */
+async function refreshProject() {
+  try {
+    const res = await window.muse.getProjectScope();
+    const p = res && res.ok ? res.project : null;
+    activeProjectId = res && res.ok ? (res.projectId || null) : null;
+    const short = p ? p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() : '';
+    const btn = $('btn-project');
+    btn.textContent = activeProjectId ? (res.name + (p ? ' · Folder' : ' · Attach folder')) : p ? `📁 ${short}` : t('header.project', 'Project');
+    btn.title = p ? `Project: ${p} — Muse can read and list files inside it without asking` : 'No project — choose a folder so Muse can read files inside it without asking';
+    $('btn-leave-project').hidden = !p && !activeProjectId;
+    const pathEl = $('project-path');
+    if (pathEl) pathEl.value = p || '';
+    if (window.muse.listProjects) { projectCache = await window.muse.listProjects(); renderProjects(); }
+    renderSessions();
+  } catch { /* project surface optional */ }
+}
+async function pickProject() {
+  if (busy || loadingSession || currentApproval) { addSysNote('Finish the current task before changing the project.', true); return; }
+  const res = await window.muse.browseProject();
+  if (!res || (!res.ok && res.error !== 'cancelled')) { addSysNote(`project: ${res && res.error || 'could not set folder'}`, true); return; }
+  if (res.ok) {
+    wbEvent('project: ' + (res.project || 'none'));
+    addSysNote(`project set: ${res.project} — reads inside it are automatic`);
+  }
+  refreshProject();
+}
+$('btn-project').addEventListener('click', pickProject);
+const pb = $('btn-project-browse');
+if (pb) pb.addEventListener('click', pickProject);
+async function leaveProject() {
+  projectHomeVisible = false;
+  if (busy || loadingSession || currentApproval) { addSysNote('Finish the current task before leaving the project.', true); return; }
+  try {
+    const res = window.muse.selectProject ? await window.muse.selectProject(null) : await window.muse.setProjectScope(null);
+    if (!res || !res.ok) throw new Error(res && res.error || 'Could not leave project');
+    await newSession();
+    await refreshProject();
+    wbEvent('normal chat — no project selected');
+  } catch (e) { reportError(e); }
+}
+$('btn-leave-project').addEventListener('click', leaveProject);
+const pc = $('btn-project-clear');
+if (pc) pc.addEventListener('click', leaveProject);
+function renderProjects() {
+  const list = $('projects-list'); list.replaceChildren();
+  const query = $('project-search').value.trim().toLowerCase();
+  for (const p of projectCache.filter(p => !!p.archived === showArchivedProjects && p.name.toLowerCase().includes(query))) {
+    const branch = document.createElement('div'); branch.className = 'project-branch' + (p.id === activeProjectId ? ' selected' : '');
+    const row = document.createElement('div'); row.className = 'project-tree-row';
+    const button = document.createElement('button'); button.className = 'project-tree-name'; button.textContent = '▱  ' + p.name;
+    button.title = p.folder || 'Open project overview'; button.addEventListener('click', guarded(() => openProject(p.id)));
+    const chats = sessionCache.filter(s => s.projectId === p.id);
+    const count = document.createElement('span'); count.className = 'project-tree-count'; count.textContent = String(chats.length);
+    const plus = document.createElement('button'); plus.className = 'project-tree-new'; plus.textContent = '+'; plus.setAttribute('aria-label','New chat in '+p.name);
+    plus.addEventListener('click', guarded(() => p.id === activeProjectId ? newSession() : openProject(p.id, true)));
+    row.append(button,count,plus); branch.append(row);
+    if(p.id===activeProjectId) for(const chat of chats.slice(0,6)) {
+      const child=document.createElement('button');child.className='project-child'+(chat.id===activeSessionId?' current':'');child.textContent=chat.title;child.title=chat.title;
+      child.addEventListener('click',guarded(()=>loadSession(chat)));branch.append(child);
+    }
+    list.append(branch);
+  }
+  if(!list.children.length){const note=document.createElement('p');note.className='hint';note.textContent=query?'No matching projects':showArchivedProjects?'No archived projects':'Create a project to keep related chats together.';list.append(note);}
+}
+function renderProjectHome() {
+  if(!projectHomeVisible)return;
+  const p=projectCache.find(p=>p.id===activeProjectId);if(!p)return;
+  transcript.replaceChildren();
+  const home=document.createElement('section');home.id='project-home';home.className='project-home';
+  const top=document.createElement('div');top.className='project-home-top';
+  const emblem=document.createElement('div');emblem.className='project-emblem';emblem.textContent='▱';
+  const heading=document.createElement('div');const title=document.createElement('h1');title.textContent=p.name;
+  const desc=document.createElement('p');desc.className='project-home-description';desc.textContent=p.description||'A dedicated space for this project’s conversations and instructions.';heading.append(title,desc);top.append(emblem,heading);
+  const actions=document.createElement('div');actions.className='project-home-actions';
+  for(const [label,fn,primary] of [['New conversation',newSession,true],['Project settings',()=>editProject(p.id),false],['Attach folder',pickProject,false]]){const b=document.createElement('button');b.textContent=label;if(primary)b.className='btn-primary';b.addEventListener('click',guarded(fn));actions.append(b);}
+  const context=document.createElement('div');context.className='project-context';
+  for(const [label,value] of [['Working folder',p.folder||'No folder attached. Chat works without file access.'],['Shared instructions',p.instructions||'No instructions yet. Add conventions and goals in Project settings.']]){const cell=document.createElement('div'),k=document.createElement('strong'),v=document.createElement('p');k.textContent=label;v.textContent=value.length>240?value.slice(0,240)+'…':value;cell.append(k,v);context.append(cell);}
+  const label=document.createElement('h2');label.className='project-conversation-heading';label.textContent='Conversations';
+  const search=document.createElement('input');search.className='project-chat-search';search.type='search';search.placeholder='Search conversations in this project';search.setAttribute('aria-label',search.placeholder);
+  const rows=document.createElement('div');
+  const draw=()=>{rows.replaceChildren();const chats=sessionCache.filter(s=>s.projectId===p.id&&(s.title||'').toLowerCase().includes(search.value.toLowerCase()));for(const c of chats){const b=document.createElement('button');b.className='project-conversation';const t=document.createElement('span'),meta=document.createElement('small');t.textContent=c.title;meta.textContent=c.updatedAt?new Date(c.updatedAt).toLocaleDateString():'';b.append(t,meta);b.addEventListener('click',guarded(()=>loadSession(c)));rows.append(b);}if(!chats.length){const n=document.createElement('p');n.className='hint';n.textContent=search.value?'No matching conversations.':'No conversations yet. Start one above.';rows.append(n);}};
+  search.addEventListener('input',draw);draw();home.append(top,actions,context,label,search,rows);transcript.append(home);
+}
+async function openProject(id, fresh = false) {
+  if (busy || loadingSession || currentApproval) return;
+  const res = await window.muse.selectProject(id);
+  if (!res || !res.ok) throw Error(res && res.error || 'Could not open project');
+  projectHomeVisible=false;await refreshProject();await refreshSessions();
+  if(fresh){await newSession();return;}
+  activeSessionId=null;transcriptMessages=[];thinkingEl=null;projectHomeVisible=true;
+  $('crumb').textContent=res.name||'Project';renderProjectHome();
+}
+function editProject(id){
+ if(busy||loadingSession||currentApproval)return;
+ const p=projectCache.find(p=>p.id===id);if(!p)return;projectEditorId=id;
+ $('edit-project-name').value=p.name;$('edit-project-description').value=p.description||'';$('edit-project-instructions').value=p.instructions||'';
+ $('edit-project-folder').textContent=p.folder||'No folder attached';$('project-editor-error').textContent='';$('project-editor-archive').textContent=p.archived?'Restore project':'Archive project';
+ $('project-editor').showModal();$('edit-project-name').focus();
+}
+$('project-editor-close').addEventListener('click',()=>$('project-editor').close());
+$('project-editor-form').addEventListener('submit',guarded(async e=>{
+ e.preventDefault();if(busy||loadingSession||currentApproval)return;
+ const res=await window.muse.updateProject(projectEditorId,{name:$('edit-project-name').value,description:$('edit-project-description').value,instructions:$('edit-project-instructions').value});
+ if(!res||!res.ok){$('project-editor-error').textContent=res&&res.error||'Could not save';return;}
+ $('project-editor').close();await refreshProject();if(projectHomeVisible)renderProjectHome();
+}));
+$('edit-project-browse').addEventListener('click',guarded(async()=>{await pickProject();const r=await window.muse.getProjectScope();$('edit-project-folder').textContent=r.project||'No folder attached';}));
+$('project-editor-archive').addEventListener('click',guarded(async()=>{
+ if(busy||loadingSession||currentApproval)return;const p=projectCache.find(p=>p.id===projectEditorId);if(!p)return;
+ const res=await window.muse.updateProject(p.id,{archived:!p.archived});if(!res||!res.ok){$('project-editor-error').textContent=res&&res.error||'Could not archive';return;}
+ $('project-editor').close();if(!p.archived)await leaveProject();await refreshProject();
+}));
+$('project-search').addEventListener('input',renderProjects);
+$('btn-archived-projects').addEventListener('click',()=>{showArchivedProjects=!showArchivedProjects;$('btn-archived-projects').setAttribute('aria-pressed',String(showArchivedProjects));$('btn-archived-projects').textContent=showArchivedProjects?'Show active projects':'Show archived projects';renderProjects();});
+$('btn-normal-chat').addEventListener('click', leaveProject);
+$('btn-create-project').addEventListener('click', () => { $('project-create').hidden = false; $('project-name').focus(); });
+$('btn-project-create-cancel').addEventListener('click', () => { $('project-create').hidden = true; });
+$('btn-project-create-save').addEventListener('click', guarded(async () => {
+  if (busy || loadingSession || currentApproval) return;
+  const res = await window.muse.createProject($('project-name').value.trim());
+  if (!res || !res.ok) throw Error(res && res.error || 'Could not create project');
+  $('project-name').value = ''; $('project-create').hidden = true;
+  await openProject(res.record.id);
+}));
 const commands = [['New session', newSession], ['Open settings', openSettings], ['Open memory', openMemory], ['Toggle focus mode', toggleFocus], ['Export transcript as Markdown', exportTranscript], ['Focus composer', () => input.focus()], ['Cycle appearance', cycleTheme], ['Appearance: Nimbus', () => setTheme('nimbus')], ['Appearance: Shiva Blue', () => setTheme('shiva')], ['Appearance: Dusk', () => setTheme('dusk')], ['Appearance: Carbon', () => setTheme('carbon')]];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
@@ -1118,6 +1260,7 @@ window.addEventListener('keydown', e => {
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   }
+  if ($('project-editor').open) return;
   if (!(e.ctrlKey || e.metaKey)) return;
   if (e.key.toLowerCase() === 'k') { e.preventDefault(); paletteOpen ? closePalette() : openPalette(); }
   if (!dialog && e.key.toLowerCase() === 'n') { e.preventDefault(); newSession(); }
@@ -1127,7 +1270,9 @@ window.addEventListener('keydown', e => {
 /* ---------- boot ---------- */
 if (window.MuseI18n) window.MuseI18n.applyDom();
 renderEmpty();
+setWorkbenchCollapsed(typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches);
 
 refreshStatus();
 refreshSessions();
+refreshProject();
 input.focus();

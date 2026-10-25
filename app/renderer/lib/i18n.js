@@ -41,6 +41,7 @@ const BUNDLES = {
     'tag.safetyAsk': 'Safety: ask',
     'header.focus': 'Focus',
     'header.export': 'Export',
+    'header.project': 'Project',
     /* composer + approval */
     'composer.placeholder': 'What would you like to work on?',
     'composer.send': 'Send',
@@ -99,6 +100,10 @@ const BUNDLES = {
     'settings.modelPlaceholder': 'model id',
     'settings.fetchModels': 'Fetch models',
     'settings.fetchHint': 'Fetch queries the base URL above for its live model list.',
+    'settings.project': 'Project folder',
+    'settings.projectHint': 'Muse can read and list files inside this folder without asking. Reads outside it, writes, and other side effects still ask first.',
+    'settings.browse': 'Browse…',
+    'settings.clear': 'Clear',
     'settings.workspaceTitle': 'Make room for your work',
     'settings.workspaceSub': 'Session-only preferences. Reset when this window reloads; changes apply immediately.',
     'settings.compact': 'Compact messages',

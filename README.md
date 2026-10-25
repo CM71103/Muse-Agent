@@ -3,7 +3,7 @@
 A personal AI agent that runs entirely on your machine. Three layers, modeled on the architecture of nanoMuse Desktop (see `../nanomuse-desktop-analysis.md`):
 
 1. **Electron shell** — chat window, approval dialogs, settings chips. Thin.
-2. **Agent harness (Node)** — OpenAI-compatible LLM loop with tools: `shell`, `read_file`, `write_file`, `list_dir`, `web_fetch`, `hands`. Every call passes the **Sentinel** gate first.
+2. **Agent harness (Node)** — OpenAI-compatible LLM loop with tools: `shell`, `read_file`, `write_file`, `list_dir`, `web_fetch`, `hands`, `spawn_agent` (subagent delegation). Every call passes the **Sentinel** gate first. Extend with MCP servers via config.
 3. **Hands sidecar (Python)** — screenshot / mouse / keyboard on `127.0.0.1:8788`, bearer-token auth, started on demand, off by default.
 
 No cloud relay, no telemetry, no account. Your LLM key stays in an environment variable.
@@ -75,6 +75,34 @@ Hands gives the model screenshots of your screen and the ability to move your mo
 The sidecar binds `127.0.0.1` only and requires a bearer token generated once into `~/.muse-agent/hands_token` (mode 600). Nothing off-host can reach it.
 
 No code signing (hobby project) — Windows SmartScreen will warn if you package the app.
+
+## Subagents, MCP, host bridge, tray (0.1.3)
+
+**Subagents.** The agent can delegate a self-contained subtask to a fresh child agent loop (`spawn_agent`). The child gets its own context window and turn budget (default 12, cap 24), inherits your project folder, deny rules and approval gates — its tool calls ask you exactly like the parent's. Children cannot spawn children. Spawning itself asks once, since it spends LLM turns under your key.
+
+**MCP servers.** Add third-party tool servers (Model Context Protocol, stdio transport only) in `config.toml`:
+
+```toml
+[mcp]
+servers = ["docs"]
+
+[mcp.server.docs]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "D:/projects"]
+```
+
+Their tools appear to the model as `mcp__docs__<tool>` and every call requires approval — MCP servers are third-party code; we gate them as side-effects by default.
+
+**Host bridge.** The running agent exposes a loopback-only HTTP API (127.0.0.1, bearer token in `~/.muse-agent/bridge_token`, port in the main-process log or fixed via `[bridge] port`). Point scripts or hotkeys at it:
+
+```
+curl -H "Authorization: Bearer $(cat ~/.muse-agent/bridge_token)" ^
+  -d "{\"text\":\"summarize the project\"}" http://127.0.0.1:<port>/send
+```
+
+Endpoints: `GET /health`, `GET /status`, `POST /send {text}`, `GET /sessions`, `POST /cancel`, `POST /reset`. It drives the same live agent as the window — approvals still pop in the UI. The app must be running for the bridge to answer (window can be minimized). Disable with `[bridge] enabled = false`.
+
+**Tray + notifications.** The app keeps a tray icon (idle/working state, cancel, new session, quit). When the window is unfocused, a desktop notification fires on approval requests and turn completion. The hands sidecar is supervised: unexpected exits auto-restart (3 max per 5 minutes), then surface in chat.
 
 ## Memory (adaptive, Phase 0)
 

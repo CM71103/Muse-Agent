@@ -43,6 +43,19 @@ const DEFAULTS = {
     port: 8788,
     // token file: ~/.muse-agent/hands_token ; generated on first start
   },
+  mcp: {
+    // OFF by default — no servers configured means no MCP tools exposed.
+    // Each entry: [mcp.server.<name>] command/args/env in config.toml.
+    servers: [],                      // e.g. ["docs", "browser"]
+    server: {},                       // name -> {command, args, env, timeout_s}
+  },
+  bridge: {
+    // Host bridge: loopback HTTP API into the running agent (127.0.0.1 only,
+    // bearer token in ~/.muse-agent/bridge_token). Scripts/hotkeys can drive
+    // the live agent. enabled=false turns it off.
+    enabled: true,
+    port: 0,                          // 0 = ephemeral port (log + bridge_token file)
+  },
   log: {
     level: 'info',                    // debug | info | warn | error
     dir: '',                          // default ~/.muse-agent/logs
