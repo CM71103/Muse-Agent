@@ -1,14 +1,24 @@
 <div align="center">
 
-# Muse Agent
+<img src="build/header.svg" alt="Muse Agent — a personal AI agent that runs entirely on your machine" width="760" />
 
-**A personal AI agent that runs entirely on your machine.**
+[![Release](https://img.shields.io/badge/release-v0.1.3-6cbf2e?style=flat-square)](../../releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-18181b?style=flat-square)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows-blue?style=flat-square)](../../releases)
+[![Tests](https://img.shields.io/badge/tests-89%2F89%20passing-6cbf2e?style=flat-square)](#)
 
 Electron shell · Node agent harness · Python hands sidecar
 
 No cloud relay · No telemetry · No account · Your key stays local
 
 [Features](#-what-it-does) · [Quick Start](#-quick-start) · [Security](#-security-model) · [Downloads](#-downloads) · [License](#-license)
+
+<a href="https://github.com/CM71103/Muse-Agent"><img src="https://github-readme-stats.vercel.app/api/pin/?username=CM71103&repo=Muse-Agent&title_color=80e044&icon_color=80e044&text_color=a1a1aa&bg_color=101210&hide_border=true&description_lines_limit=2" alt="Repo card" /></a>
+
+<a href="https://github.com/CM71103/Muse-Agent/pulse"><img src="https://github-readme-stats.vercel.app/api?username=CM71103&show_icons=true&hide_border=true&title_color=80e044&icon_color=80e044&text_color=a1a1aa&bg_color=101210" alt="GitHub stats" /></a>
+<a href="https://github.com/CM71103/Muse-Agent/graphs/contributors"><img src="https://github-readme-streak-stats.herokuapp.com/?user=CM71103&hide_border=true&stroke=80e044&ring=80e044&fire=80e044&currStreakNum=a1a1aa&currStreakLabel=80e044&sideNums=a1a1aa&sideLabels=a1a1aa&dates=a1a1aa&bg_color=101210" alt="Streak" /></a>
+
+<img src="https://github-readme-activity-graph.vercel.app/graph?username=CM71103&theme=react-dark&hide_border=true&custom_title=Contribution%20Activity&bg_color=101210&color=a1a1aa&line=80e044&point=ffffff" width="720" alt="Activity graph" />
 
 </div>
 

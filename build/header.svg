@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="200" viewBox="0 0 760 200" role="img" aria-label="Muse Agent — a personal AI agent that runs entirely on your machine">
+  <defs>
+    <!-- lime theme gradient from app -->
+    <linearGradient id="sparkGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#80e044"/>
+      <stop offset="100%" stop-color="#6cbf2e"/>
+    </linearGradient>
+    <linearGradient id="fadeGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#18181b" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#18181b" stop-opacity="1"/>
+    </linearGradient>
+    <!-- cursor group: text revealed by mask + blinking caret -->
+    <mask id="typeMask">
+      <rect x="0" y="0" width="0" height="200" fill="#fff">
+        <animate attributeName="width" values="0;0;120;120;260;260;460;460;620;620;760" keyTimes="0;0.08;0.2;0.3;0.42;0.55;0.68;0.8;0.9;0.96;1" dur="6s" begin="0s" fill="freeze"/>
+      </rect>
+    </mask>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="760" height="200" rx="12" fill="#101210"/>
+
+  <!-- subtle grid dots -->
+  <g fill="#1f241f">
+    <circle cx="40" cy="30" r="1.5"/><circle cx="120" cy="30" r="1.5"/><circle cx="200" cy="30" r="1.5"/><circle cx="280" cy="30" r="1.5"/><circle cx="360" cy="30" r="1.5"/><circle cx="440" cy="30" r="1.5"/><circle cx="520" cy="30" r="1.5"/><circle cx="600" cy="30" r="1.5"/><circle cx="680" cy="30" r="1.5"/>
+    <circle cx="40" cy="170" r="1.5"/><circle cx="120" cy="170" r="1.5"/><circle cx="200" cy="170" r="1.5"/><circle cx="280" cy="170" r="1.5"/><circle cx="360" cy="170" r="1.5"/><circle cx="440" cy="170" r="1.5"/><circle cx="520" cy="170" r="1.5"/><circle cx="600" cy="170" r="1.5"/><circle cx="680" cy="170" r="1.5"/>
+  </g>
+
+  <!-- spark emblem: four-point star -->
+  <g transform="translate(70,100)" filter="url(#softGlow)">
+    <path d="M0,-38 C4,-12 12,-4 38,0 C12,4 4,12 0,38 C-4,12 -12,4 -38,0 C-12,-4 -4,-12 0,-38 Z" fill="url(#sparkGrad)">
+      <animateTransform attributeName="transform" type="scale" values="1;1.15;1" dur="3s" repeatCount="indefinite" additive="sum"/>
+    </path>
+    <animateTransform attributeName="transform" type="rotate" from="0 70 100" to="360 70 100" dur="24s" repeatCount="indefinite" additive="sum"/>
+  </g>
+  <!-- re-anchor: rotate must live on outer g -->
+  <g transform="translate(70,100)">
+    <path d="M0,-38 C4,-12 12,-4 38,0 C12,4 4,12 0,38 C-4,12 -12,4 -38,0 C-12,-4 -4,-12 0,-38 Z" fill="url(#sparkGrad)">
+      <animateTransform attributeName="transform" type="scale" values="1;1.12;1" dur="3s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- title -->
+  <text x="140" y="72" font-family="Segoe UI, -apple-system, sans-serif" font-size="34" font-weight="700" fill="#f4f4f5">Muse Agent</text>
+
+  <!-- typing line -->
+  <text x="140" y="112" font-family="Consolas, monospace" font-size="16" fill="#80e044" mask="url(#typeMask)">
+    <tspan>&gt; a personal AI agent that runs on your machine_</tspan>
+  </text>
+
+  <!-- caret -->
+  <rect x="524" y="98" width="9" height="18" fill="#80e044">
+    <animate attributeName="opacity" values="1;1;0;0;1" keyTimes="0;0.5;0.5;0.99;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+
+  <!-- status line -->
+  <text x="140" y="148" font-family="Segoe UI, sans-serif" font-size="13" fill="#a1a1aa">Electron shell · Node harness · Python hands — no cloud relay, no telemetry</text>
+
+  <!-- live dot -->
+  <circle cx="700" cy="30" r="5" fill="#80e044">
+    <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <text x="676" y="56" font-family="Segoe UI, sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">local</text>
+</svg>
