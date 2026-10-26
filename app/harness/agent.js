@@ -27,6 +27,7 @@ function systemPrompt(cfg, extra, projectDir = null, hasSubagent = false) {
     '- Prefer reading before writing. Prefer small, reversible actions.',
     '- If a task is unclear, ask the user instead of guessing.',
     '- When done, reply with a concise summary of what you did.',
+    '- The chat UI renders plain text and Markdown only — no math renderer. NEVER emit LaTeX or math markup ($$...$$, $...$, \\(...\\), \\[...\\], \\frac, \\rho, etc.). Write math in plain Unicode (ρ = x·cosθ + y·sinθ) or put formulas in code blocks if exactness matters.',
     extra || '',
   ].join('\n');
 }
