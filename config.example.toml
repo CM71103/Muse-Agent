@@ -35,8 +35,12 @@ always_ask_tools = ["shell"]
 sandbox = "none"
 
 [sentinel]
-# "ask" = always_ask_tools prompt the user. "auto" = no prompts, deny-rules only.
-# Keep "ask". Do not set "auto".
+# Permission mode (Claude Code-style). Switchable live from the sidebar "Mode" button.
+#   "ask"          — side effects always prompt for approval (safest, default)
+#   "accept_edits" — writes inside the project folder auto-approve; shell/web/hands still ask
+#   "plan"         — read-only: writes, shell, web, hands are blocked outright
+#   "auto"         — side effects auto-approve; hands + always_ask_tools still ask
+# Deny rules, hands revocation and fail-closed unknown tools hold in EVERY mode.
 mode = "ask"
 # Glob patterns matched against the whole rendered tool call (* = any text).
 deny_rules = [

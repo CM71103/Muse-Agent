@@ -612,6 +612,21 @@ ipcMain.handle('config:toggleHands', async (e, enabled) => {
   return { ok: true, enabled: !!enabled };
 });
 
+// Permission mode (Claude Code-style): ask | accept_edits | plan | auto.
+// Persists to config AND flips the live agent's sentinel mid-session; the
+// next run() re-renders the system prompt with the new mode line.
+ipcMain.handle('sentinel:setMode', async (e, mode) => {
+  requireTrusted(e);
+  const cfg = loadConfig();
+  cfg.sentinel = cfg.sentinel || {};
+  cfg.sentinel.mode = String(mode || '');
+  if (agent && !agent.sentinel.setMode(cfg.sentinel.mode)) return { ok: false, error: 'invalid mode' };
+  const { writeSections } = require('../harness/configWrite');
+  writeSections(cfg, ensureConfigFile());
+  send('agent-event', { type: 'info', text: `sentinel mode → ${cfg.sentinel.mode}` });
+  return { ok: true, mode: cfg.sentinel.mode };
+});
+
 // ---- settings ----
 const { fetchModels, originOf } = require('../harness/models');
 const { apiKey: apiKeyOf } = require('../harness/config');

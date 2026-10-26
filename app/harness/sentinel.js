@@ -1,15 +1,27 @@
 'use strict';
-// sentinel.js - gatekeeper. Deny-rules -> approval policy -> scope grants.
-// Policy model (approved 2026-10-24):
-//   - SIDE-EFFECT tools (write_file, web_fetch, shell, hands) ALWAYS ask.
-//     The `mode: 'auto'` escape hatch is removed: auto never bypasses approval.
-//   - READ tools (read_file, list_dir) are allowed inside granted scopes
-//     without approval; anything outside a granted scope asks.
-//   - Deny rules short-circuit everything.
+// sentinel.js - gatekeeper. Deny-rules -> mode policy -> scope grants.
+// Policy model (rev 2026-10-26, Claude Code-style permission modes):
+//   Modes: 'ask' | 'accept_edits' | 'plan' | 'auto'
+//     ask          — side-effect tools ALWAYS ask (previous default)
+//     accept_edits — file writes (write_file) inside granted scope auto-approve;
+//                    shell/web/hands/spawn_agent/mcp still ask
+//     plan         — read-only: reads inside scope allowed, EVERY side effect
+//                    (writes, shell, web, hands, mcp, spawn) denied outright
+//     auto         — side-effect tools auto-approve EXCEPT hands and
+//                    always_ask_tools (default [shell]) — those still ask
+//   HARD INVARIANTS in EVERY mode (no mode ever escapes these):
+//     - deny_rules match -> deny, first, before anything else
+//     - hands revoked -> deny
+//     - unknown tool names -> deny (fail closed)
+//     - reads outside granted scope -> ask (auto mode: still ask)
+//   READ tools (read_file, list_dir) are allowed inside granted scopes
+//   without approval in all modes; outside scope they ask.
 // A grant is { root } (absolute path). Grants live for the session and are
 // cleared on reset. `handsRevoked` flips live: the hands tool re-checks this
 // gate right before every action, so disabling hands in the UI takes effect
 // for a running agent.
+
+const MODES = ['ask', 'accept_edits', 'plan', 'auto'];
 
 class Sentinel {
   constructor(cfg, opts = {}) {
@@ -20,6 +32,11 @@ class Sentinel {
     // Central policy. Tool registry `alwaysAsk` is advisory; this is the law.
     this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell', 'hands']);
     this.readTools = new Set(['read_file', 'list_dir']);
+    // Tools that keep asking even in auto mode. Defaults from agent config.
+    this.alwaysAskTools = new Set(Array.isArray(this.agentCfg.always_ask_tools) ? this.agentCfg.always_ask_tools : ['shell']);
+    // Modes live on the sentinel so a running agent picks up a switch
+    // immediately (host calls setMode). Config value is the boot default.
+    this.mode = MODES.includes(this.cfg.mode) ? this.cfg.mode : 'ask';
     // MCP tools are dynamic: server-provided names get the mcp__ prefix at
     // registration and are side-effect by default (fail-safe; a server that
     // only reads still asks — we cannot prove it reads-only from the outside).
@@ -28,6 +45,12 @@ class Sentinel {
     this.grants = [];            // [{root}] absolute normalized paths
     this.handsRevoked = false;   // live switch, flipped by host on toggle-off
     this.expiryListeners = new Set();
+  }
+
+  setMode(m) {
+    if (!MODES.includes(m)) return false;
+    this.mode = m;
+    return true;
   }
 
   addGrant(root) {
@@ -92,37 +115,56 @@ class Sentinel {
   }
 
   decide(request) {
+    // -- INVARIANT 1: deny rules short-circuit every mode --
     const rendered = this.renderForRules(request);
     for (const rule of this.denyRules) {
       if (this.matchesRule(rendered, rule.toLowerCase())) {
         return { decision: 'deny', reason: `matched deny rule: ${rule}` };
       }
     }
-    // Side effects always ask — no mode escape hatch.
-    if (this.sideEffectTools.has(request.tool)) {
-      if (request.tool === 'hands' && this.handsRevoked) {
-        return { decision: 'deny', reason: 'hands revoked (disabled while agent running)' };
-      }
-      return { decision: 'ask', reason: `side-effect tool "${request.tool}" requires approval` };
+    // -- INVARIANT 2: hands revocation denies regardless of mode --
+    if (request.tool === 'hands' && this.handsRevoked) {
+      return { decision: 'deny', reason: 'hands revoked (disabled while agent running)' };
     }
-    // Read tools: allowed inside granted scopes, ask outside.
+    // Read tools: scope-gated in every mode. Allow inside, ask outside.
     if (this.readTools.has(request.tool)) {
       if (this.inGrantedScope(request.resolvedPath)) {
         return { decision: 'allow', reason: 'read inside granted scope' };
       }
       return { decision: 'ask', reason: 'read outside granted scope' };
     }
-    // MCP tools (mcp__server__tool): side-effect by default when registered.
-    if (this.mcpSideEffects && typeof request.tool === 'string' && request.tool.startsWith('mcp__')) {
-      return { decision: 'ask', reason: 'MCP tool requires approval (dynamic server tool — conservative default)' };
+    const sideEffect = this.sideEffectTools.has(request.tool);
+    const isMcp = this.mcpSideEffects && typeof request.tool === 'string' && request.tool.startsWith('mcp__');
+    const isSpawn = request.tool === 'spawn_agent';
+    if (!sideEffect && !isMcp && !isSpawn) {
+      // Unknown tool names: fail closed in every mode.
+      return { decision: 'deny', reason: `unknown tool "${request.tool}" (fail closed)` };
     }
-    // Subagent delegation spawns LLM turns under the user's key: ask once per
-    // spawn, then the child's own tool calls gate normally.
-    if (request.tool === 'spawn_agent') {
-      return { decision: 'ask', reason: 'subagent spawn consumes LLM turns under your key; child tool calls gate separately' };
+    const reason = sideEffect
+      ? `side-effect tool "${request.tool}" requires approval`
+      : isMcp
+        ? 'MCP tool requires approval (dynamic server tool — conservative default)'
+        : 'subagent spawn consumes LLM turns under your key; child tool calls gate separately';
+    if (this.mode === 'plan') {
+      // Plan mode: read-only. Every side effect denied outright (no prompt).
+      return { decision: 'deny', reason: `plan mode is read-only: "${request.tool}" is blocked (switch out of plan mode to act)` };
     }
-    // Unknown tool names: fail closed.
-    return { decision: 'deny', reason: `unknown tool "${request.tool}" (fail closed)` };
+    if (this.mode === 'accept_edits') {
+      // Accept-edits: file writes inside granted scope auto-approve.
+      if (request.tool === 'write_file' && this.inGrantedScope(request.resolvedPath)) {
+        return { decision: 'allow', reason: 'accept-edits mode: write inside granted scope' };
+      }
+      return { decision: 'ask', reason };
+    }
+    if (this.mode === 'auto') {
+      // Auto: side effects auto-approve EXCEPT hands and always-ask list.
+      if (request.tool === 'hands' || this.alwaysAskTools.has(request.tool)) {
+        return { decision: 'ask', reason: `${request.tool} always asks (config agent.always_ask_tools / hands)` };
+      }
+      return { decision: 'allow', reason: 'auto mode: approved by permission setting' };
+    }
+    // ask mode (default) and everything else: side effects ask.
+    return { decision: 'ask', reason };
   }
 
   // Full gate. Returns {decision:'allow'} | {decision:'deny', reason} after approval flow.

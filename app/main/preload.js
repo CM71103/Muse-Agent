@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('muse', {
   respondApproval: (id, approved) => ipcRenderer.invoke('approval:respond', { id, approved }),
   getConfig: () => ipcRenderer.invoke('config:get'),
   toggleHands: (enabled) => ipcRenderer.invoke('config:toggleHands', enabled),
+  setMode: (mode) => ipcRenderer.invoke('sentinel:setMode', mode),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
   fetchModels: (opts) => ipcRenderer.invoke('settings:fetchModels', opts),

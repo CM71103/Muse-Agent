@@ -16,10 +16,77 @@ function cfg(over={}) {
   };
 }
 
-test('side-effect tools always ask even in auto mode', () => {
-  const s = new Sentinel(cfg({sentinel:{mode:'auto',deny_rules:[],egress_allowlist:[]}}));
+test('ask mode: side-effect tools always ask', () => {
+  const s = new Sentinel(cfg());
   for (const tool of ['write_file','web_fetch','shell','hands']) {
     assert.equal(s.decide({tool,args:{}}).decision,'ask',tool);
+  }
+});
+
+test('mode engine: invalid modes rejected, valid accepted, bad config falls back to ask', () => {
+  const s = new Sentinel(cfg());
+  assert.equal(s.mode,'ask');
+  assert.equal(s.setMode('yolo'),false);
+  assert.equal(s.setMode('plan'),true);
+  assert.equal(s.mode,'plan');
+  const bad = new Sentinel(cfg({sentinel:{mode:'not-a-mode',deny_rules:[],egress_allowlist:[]}}));
+  assert.equal(bad.mode,'ask');
+});
+
+test('accept_edits: writes inside scope auto-approve, outside ask; shell still asks', () => {
+  const s = new Sentinel(cfg({sentinel:{mode:'accept_edits',deny_rules:[],egress_allowlist:[]}}));
+  const root = process.platform==='win32' ? 'C:\\proj' : '/proj';
+  const inside = process.platform==='win32' ? 'C:\\proj\\a.js' : '/proj/a.js';
+  const outside = process.platform==='win32' ? 'C:\\other\\a.js' : '/other/a.js';
+  s.addGrant(root);
+  assert.equal(s.decide({tool:'write_file',args:{},resolvedPath:inside}).decision,'allow');
+  assert.equal(s.decide({tool:'write_file',args:{},resolvedPath:outside}).decision,'ask');
+  assert.equal(s.decide({tool:'shell',args:{}}).decision,'ask');
+  assert.equal(s.decide({tool:'web_fetch',args:{}}).decision,'ask');
+  assert.equal(s.decide({tool:'hands',args:{}}).decision,'ask');
+});
+
+test('plan mode: every side effect denied outright; reads keep scope policy', () => {
+  const s = new Sentinel(cfg({sentinel:{mode:'plan',deny_rules:[],egress_allowlist:[]}}));
+  const root = process.platform==='win32' ? 'C:\\proj' : '/proj';
+  const inside = process.platform==='win32' ? 'C:\\proj\\a.js' : '/proj/a.js';
+  s.addGrant(root);
+  for (const tool of ['write_file','web_fetch','shell','hands']) {
+    const d = s.decide({tool,args:{}});
+    assert.equal(d.decision,'deny',tool);
+    assert.match(d.reason,/plan mode/i);
+  }
+  assert.equal(s.decide({tool:'read_file',args:{},resolvedPath:inside}).decision,'allow');
+  assert.equal(s.decide({tool:'read_file',args:{},resolvedPath:'/etc/passwd'}).decision,'ask');
+});
+
+test('auto mode: side effects auto-approve but shell + hands keep asking', () => {
+  const s = new Sentinel(cfg({sentinel:{mode:'auto',deny_rules:[],egress_allowlist:[]}}));
+  for (const tool of ['write_file','web_fetch']) {
+    assert.equal(s.decide({tool,args:{}}).decision,'allow',tool);
+  }
+  assert.equal(s.decide({tool:'shell',args:{}}).decision,'ask');   // always_ask_tools default
+  assert.equal(s.decide({tool:'hands',args:{}}).decision,'ask');
+});
+
+test('auto mode honors custom always_ask_tools', () => {
+  const s = new Sentinel(cfg({sentinel:{mode:'auto',deny_rules:[],egress_allowlist:[]},agent:{always_ask_tools:['web_fetch'],approval_timeout_s:1}}));
+  assert.equal(s.decide({tool:'web_fetch',args:{}}).decision,'ask');
+  assert.equal(s.decide({tool:'shell',args:{}}).decision,'allow');
+});
+
+test('mode invariants: deny rules + hands revocation + fail-closed hold in EVERY mode', () => {
+  for (const mode of ['ask','accept_edits','plan','auto']) {
+    const s = new Sentinel(cfg({sentinel:{mode,deny_rules:['*nuclear*'],egress_allowlist:[]}}));
+    // deny rule beats even auto
+    assert.equal(s.decide({tool:'shell',args:{command:'launch nuclear missiles'}}).decision,'deny',mode);
+    // hands revocation denies in every mode
+    s.revokeHands();
+    assert.equal(s.decide({tool:'hands',args:{}}).decision,'deny',mode);
+    // unknown tools fail closed in every mode
+    assert.equal(s.decide({tool:'mystery',args:{}}).decision,'deny',mode);
+    // reads outside scope still ask in every mode
+    assert.equal(s.decide({tool:'read_file',args:{},resolvedPath:'/outside/x'}).decision,'ask',mode);
   }
 });
 

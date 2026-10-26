@@ -849,6 +849,14 @@ async function refreshStatus() {
   $('pip-llm').title = `${cfg.llm.base_url} · ${cfg.llm.model}${cfg.llm.has_key ? '' : ' · NO KEY'}`;
   $('pip-hands').classList.toggle('on', !!cfg.hands.enabled);
   $('pip-sent').classList.toggle('on', cfg.sentinel.mode === 'ask');
+  const mt = $('mode-toggle');
+  if (mt) {
+    const m = MODES.includes(cfg.sentinel.mode) ? cfg.sentinel.mode : 'ask';
+    mt.classList.toggle('on', m !== 'ask');
+    mt.setAttribute('aria-pressed', String(m !== 'ask'));
+    $('mode-label').textContent = `Mode: ${m}`;
+    mt.title = MODE_TIPS[m] || 'Click to cycle permission modes';
+  }
   const tg = $('hands-toggle');
   tg.classList.toggle('on', !!cfg.hands.enabled);
   tg.setAttribute('aria-pressed', String(!!cfg.hands.enabled));
@@ -882,6 +890,27 @@ $('hands-toggle').addEventListener('click', guarded(async () => {
         ? 'hands enabled — computer control can now be requested (each action still asks)'
         : 'hands disabled');
     }
+    refreshStatus();
+  }
+}));
+
+/* ---------- permission mode ---------- */
+
+const MODES = ['ask', 'accept_edits', 'plan', 'auto'];
+const MODE_TIPS = {
+  ask: 'Every side effect asks for approval. Safest.',
+  accept_edits: 'File writes inside the project folder auto-approve; shell/web/hands still ask.',
+  plan: 'Read-only. Writes, shell, web and hands are blocked outright.',
+  auto: 'Side effects auto-approve; hands and shell still ask. Use with care.',
+};
+
+$('mode-toggle').addEventListener('click', guarded(async () => {
+  const cfg = await window.muse.getConfig();
+  const cur = MODES.includes(cfg.sentinel.mode) ? cfg.sentinel.mode : 'ask';
+  const next = MODES[(MODES.indexOf(cur) + 1) % MODES.length];
+  const res = await window.muse.setMode(next);
+  if (res && res.ok) {
+    if (!busy) addSysNote(`permission mode → ${next}${next === 'plan' ? ' — side effects blocked; ask me to plan instead of act' : next === 'auto' ? ' — side effects auto-approve (hands and shell still ask)' : next === 'accept_edits' ? ' — writes inside the project folder auto-approve' : ' — every side effect asks'}`);
     refreshStatus();
   }
 }));
@@ -1407,7 +1436,7 @@ const tm = $('tag-model');
 if (tm) tm.addEventListener('click', () => { modelPop && modelPop.hidden ? openModelPop() : closeModelPop(); });
 
 /* ---------- tooltips: enrich actionable chrome with data-tip ---------- */
-const TIPS = [['btn-project', 'Attach a working folder — reads inside it are automatic'], ['btn-leave-project', 'Detach the current project folder'], ['btn-workbench-toggle', 'Show or hide the right panel'], ['btn-focus', 'Distraction-free conversation view'], ['btn-export', 'Save the transcript as Markdown'], ['btn-command', 'Command palette — every action, one query'], ['btn-memory', 'Memory scopes, evidence and health'], ['btn-settings', 'Connection, workspace and shortcuts'], ['hands-toggle', 'Let the Python hands sidecar act on your machine'], ['btn-new', 'Start a fresh conversation'], ['send', 'Send message'], ['wb-close', 'Collapse the right panel']];
+const TIPS = [['btn-project', 'Attach a working folder — reads inside it are automatic'], ['btn-leave-project', 'Detach the current project folder'], ['btn-workbench-toggle', 'Show or hide the right panel'], ['btn-focus', 'Distraction-free conversation view'], ['btn-export', 'Save the transcript as Markdown'], ['btn-command', 'Command palette — every action, one query'], ['btn-memory', 'Memory scopes, evidence and health'], ['btn-settings', 'Connection, workspace and shortcuts'], ['hands-toggle', 'Let the Python hands sidecar act on your machine'], ['mode-toggle', 'Permission mode: ask → accept-edits → plan → auto'], ['btn-new', 'Start a fresh conversation'], ['send', 'Send message'], ['wb-close', 'Collapse the right panel']];
 for (const [id, tip] of TIPS) { const el = document.getElementById(id); if (el) el.setAttribute('data-tip', tip); }
 
 $('wb-open-mem').addEventListener('click', openMemory);

@@ -9,9 +9,16 @@ const { Sentinel } = require('./sentinel');
 const session = require('./session');
 const { MemoryLayer } = require('../memory/layer');
 
-function systemPrompt(cfg, extra, projectDir = null, hasSubagent = false) {
+function systemPrompt(cfg, extra, projectDir = null, hasSubagent = false, mode = null) {
   const platform = process.platform === 'win32' ? 'Windows (cmd.exe, commands run unsandboxed)'
     : process.platform === 'darwin' ? 'macOS' : 'Linux';
+  const modeLine = mode === 'plan'
+    ? 'PERMISSION MODE: plan (read-only). write_file, shell, web_fetch, hands and any other side-effect tool are BLOCKED and will be denied. Explore, read, list, analyze — then present a plan and stop. Tell the user to switch out of plan mode to execute.'
+    : mode === 'accept_edits'
+      ? 'PERMISSION MODE: accept-edits. File writes inside the project folder are auto-approved. shell, web_fetch, hands and other side effects still require user approval in the UI — expect pauses.'
+      : mode === 'auto'
+        ? 'PERMISSION MODE: auto. Most side-effect tools are auto-approved (hands and shell still ask). Still be careful: prefer small reversible actions, avoid destructive commands.'
+        : null;
   return [
     'You are Muse, a personal AI agent running on the user\'s own computer.',
     `Platform: ${platform}. Working directory: ${projectDir || process.cwd()}.`,
@@ -22,6 +29,7 @@ function systemPrompt(cfg, extra, projectDir = null, hasSubagent = false) {
     ...(hasSubagent ? [
       'You also have spawn_agent: it runs a focused subtask in a fresh child agent (own context, tighter turn budget) and returns the child\'s summary. Use it for independent, self-contained subtasks (e.g. "survey all config files", "research X on the web") to keep your own context small. Give the child complete instructions — it sees only the task text you pass. Children cannot spawn children.',
     ] : []),
+    ...(modeLine ? [modeLine] : []),
     'Rules:',
     '- Ask before doing anything destructive; the user approves tool calls in the UI.',
     '- Prefer reading before writing. Prefer small, reversible actions.',
@@ -272,7 +280,7 @@ class Agent {
     // Stale-cancel guard: requestCancel() from a PREVIOUS turn must not kill
     // this one. Clear at turn start — cancel only applies to the live run.
     this._cancelRequested = false;
-    const sys = systemPrompt(this.cfg, opts.systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'));
+    const sys = systemPrompt(this.cfg, opts.systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel ? this.sentinel.mode : null);
     if (this.history.length === 0) {
       this.history.push({ role: 'system', content: sys });
     }
