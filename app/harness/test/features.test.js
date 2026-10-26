@@ -216,6 +216,37 @@ test('mcp: startMcpServers registers config servers, skips bad ones', async () =
   }
 });
 
+// ---------- 2b. stale-cancel regression ----------
+
+test('cancel: requestCancel from a finished turn does not kill the next run', async () => {
+  // Regression: _cancelRequested was never cleared between turns. Cancelling
+  // once poisoned every later run — run() checked the stale flag at loop top
+  // and returned '(cancelled)' without ever calling the LLM.
+  script = [{ role: 'assistant', content: 'fresh answer' }];
+  const a = new Agent(cfg(), { approver: async () => true });
+  a.requestCancel();                       // user cancelled a PREVIOUS turn
+  const res = await a.run('new question');
+  assert.equal(res.cancelled, undefined);  // must NOT report cancelled
+  assert.equal(res.text, 'fresh answer');  // must actually run the LLM
+});
+
+test('cancel: live requestCancel still cancels the running turn', async () => {
+  script = [{ role: 'assistant', content: 'should not matter' }];
+  const a = new Agent(cfg(), { approver: async () => true });
+  // cancel while the run is in flight
+  const p = a.run('hello');
+  a.requestCancel();
+  const res = await p;
+  assert.equal(res.cancelled, true);
+});
+
+test('cancel: reset() clears a stale cancel flag', () => {
+  const a = new Agent(cfg(), { approver: async () => true });
+  a.requestCancel();
+  a.reset();
+  assert.equal(a.cancelRequested, false);
+});
+
 // ---------- 3. bridge ----------
 
 test('bridge: timing-safe compare + loopback host checks', () => {

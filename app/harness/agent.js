@@ -268,6 +268,9 @@ class Agent {
 
   // Main loop. userText or null to continue.
   async run(userText, opts = {}) {
+    // Stale-cancel guard: requestCancel() from a PREVIOUS turn must not kill
+    // this one. Clear at turn start — cancel only applies to the live run.
+    this._cancelRequested = false;
     const sys = systemPrompt(this.cfg, opts.systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'));
     if (this.history.length === 0) {
       this.history.push({ role: 'system', content: sys });
@@ -441,6 +444,7 @@ class Agent {
     this.history = [];
     this.sessionCreated = new Date().toISOString();
     this.tainted = false;
+    this._cancelRequested = false;   // stale cancel must never leak into a new session
     this.sessionId = session.newId();
     if (this.memory) this.memory.startSession(this.sessionId);
     this._title = null;
