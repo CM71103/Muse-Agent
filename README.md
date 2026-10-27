@@ -5,7 +5,7 @@
 [![Release](https://img.shields.io/badge/release-v0.1.3-6cbf2e?style=flat-square)](../../releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-18181b?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue?style=flat-square)](../../releases)
-[![Tests](https://img.shields.io/badge/tests-89%2F89%20passing-6cbf2e?style=flat-square)](#)
+[![Tests](https://img.shields.io/badge/tests-94%2F94%20passing-6cbf2e?style=flat-square)](#)
 
 Electron shell · Node agent harness · Python hands sidecar
 
@@ -25,6 +25,12 @@ No cloud relay · No telemetry · No account · Your key stays local
 ---
 
 ## What it does
+
+**New in 0.1.3d:** smart context compaction — long sessions summarize old turns
+into a dense LLM-written block instead of silently dropping them (type
+`/compact` in the chat to force it), plus automatic update checks against
+GitHub Releases (notify-only — click the notification to open the download).
+
 
 Muse Agent is a local-first desktop agent. You talk to it; it reads files, runs
 commands, fetches the web, controls the mouse and keyboard — **only after you
