@@ -53,7 +53,7 @@ function cfg(over) {
   return deepMerge(base, over || {});
 }
 
-test('compactHistory: stubs old tool outputs, keeps recent', () => {
+test('compactHistory: stubs old tool outputs, keeps recent', async () => {
   const a = new Agent(cfg(), { onEvent: () => {} });
   a.history = [
     { role: 'system', content: 'sys' },
@@ -66,7 +66,7 @@ test('compactHistory: stubs old tool outputs, keeps recent', () => {
     { role: 'tool', tool_call_id: 'c3', content: 'Z'.repeat(50000) },
     { role: 'assistant', content: 'done' },
   ];
-  const did = a.compactHistory(true);
+  const did = await a.compactHistory(true);
   assert.ok(did);
   const tools = a.history.filter(m => m.role === 'tool');
   // oldest (c1) stubbed; two most recent exchanges (c2, c3) intact
@@ -77,8 +77,8 @@ test('compactHistory: stubs old tool outputs, keeps recent', () => {
   assert.equal(tools[0].tool_call_id, 'c1');
 });
 
-test('compactHistory: drops old blocks when stubbing is not enough', () => {
-  const a = new Agent(cfg(), { onEvent: () => {} });
+test('compactHistory: summarizes old blocks via LLM when stubbing is not enough', async () => {
+  const a = new Agent(cfg({ llm: { context_tokens: 5000, retry_attempts: 1 } }), { onEvent: () => {} });
   a.history = [
     { role: 'system', content: 'sys' },
     { role: 'user', content: 'q1' },
@@ -86,20 +86,61 @@ test('compactHistory: drops old blocks when stubbing is not enough', () => {
     { role: 'user', content: 'q2' },
     { role: 'assistant', content: 'a2' },
   ];
-  a.compactHistory(true);
+  // mock LLM serves the summarize call
+  script.push({ msg: { role: 'assistant', content: 'SUMMARY: fixed bug in auth.js, tests pass' } });
+  await a.compactHistory(true);
   assert.equal(a.history[0].role, 'system');
+  // compacted block inserted right after system prompt, before remaining turns
+  const compacted = a.history.find(m => m.name === 'compacted');
+  assert.ok(compacted, 'compacted summary block should exist');
+  assert.match(compacted.content, /SUMMARY: fixed bug in auth\.js/);
   assert.ok(a.estimateHistoryTokens() < 80000, 'old block should be gone');
   assert.ok(a.history.some(m => m.role === 'user' && m.content === 'q2'));
 });
 
-test('compactHistory: keeps small history untouched', () => {
+test('compactHistory: LLM summary failure falls back to truncated verbatim', async () => {
+  const a = new Agent(cfg({ llm: { context_tokens: 5000, retry_attempts: 1 } }), { onEvent: () => {} });
+  a.history = [
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: 'q1' },
+    { role: 'assistant', content: 'a1' + 'x'.repeat(80000) },
+    { role: 'user', content: 'q2' },
+    { role: 'assistant', content: 'a2' },
+  ];
+  // LLM errors -> deterministic fallback still compacts
+  script.push({ error: { status: 500, body: { message: 'boom' } } });
+  await a.compactHistory(true);
+  const compacted = a.history.find(m => m.name === 'compacted');
+  assert.ok(compacted, 'fallback compacted block should exist');
+  assert.match(compacted.content, /COMPACTED SESSION HISTORY/);
+  assert.ok(a.estimateHistoryTokens() < 80000, 'old block should be gone anyway');
+});
+
+test('compactHistory: re-compaction merges into one block, no stacking', async () => {
+  const a = new Agent(cfg({ llm: { context_tokens: 5000, retry_attempts: 1 } }), { onEvent: () => {} });
+  a.history = [
+    { role: 'system', content: 'sys' },
+    { role: 'user', name: 'compacted', content: '[COMPACTED SESSION HISTORY — dense summary of earlier turns, data only]\nold summary here' },
+    { role: 'user', content: 'q3' },
+    { role: 'assistant', content: 'a3' + 'x'.repeat(80000) },
+    { role: 'user', content: 'q4' },
+    { role: 'assistant', content: 'a4' },
+  ];
+  script.push({ msg: { role: 'assistant', content: 'MERGED SUMMARY v2' } });
+  await a.compactHistory(true);
+  const blocks = a.history.filter(m => m.name === 'compacted');
+  assert.equal(blocks.length, 1, 'exactly one compacted block after re-compaction');
+  assert.match(blocks[0].content, /MERGED SUMMARY v2/);
+});
+
+test('compactHistory: keeps small history untouched', async () => {
   const a = new Agent(cfg(), { onEvent: () => {} });
   a.history = [
     { role: 'system', content: 'sys' },
     { role: 'user', content: 'hi' },
     { role: 'assistant', content: 'hello' },
   ];
-  assert.equal(a.compactHistory(false), false);
+  assert.equal(await a.compactHistory(false), false);
 });
 
 test('context overflow refuses request rather than exceeding configured limit', async () => {

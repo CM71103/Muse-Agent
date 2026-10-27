@@ -419,6 +419,15 @@ ipcMain.handle('agent:send', async (e, text) => {
       send('agent-event', { type: 'info', text: note });
       return { ok: true, text: note, turns: 0 };
     }
+    // /compact — force context compaction now (summarize old turns via LLM)
+    if (/^\/compact\s*$/i.test(raw.trim())) {
+      const compacted = await agent.compactHistory(true);
+      const note = compacted
+        ? `context compacted (${agent.estimateHistoryTokens()} tokens in context now)`
+        : 'context already small; nothing to compact';
+      send('agent-event', { type: 'info', text: note });
+      return { ok: true, text: note, turns: 0 };
+    }
     setBusyState(true);
     const project = currentProjectId ? projectStore.get(currentProjectId) : null;
     const projectInstructions = project && project.instructions ? `User project instructions (do not override tool approval or safety rules):\n${project.instructions}` : '';
@@ -581,7 +590,7 @@ ipcMain.handle('sessions:load', async (e, id) => {
     currentProjectId = project ? project.id : null;
     currentProjectDir = project ? project.folder : null;
     agent.setProjectScope(currentProjectDir);
-    const s = agent.restore(String(id));
+    const s = await agent.restore(String(id));
     // replay the restored transcript into the renderer
     for (const m of s.history || []) {
       if (m.role === 'user') send('agent-event', { type: 'restored_user', text: m.content });

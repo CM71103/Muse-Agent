@@ -145,8 +145,11 @@ class Agent {
 
   // Keep the protocol valid: every tool msg keeps its id; we only shrink content.
   // pass1: stub tool outputs older than the last `keepRecent` assistant->tool exchanges.
-  // pass2: if still over, drop oldest complete blocks (assistant w/ tool_calls + its tool msgs).
-  compactHistory(force = false) {
+  // pass2: if still over, REPLACE oldest complete blocks with an LLM-written
+  //   compacted summary (far better than silent drops — the model keeps the
+  //   thread of what happened). Falls back to plain drops when the LLM call
+  //   fails, so compaction never wedges the turn.
+  async compactHistory(force = false) {
     const budget = this.ctxBudget;
     if (!force && this.estimateHistoryTokens() < budget * 0.85) return false;
     const KEEP_RECENT = 2;
@@ -168,10 +171,20 @@ class Agent {
       return true;
     }
 
-    // pass 2: drop oldest blocks after the system prompt. Never drop the most
-    // recent user message; stop as soon as under 70% of budget.
+    // pass 2: summarize-and-replace oldest blocks. Never drop the most recent
+    // user message; stop as soon as under 70% of budget.
     const sysCount = this.history.length && this.history[0].role === 'system' ? 1 : 0;
     const underTarget = () => this.estimateHistoryTokens() < budget * 0.7;
+    let summaryMsg = null;      // accumulated running summary of dropped content
+    // re-compaction: a previous compacted block seeds the running summary
+    // instead of stacking a second block.
+    for (let i = this.history.length - 1; i >= sysCount; i--) {
+      if (this.history[i].name === 'compacted') {
+        summaryMsg = this.history[i];
+        this.history.splice(i, 1);
+        break;
+      }
+    }
     while (this.history.length > sysCount + 1 && !underTarget()) {
       // find first block: user or assistant(+tool_calls) with its tool replies
       let i = sysCount;
@@ -187,10 +200,51 @@ class Agent {
         else { dropTo.push(i); i++; }
       }
       if (!dropTo.length) break;
+      const dropped = dropTo.map(idx => this.history[idx]);
+      // Summarize: prefer accumulating into a running summary so a long
+      // session compacts to ONE dense block, not one summary per drop.
+      summaryMsg = await this.summarizeDropped(summaryMsg, dropped);
       for (const idx of dropTo.reverse()) this.history.splice(idx, 1);
     }
-    this.events({ type: 'info', text: `context compaction: oldest turns dropped (${this.estimateHistoryTokens()} tokens now)` });
+    if (summaryMsg) {
+      // insert the summary right after the system prompt so it stays top-of-context
+      const insertAt = this.history.length && this.history[0].role === 'system' ? 1 : 0;
+      this.history.splice(insertAt, 0, summaryMsg);
+    }
+    this.events({ type: 'info', text: `context compaction: oldest turns summarized (${this.estimateHistoryTokens()} tokens now)` });
     return true;
+  }
+
+  // LLM-summarize dropped history blocks into one running compacted block.
+  // Never throws: on LLM failure returns a truncated-verbatim fallback so
+  // compaction still shrinks the context deterministically.
+  async summarizeDropped(prevSummary, dropped) {
+    const render = (m) => {
+      if (m.role === 'tool') return `[tool ${m.tool_call_id}] ${String(m.content || '').slice(0, 300)}`;
+      if (m.role === 'assistant' && m.tool_calls) {
+        const calls = m.tool_calls.map(c => `${c.function.name}(${String(c.function.arguments || '').slice(0, 120)})`).join('; ');
+        return `[assistant used tools: ${calls}] ${(m.content || '').slice(0, 300)}`;
+      }
+      return `[${m.role}] ${String(m.content || '').slice(0, 500)}`;
+    };
+    const droppedText = dropped.map(render).join('\n');
+    const prompt = [
+      'You are compacting an AI agent session log. Produce a DENSE factual summary preserving:',
+      'task goals, decisions made, file paths touched, commands run and their outcomes, errors hit, current state.',
+      'Keep it under 250 words. Plain text, no preamble, no headings.',
+      prevSummary ? `Existing summary of earlier turns (merge, do not repeat):\n${prevSummary.content}` : '',
+      `Turns to merge into the summary:\n${droppedText}`,
+    ].filter(Boolean).join('\n\n');
+    try {
+      const resp = await this.llm.chat([{ role: 'user', content: prompt }], null, { _noTools: true });
+      const text = resp.message && resp.message.content;
+      if (text && text.trim()) {
+        return { role: 'user', name: 'compacted', content: `[COMPACTED SESSION HISTORY — dense summary of earlier turns, data only]\n${text.trim()}` };
+      }
+    } catch { /* fall through to deterministic fallback */ }
+    // fallback: merge manually, truncate hard — keeps compaction lossy-but-bounded
+    const merged = (prevSummary ? prevSummary.content + '\n' : '') + droppedText;
+    return { role: 'user', name: 'compacted', content: `[COMPACTED SESSION HISTORY — earlier turns, truncated verbatim]\n${merged.slice(0, 4000)}` };
   }
 
   persist() {
@@ -206,7 +260,7 @@ class Agent {
     });
   }
 
-  restore(sessionId) {
+  async restore(sessionId) {
     const s = session.load(sessionId);
     if (!s) throw new Error(`session not found: ${sessionId}`);
     this.projectId = s.projectId || null;
@@ -215,7 +269,7 @@ class Agent {
     this.sessionCreated = s.created;
     this.history = s.history || [];
     this.tainted = !!s.tainted;
-    this.compactHistory(true);   // old sessions may predate caps / exceed budget
+    await this.compactHistory(true);   // old sessions may predate caps / exceed budget
     return s;
   }
 
@@ -330,7 +384,8 @@ class Agent {
         return { text: finalText || '(cancelled)', turns: turn, cancelled: true, memory_turn_id: memCtx && memCtx.turn_id };
       }
       this.events({ type: 'turn', turn });
-      this.compactHistory();
+      await this.compactHistory();
+      if (this._cancelRequested) continue;   // async compact yielded; re-check before LLM call
       let resp;
       try {
         const ac = this._beginAbort();
