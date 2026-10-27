@@ -382,8 +382,30 @@ app.whenReady().then(async () => {
     };
   } catch {}
   startBridgeIfConfigured();
+  startUpdateChecks();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
+
+// ---- update checks (notify-only; portable exe cannot hot-swap itself) ----
+function startUpdateChecks() {
+  const { checkUpdate } = require('../harness/updater');
+  const CHECK_MS = 6 * 60 * 60 * 1000;   // every 6h
+  const run = async () => {
+    const cur = app.getVersion ? app.getVersion() : '0.1.3';
+    const res = await checkUpdate(cur);
+    if (!res.update) return;
+    send('agent-event', { type: 'info', text: `update available: v${res.latest} — click the notification or see ${res.url}` });
+    try {
+      if (Notification.isSupported()) {
+        const n = new Notification({ title: `Muse Agent ${res.latest} available`, body: 'Click to open the download page.' });
+        n.on('click', () => shell.openExternal(res.url));
+        n.show();
+      }
+    } catch {}
+  };
+  setTimeout(run, 15 * 1000).unref?.();   // shortly after boot, off the startup path
+  setInterval(run, CHECK_MS).unref?.();
+}
 
 app.on('before-quit', () => {
   if (agent && agent.memory) agent.memory.close();
