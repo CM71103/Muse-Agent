@@ -48,6 +48,63 @@ def screenshot(payload: dict) -> dict:
     }
 
 
+def ocr(payload: dict) -> dict:
+    """Image bytes in (base64), extracted text out. RapidOCR when installed;
+    pytesseract fallback; else a clear error. No file writes."""
+    _need(payload, "image_b64")
+    raw = base64.b64decode(payload["image_b64"])
+    if not raw:
+        raise ValueError("empty image_b64")
+    # RapidOCR (PaddleOCR models, CPU): best quality for screenshots/docs.
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+
+        engine = _rapidocr_engine()
+        import numpy as np
+        from PIL import Image
+
+        img = np.array(Image.open(io.BytesIO(raw)).convert("RGB"))
+        result, _ = engine(img)
+        if not result:
+            return {"ok": True, "action": "ocr", "text": "", "engine": "rapidocr"}
+        # result: [[box, text, score], ...] — keep reading order
+        return {
+            "ok": True,
+            "action": "ocr",
+            "text": "\n".join(str(line[1]) for line in result),
+            "lines": len(result),
+            "engine": "rapidocr",
+        }
+    except ImportError:
+        pass
+    # pytesseract fallback
+    try:
+        import pytesseract
+        from PIL import Image
+
+        text = pytesseract.image_to_string(Image.open(io.BytesIO(raw)))
+        return {"ok": True, "action": "ocr", "text": text.strip(), "engine": "tesseract"}
+    except ImportError:
+        return {
+            "ok": False,
+            "error": "OCR unavailable: pip install rapidocr-onnxruntime (or pytesseract)",
+        }
+    except Exception as e:  # noqa: BLE001 - corrupt image, PIL decode failure
+        return {"ok": False, "error": f"image decode failed: {type(e).__name__}: {e}"}
+
+
+_RAPIDOCR_ENGINE = None
+
+
+def _rapidocr_engine():
+    global _RAPIDOCR_ENGINE
+    if _RAPIDOCR_ENGINE is None:
+        from rapidocr_onnxruntime import RapidOCR
+
+        _RAPIDOCR_ENGINE = RapidOCR()
+    return _RAPIDOCR_ENGINE
+
+
 def click(payload: dict, clicks: int = 1) -> dict:
     _need(payload, "x", "y")
     button = payload.get("button", "left")

@@ -736,16 +736,30 @@ function setBusy(b) {
 
 async function submit() {
   const text = input.value.trim();
-  if (!text || busy || loadingSession || currentApproval) return;
+  const img = pendingImage;              // {b64, name} or null
+  if ((!text && !img) || busy || loadingSession || currentApproval) return;
   input.value = '';
   autosize();
-  addMsg('user', text);
+  addMsg('user', text + (img ? `\n[attached image: ${img.name}]` : ''));
   setBusy(true);
   showThinking(true);
   $('crumb').textContent = t('crumb.working', 'WORKING…'); wbSetStatus(t('wb.working', 'Working…'));
   refreshStatus();
   try {
-    const res = await window.muse.send(text);
+    let finalText = text;
+    if (img) {
+      // OCR at send time: deterministic, no model cooperation needed.
+      const ocr = await window.muse.ocrImage(img.b64);
+      if (ocr && ocr.ok) {
+        const extracted = String(ocr.text || '').trim();
+        finalText = `${text || 'Read this image.'}\n\n[image "${img.name}" — extracted text]\n${extracted || '(no text found in image)'}`;
+        addSysNote(`image OCR: ${ocr.lines || ''} ${extracted ? 'text attached' : 'no text found'} (${ocr.engine})`);
+      } else {
+        addSysNote(`image OCR failed: ${ocr && ocr.error || 'unknown'} — sending text only`, true);
+      }
+      clearPendingImage();
+    }
+    const res = await window.muse.send(finalText);
     if (!res || !res.ok) addSysNote(`agent error: ${res && res.error || 'No response'}`, true);
     else if (res.cancelled) addSysNote('task cancelled — partial progress kept');
   } catch (e) { reportError(e); }
@@ -768,6 +782,99 @@ function autosize() {
   input.style.height = Math.min(input.scrollHeight, 160) + 'px';
 }
 input.addEventListener('input', autosize);
+
+/* ---------- image attach (OCR via sidecar) ---------- */
+let pendingImage = null;   // {b64, name}
+
+function clearPendingImage() {
+  pendingImage = null;
+  const chip = $('img-chip');
+  if (chip) chip.remove();
+  const btn = $('btn-attach');
+  if (btn) btn.value = '';
+}
+
+function setPendingImage(b64, name) {
+  if (!b64 || b64.length > 7 * 1024 * 1024) {   // >5MB after decode
+    addSysNote('image too large (max 5 MB)', true);
+    return;
+  }
+  pendingImage = { b64, name: name || 'pasted-image.png' };
+  let chip = $('img-chip');
+  if (!chip) {
+    chip = document.createElement('div');
+    chip.id = 'img-chip';
+    chip.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 auto 6px;max-width:740px;font-size:12px;color:var(--color-muted-fg);background:var(--color-surface-subtle);border-radius:8px;padding:6px 10px;';
+    const rm = document.createElement('button');
+    rm.textContent = '×';
+    rm.style.cssText = 'border:none;background:none;cursor:pointer;font-size:14px;color:var(--faint);padding:0 2px;';
+    rm.addEventListener('click', clearPendingImage);
+    chip.appendChild(rm);
+    composer.parentNode.insertBefore(chip, composer);
+  }
+  chip.firstChild.textContent = `📎 ${pendingImage.name} — will be OCR'd on send`;
+}
+
+// Ctrl+V paste into the composer
+input.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const it of items) {
+    if (it.type && it.type.startsWith('image/')) {
+      e.preventDefault();
+      const f = it.getAsFile();
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const b64 = String(reader.result).split(',')[1] || '';
+        setPendingImage(b64, f.name || 'pasted-image.png');
+      };
+      reader.readAsDataURL(f);
+      return;
+    }
+  }
+});
+
+// drag & drop onto the composer
+composer.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!f || !f.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const b64 = String(reader.result).split(',')[1] || '';
+    setPendingImage(b64, f.name);
+  };
+  reader.readAsDataURL(f);
+});
+composer.addEventListener('dragover', (e) => e.preventDefault());
+
+// attach button (hidden file input next to send)
+window.addEventListener('DOMContentLoaded', () => {
+  const btn = document.createElement('input');
+  btn.type = 'file';
+  btn.id = 'btn-attach';
+  btn.accept = 'image/png,image/jpeg,image/webp';
+  btn.style.cssText = 'display:none';
+  btn.addEventListener('change', () => {
+    const f = btn.files && btn.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = String(reader.result).split(',')[1] || '';
+      setPendingImage(b64, f.name);
+    };
+    reader.readAsDataURL(f);
+  });
+  document.body.appendChild(btn);
+  const trigger = document.createElement('button');
+  trigger.id = 'btn-attach-trigger';
+  trigger.title = 'Attach image (OCR)';
+  trigger.textContent = '📎';
+  trigger.style.cssText = 'padding:9px 12px;border:1px solid var(--composer-border);background:var(--color-surface);border-radius:9px;cursor:pointer;';
+  trigger.addEventListener('click', () => btn.click());
+  sendBtn.parentNode.insertBefore(trigger, sendBtn);
+});
 
 /* ---------- sidebar sessions ---------- */
 

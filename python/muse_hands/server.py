@@ -67,6 +67,8 @@ def handle_execute(payload: dict) -> dict:
     try:
         if act == "screenshot":
             return actions.screenshot(payload)
+        if act == "ocr":
+            return actions.ocr(payload)
         if act == "click":
             return actions.click(payload)
         if act == "double_click":

@@ -6,6 +6,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('muse', {
   send: (text) => ipcRenderer.invoke('agent:send', text),
+  ocrImage: (b64) => ipcRenderer.invoke('image:ocr', b64),
   reset: () => ipcRenderer.invoke('agent:reset'),
   cancel: () => ipcRenderer.invoke('agent:cancel'),
   setProjectScope: (dir) => ipcRenderer.invoke('project:set', dir),

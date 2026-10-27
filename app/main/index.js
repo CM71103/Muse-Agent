@@ -1,4 +1,30 @@
 'use strict';
+// Boot diagnostics: any uncaught error in main is captured to a log file
+// before the (silent) process exit, so packaged runs are debuggable.
+function appendBootLog(msg) {
+  try {
+    const fs = require('fs'), path = require('path'), os = require('os');
+    fs.appendFileSync(path.join(os.tmpdir(), 'muse-main-crash.log'),
+      `[${new Date().toISOString()}] ${msg}\n`);
+  } catch {}
+}
+
+process.on('uncaughtException', (e) => {
+  try {
+    const fs = require('fs'), path = require('path'), os = require('os');
+    fs.appendFileSync(path.join(os.tmpdir(), 'muse-main-crash.log'),
+      `[${new Date().toISOString()}] uncaught: ${e && e.stack || e}\n`);
+  } catch {}
+  try { console.error(e); } catch {}
+});
+process.on('unhandledRejection', (e) => {
+  try {
+    const fs = require('fs'), path = require('path'), os = require('os');
+    fs.appendFileSync(path.join(os.tmpdir(), 'muse-main-crash.log'),
+      `[${new Date().toISOString()}] unhandledRejection: ${e && e.stack || e}\n`);
+  } catch {}
+});
+
 // app/main/index.js - Electron main. Thin shell, nanoMuse-style:
 // window + native menus minimal, agent runs in-process (renderer drives it over preload).
 
@@ -58,6 +84,19 @@ function createWindow() {
     },
   });
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+  mainWindow.once('ready-to-show', () => {
+    try {
+      mainWindow.show();
+      mainWindow.focus();
+      appendBootLog(`window shown: bounds=${JSON.stringify(mainWindow.getBounds())}`);
+    } catch {}
+  });
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    appendBootLog(`renderer load FAILED: ${code} ${desc} ${url}`);
+  });
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    appendBootLog(`renderer GONE: ${JSON.stringify(details)}`);
+  });
 
   // Navigation/popup policy: this is a single-page local app. Deny everything
   // that is not our own page; hand real http(s) links to the system browser.
@@ -416,6 +455,32 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 
 // ---- ipc surface (registered in preload) ----
 const { ipcMain } = require('electron');
+
+// Image OCR: renderer sends a base64 image (paste/drop/attach), main runs it
+// through the hands sidecar's ocr action. NOT gated by hands.enabled (that
+// guards mouse/keyboard control; OCR is passive). Size/type validated here.
+ipcMain.handle('image:ocr', async (e, imageB64) => {
+  requireTrusted(e);
+  try {
+    const b64 = String(imageB64 || '');
+    if (!b64) return { ok: false, error: 'empty image' };
+    // header sniff: png/jpg/webp magic (renderer gives raw base64, no prefix)
+    const head = Buffer.from(b64.slice(0, 16), 'base64');
+    const isPng = head[0] === 0x89 && head[1] === 0x50;
+    const isJpg = head[0] === 0xFF && head[1] === 0xD8;
+    const isWebp = head[0] === 0x52 && head[1] === 0x49 && head[8] === 0x57;
+    if (!isPng && !isJpg && !isWebp) return { ok: false, error: 'unsupported image type (png/jpg/webp)' };
+    const bytes = Math.floor(b64.length * 3 / 4);
+    if (bytes > 5 * 1024 * 1024) return { ok: false, error: 'image too large (max 5 MB)' };
+    const client = require('../harness/hands_client');
+    const c = client({});                      // loopback + token defaults
+    const res = await c.request({ action: 'ocr', image_b64: b64 });
+    if (!res.ok) send('agent-event', { type: 'error', text: `image OCR: ${res.error}` });
+    return res;
+  } catch (err) {
+    return { ok: false, error: String(err && err.message || err) };
+  }
+});
 
 ipcMain.handle('agent:send', async (e, text) => {
   requireTrusted(e);
