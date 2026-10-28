@@ -61,14 +61,10 @@ async function waitForHealth(base, token, timeoutMs = 15000) {
   return false;
 }
 
-function spawnSidecarProcess() {
-  const pyExe = process.env.MUSE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
-  const proc = spawn(pyExe, ['-m', 'muse_hands.server'], {
-    cwd: SIDECAR_DIR,
-    stdio: ['ignore', 'ignore', 'pipe'],
-    detached: process.platform === 'win32' ? false : true,
-  });
-  // surface sidecar stderr (first ~4 lines) so crash-loops are diagnosable
+// Wire a spawned sidecar process into supervision: stderr notes, exit/restart
+// policy, proc registry. Shared by the python-path spawn and the py-launcher
+// fallback so both get identical treatment.
+function attachToSupervisor(proc) {
   let errBuf = '';
   try {
     proc.stderr.setEncoding('utf8');
@@ -80,7 +76,6 @@ function spawnSidecarProcess() {
     });
   } catch {}
   proc.on('error', () => { starting = null; superviseNote('sidecar spawn error (python not found?)'); });
-  // Supervision: unexpected exit -> restart within window, cap max restarts.
   proc.on('exit', (code) => {
     if (supervisor.proc !== proc) return;      // replaced already
     supervisor.proc = null;
@@ -105,6 +100,32 @@ function spawnSidecarProcess() {
   supervisor.proc = proc;
   proc.unref();
   return proc;
+}
+
+function spawnSidecarProcess() {
+  const pyExe = process.env.MUSE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  const args = ['-m', 'muse_hands.server'];
+  const spawnOpts = {
+    cwd: SIDECAR_DIR,
+    stdio: ['ignore', 'ignore', 'pipe'],
+    detached: process.platform === 'win32' ? false : true,
+  };
+  const proc = spawn(pyExe, args, spawnOpts);
+  // PATH-independent fallback: the py launcher lives in C:\Windows and finds
+  // every registered python even when PATH is broken. Fires on spawn error
+  // (ENOENT), i.e. python not resolvable.
+  proc.on('error', () => {
+    if (process.platform === 'win32' && !/\.exe$/i.test(pyExe)) {
+      try {
+        const alt = spawn('py', ['-3', ...args], spawnOpts);
+        superviseNote(`python ("${pyExe}") not on PATH — sidecar via py launcher`);
+        attachToSupervisor(alt);
+      } catch { superviseNote('sidecar spawn error (no python on PATH and py launcher failed)'); }
+      return;
+    }
+    superviseNote('sidecar spawn error (python not found?)');
+  });
+  return attachToSupervisor(proc);
 }
 
 function startSidecar() {
