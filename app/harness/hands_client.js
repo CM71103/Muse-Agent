@@ -65,9 +65,20 @@ function spawnSidecarProcess() {
   const pyExe = process.env.MUSE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
   const proc = spawn(pyExe, ['-m', 'muse_hands.server'], {
     cwd: SIDECAR_DIR,
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'pipe'],
     detached: process.platform === 'win32' ? false : true,
   });
+  // surface sidecar stderr (first ~4 lines) so crash-loops are diagnosable
+  let errBuf = '';
+  try {
+    proc.stderr.setEncoding('utf8');
+    proc.stderr.on('data', (d) => {
+      errBuf = (errBuf + d).slice(-1500);
+      const lines = errBuf.trim().split(/\r?\n/);
+      const tail = lines.slice(-3).join(' | ');
+      if (tail) superviseNote(`sidecar stderr: ${tail}`);
+    });
+  } catch {}
   proc.on('error', () => { starting = null; superviseNote('sidecar spawn error (python not found?)'); });
   // Supervision: unexpected exit -> restart within window, cap max restarts.
   proc.on('exit', (code) => {
@@ -79,6 +90,10 @@ function spawnSidecarProcess() {
       supervisor.windowStart = now;
       supervisor.restarts = 0;
     }
+    if (/10048|address already in use/i.test(errBuf)) {
+      superviseNote('sidecar port already occupied — stopped duplicate process; no restart');
+      return;
+    }
     supervisor.restarts++;
     if (supervisor.restarts > supervisor.MAX_RESTARTS) {
       superviseNote(`sidecar exited (code ${code}) — restart cap reached (${supervisor.MAX_RESTARTS}); giving up. Toggle hands off/on to retry.`);
@@ -88,7 +103,6 @@ function spawnSidecarProcess() {
     setImmediate(() => { try { startSidecar(); } catch {} });
   });
   supervisor.proc = proc;
-  supervisor.restarts = 0;
   proc.unref();
   return proc;
 }
@@ -115,14 +129,16 @@ function handsClient(handsCfg) {
             headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
             body: JSON.stringify(action),
           });
-          if (res.status === 401 || res.status === 403) throw new Error('sidecar rejected token');
+          if (res.status === 401 || res.status === 403) throw Object.assign(new Error('sidecar rejected token'), { noSpawn: true });
           if (!res.ok) {
             let detail = '';
             try { detail = (await res.text()).slice(0, 200); } catch {}
-            throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+            throw Object.assign(new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`), { noSpawn: true });
           }
-          return await res.json();
+          try { return await res.json(); }
+          catch (e) { e.noSpawn = true; throw e; }
         } catch (e) {
+          if (e.noSpawn) throw e; // HTTP errors prove a server is already listening.
           if (attempt === 0) {
             await startSidecar();
             const ok = await waitForHealth(base, token);
