@@ -116,7 +116,11 @@ function handsClient(handsCfg) {
             body: JSON.stringify(action),
           });
           if (res.status === 401 || res.status === 403) throw new Error('sidecar rejected token');
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          if (!res.ok) {
+            let detail = '';
+            try { detail = (await res.text()).slice(0, 200); } catch {}
+            throw new Error(`HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+          }
           return await res.json();
         } catch (e) {
           if (attempt === 0) {

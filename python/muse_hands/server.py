@@ -95,7 +95,9 @@ def handle_execute(payload: dict) -> dict:
 # ---------------- aiohttp app ----------------
 
 def build_aiohttp_app() -> "web.Application":
-    app = web.Application()
+    # 64 MB body cap: OCR screenshots arrive as multi-MB base64 JSON.
+    # (aiohttp default is 1 MB and rejects them with HTTP 400/413.)
+    app = web.Application(client_max_size=64 * 1024 * 1024)
 
     def bearer(request):
         h = request.headers.get("Authorization", "")

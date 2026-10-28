@@ -86,9 +86,18 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => {
     try {
+      // Force-raise: always-on-top for the first moment pulls the window
+      // above anything covering it, then we drop the flag.
+      mainWindow.setAlwaysOnTop(true);
       mainWindow.show();
       mainWindow.focus();
-      appendBootLog(`window shown: bounds=${JSON.stringify(mainWindow.getBounds())}`);
+      setTimeout(() => { try { mainWindow.setAlwaysOnTop(false); } catch {} }, 1500);
+      appendBootLog(`window shown: bounds=${JSON.stringify(mainWindow.getBounds())} visible=${mainWindow.isVisible()}`);
+      setTimeout(() => {
+        try {
+          appendBootLog(`+1s check: visible=${mainWindow.isVisible()} minimized=${mainWindow.isMinimized()} focused=${mainWindow.isFocused()} bounds=${JSON.stringify(mainWindow.getBounds())}`);
+        } catch {}
+      }, 1000);
     } catch {}
   });
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
