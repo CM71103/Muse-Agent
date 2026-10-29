@@ -73,6 +73,21 @@ port = 8788
 # args = ["-y", "@modelcontextprotocol/server-filesystem", "D:/projects"]
 # env = []            # optional ["VAR=value"]
 # timeout_s = 60
+#
+# --- OpenViking context-database spike (optional) ---
+# Requires: OpenViking server running locally (`openviking-server`, default
+# http://127.0.0.1:1933) and a user/admin API key from it. mcp-remote bridges
+# OpenViking's Streamable-HTTP MCP endpoint to stdio for us. See
+# docs/openviking-spike.md before enabling.
+#
+# servers = ["viking"]
+#
+# [mcp.server.viking]
+# command = "npx"
+# args = ["-y", "mcp-remote", "http://127.0.0.1:1933/mcp",
+#        "--header", "Authorization:${MUSE_VIKING_KEY}"]
+# env = []            # set MUSE_VIKING_KEY in your environment instead of here
+# timeout_s = 120
 
 [bridge]
 # Host bridge: loopback HTTP API into the RUNNING agent (Antigravity host-bridge).

@@ -9,7 +9,7 @@ const { Sentinel } = require('./sentinel');
 const session = require('./session');
 const { MemoryLayer } = require('../memory/layer');
 
-function systemPrompt(cfg, extra, projectDir = null, hasSubagent = false, mode = null) {
+function systemPrompt(cfg, extra, projectDir = null, hasSubagent = false, mode = null, hasViking = false) {
   const platform = process.platform === 'win32' ? 'Windows (cmd.exe, commands run unsandboxed)'
     : process.platform === 'darwin' ? 'macOS' : 'Linux';
   const modeLine = mode === 'plan'
@@ -30,6 +30,9 @@ function systemPrompt(cfg, extra, projectDir = null, hasSubagent = false, mode =
       'You also have spawn_agent: it runs a focused subtask in a fresh child agent (own context, tighter turn budget) and returns the child\'s summary. Use it for independent, self-contained subtasks (e.g. "survey all config files", "research X on the web") to keep your own context small. Give the child complete instructions — it sees only the task text you pass. Children cannot spawn children.',
     ] : []),
     ...(modeLine ? [modeLine] : []),
+    ...(hasViking ? [
+      'You also have mcp__viking__* tools: a persistent, searchable knowledge/memory filesystem (viking://). Use them to store durable facts about the user and projects (write), and to recall prior knowledge or search past material (search/find/ls) before re-deriving it. The local sqlite memory layer and viking are SEPARATE stores — when viking tools are available, prefer viking for anything you explicitly save; do not double-store the same fact in both.',
+    ] : []),
     'Rules:',
     '- Ask before doing anything destructive; the user approves tool calls in the UI.',
     '- Prefer reading before writing. Prefer small, reversible actions.',
@@ -51,6 +54,7 @@ class Agent {
       mcp: cfg.mcp && Array.isArray(cfg.mcp.servers) && cfg.mcp.servers.length ? cfg.mcp : null,
     });
     this.tools = tools; this.toolMap = map;
+    this.hasViking = [...map.keys()].some(n => n.startsWith('mcp__viking__'));
     this.sentinel = new Sentinel(cfg, { approver: opts.approver });
     this.maxTurns = cfg.agent.max_turns || 40;
     this.ctxBudget = cfg.llm.context_tokens || 200000;   // tokens; compact before exceeding
@@ -334,7 +338,7 @@ class Agent {
     // Stale-cancel guard: requestCancel() from a PREVIOUS turn must not kill
     // this one. Clear at turn start — cancel only applies to the live run.
     this._cancelRequested = false;
-    const sys = systemPrompt(this.cfg, opts.systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel ? this.sentinel.mode : null);
+    const sys = systemPrompt(this.cfg, opts.systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel ? this.sentinel.mode : null, this.hasViking);
     if (this.history.length === 0) {
       this.history.push({ role: 'system', content: sys });
     }
