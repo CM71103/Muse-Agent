@@ -17,11 +17,12 @@ test('two fresh host sessions recall persisted user event after reopen; exact ac
  await a.run('My cat is named Mango.');await a.ingestUserTurn('My cat is named Mango.');
  const firstTask=m.taskId;x.close();m=x.open();const b=new Agent(x.cfg);b.attachMemory(m);assert.notEqual(firstTask,m.taskId);
  let sent;b.llm.chat=async(messages)=>{sent=messages;return {message:{content:'Mango [c1]'},usage:{total_tokens:2},finish_reason:'stop'};};
- const r=await b.run('What is my cat named?');assert.match(sent.find(m=>m.name==='memory').content,/Mango/);
+ const r=await b.run('What is my cat named?');assert.match(Agent.memorySectionOf(sent),/Mango/);
  const turn=m.store.getTurn(r.memory_turn_id);assert.equal(turn.state,'completed');assert.deepEqual(turn.citation_map,{'1':turn.sent_ids[0]});
  assert.deepEqual(m.parseCitations('Mango [c1]',r.memory_turn_id).citedIds,turn.sent_ids);
  assert.equal(m.grade(r.memory_turn_id,1).applied,false);assert.equal(m.grade(r.memory_turn_id,0).reason,'already_graded');
- assert.deepEqual(m.store.getMemory(turn.sent_ids[0]).evidence,{});assert.equal(b.history.some(m=>m.name==='memory'),false);
+ assert.deepEqual(m.store.getMemory(turn.sent_ids[0]).evidence,{});assert.equal(b.memorySection(),'');
+ assert.equal(sent[0].role,'system');assert.equal(sent.filter(m=>m.role==='system').length,1);
 });
 test('scope isolation, per-scope idempotency, no auto fallback',async t=>{
  const x=setup(t);let m=x.open();await m.ingest([{source_event_id:'same',text:'personal',provenance:'user'}]);x.close();

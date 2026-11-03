@@ -35,7 +35,7 @@ function reveal(el, fromY) {
   if (!el || REDUCED_MOTION) return el;
   el.classList.add('reveal');
   if (typeof el.animate === 'function') {
-    try { el.animate([{ opacity: 0, transform: `translateY(${fromY || 14}px) scale(.985)` }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 340, easing: 'cubic-bezier(.22,.9,.32,1)' }); }
+    try { el.animate([{ opacity: 0, transform: `translateY(${fromY || 16}px) scale(.985)` }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 380, easing: 'cubic-bezier(.16,1,.3,1)' }); }
     catch { /* older engine: class fallback only */ }
   }
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => el.classList.add('reveal-in'));
@@ -251,6 +251,12 @@ function buildHeroEmblem() {
   spark.append(center);
   svg.append(spark);
   wrap.append(svg);
+  // heat layer: heatmap-style glow tracing the spark silhouette (see shaders)
+  const heat = document.createElement('canvas');
+  heat.className = 'heat-layer';
+  heat.setAttribute('aria-hidden', 'true');
+  wrap.append(heat);
+  if (typeof window.__museHeatAttach === 'function') window.__museHeatAttach(heat);
   return wrap;
 }
 
@@ -508,35 +514,107 @@ function renderMarkdown(root, text) {
 
 const TOOL_HUE = { read_file: 'tw-fs', write_file: 'tw-fs', list_dir: 'tw-fs', web_fetch: 'tw-web', shell: 'tw-shell', hands: 'tw-hands' };
 
+// Execution cards: one card per tool call, paired with its result by call id.
+const openCards = new Map();
+
+function trCopyBtn(raw) {
+  const btn = document.createElement('button');
+  btn.className = 'cb-copy';
+  btn.textContent = 'copy';
+  btn.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(String(raw)); btn.textContent = 'copied'; }
+    catch { btn.textContent = 'failed'; }
+    setTimeout(() => { btn.textContent = 'copy'; }, 1400);
+  });
+  return btn;
+}
+
+function trSection(label, text) {
+  const sec = document.createElement('div');
+  sec.className = 'tr-io';
+  const head = document.createElement('div');
+  head.className = 'tr-io-head';
+  const l = document.createElement('span');
+  l.textContent = label;
+  head.append(l, trCopyBtn(text));
+  const pre = document.createElement('pre');
+  mdCode(pre, String(text).slice(0, 4000));
+  sec.append(head, pre);
+  return { sec, pre };
+}
+
 function addToolRow(ev) {
   clearEmpty();
+  // Paired result for a live call: fill the existing card, never a second row.
+  if (ev.id && openCards.has(ev.id)) {
+    const card = openCards.get(ev.id);
+    openCards.delete(ev.id);
+    card.finish(ev);
+    return;
+  }
   const row = document.createElement('div');
   row.className = 'tool-row' + (TOOL_HUE[ev.name] ? ' ' + TOOL_HUE[ev.name] : '');
-  const det = document.createElement('details');
-  const sum = document.createElement('summary');
+  if (ev.result !== undefined && ev.result && ev.result.ok === false && !ev.args) row.classList.add('denied');
+
+  // header: name badge, status dot, duration slot
+  const head = document.createElement('div');
+  head.className = 'tr-head';
   const name = document.createElement('span');
   name.className = 'tname';
   name.textContent = ev.name;
-  sum.append(name, ' ', document.createTextNode(JSON.stringify(ev.args || {}).slice(0, 160)));
-  det.append(sum);
-
+  const dot = document.createElement('span');
+  dot.className = 'tr-dot';
+  const dur = document.createElement('span');
+  dur.className = 'tr-dur';
+  head.append(name, dot, dur);
   if (ev.restored) {
-    sum.append(document.createTextNode(' (restored)'));
+    const tag = document.createElement('span');
+    tag.className = 'tr-tag';
+    tag.textContent = 'restored';
+    head.append(tag);
   }
-  if (ev.result !== undefined) {
-    const pre = document.createElement('pre');
-    const r = ev.result || {};
-    pre.textContent = typeof r === 'string' ? r : JSON.stringify(r, null, 2).slice(0, 4000);
-    det.append(pre);
-    if (r && r.ok === false) {
-      row.classList.add('denied');
-      const tag = document.createElement('span');
-      tag.className = 'err';
-      tag.textContent = ' failed';
-      sum.append(tag);
-    }
-  }
+
+  const det = document.createElement('details');
+  det.open = !ev.restored && ev.result === undefined;
+  const sum = document.createElement('summary');
+  sum.append(head);
+  det.append(sum);
   row.append(det);
+
+  const started = Date.now();
+  if (ev.args !== undefined && ev.args !== null) {
+    const argsText = JSON.stringify(ev.args, null, 2);
+    det.append(trSection('Input', argsText).sec);
+    dot.classList.add('running');
+    if (ev.id) {
+      row.finish = (resEv) => {
+        dot.classList.remove('running');
+        dot.classList.add(resEv.result && resEv.result.ok === false ? 'fail' : 'ok');
+        dur.textContent = ((Date.now() - started) / 1000).toFixed(1) + 's';
+        const out = trSection('Output', typeof resEv.result === 'string' ? resEv.result : JSON.stringify(resEv.result, null, 2));
+        det.append(out.sec);
+        det.open = !!(resEv.result && resEv.result.ok === false);
+        if (resEv.result && resEv.result.ok === false) row.classList.add('denied');
+        reveal(row, 4);
+        scrollDown();
+      };
+      openCards.set(ev.id, row);
+    } else {
+      // no id to pair with: complete immediately as call-only card
+      dot.classList.add('ok');
+    }
+  } else if (ev.result !== undefined) {
+    const r = ev.result || {};
+    dot.classList.add(r.ok === false ? 'fail' : 'ok');
+    const out = trSection('Output', typeof r === 'string' ? r : JSON.stringify(r, null, 2));
+    det.append(out.sec);
+  } else {
+    // restored with no recorded output
+    dot.classList.add('ok');
+    const pre = document.createElement('pre');
+    pre.textContent = '(no output recorded)';
+    det.append(pre);
+  }
   transcript.append(row);
   reveal(row, 8);
   scrollDown();
@@ -546,10 +624,22 @@ function addDeniedRow(toolName, reason) {
   clearEmpty();
   const row = document.createElement('div');
   row.className = 'tool-row denied';
+  const head = document.createElement('div');
+  head.className = 'tr-head';
   const tag = document.createElement('span');
   tag.className = 'tname';
   tag.textContent = toolName;
-  row.append(tag, ' ', document.createTextNode(`denied — ${reason}`));
+  const dot = document.createElement('span');
+  dot.className = 'tr-dot fail';
+  head.append(tag, dot);
+  const det = document.createElement('details');
+  det.open = true;
+  const sum = document.createElement('summary');
+  sum.append(head);
+  const pre = document.createElement('pre');
+  pre.textContent = `denied — ${reason}`;
+  det.append(sum, pre);
+  row.append(det);
   transcript.append(row);
   reveal(row, 8);
   scrollDown();
@@ -601,12 +691,12 @@ function handleAgentEvent(ev) {
       if (ev.text && ev.text.trim()) addMsg('assistant', ev.text);
       break;
     case 'tool_call':
-      addToolRow({ name: ev.name, args: ev.args });
+      addToolRow({ id: ev.id, name: ev.name, args: ev.args });
       wbCounters.tools++; wbUpdateDetails(); wbEvent('tool: ' + ev.name, 'tool');
       break;
     case 'tool_result':
       if (ev.denied) addDeniedRow(ev.name, ev.reason);
-      else addToolRow({ name: ev.name, args: null, result: ev.result });
+      else addToolRow({ id: ev.id, name: ev.name, args: null, result: ev.result });
       break;
     case 'info':
       if (/compaction/.test(ev.text)) addSysNote(ev.text, false, 'mem');
@@ -1505,6 +1595,54 @@ for (const b of navBtns) b.addEventListener('click', () => { const name = (b.dat
 if (window.addEventListener) window.addEventListener('resize', syncPill);
 syncPill();
 
+/* ---------- resizable sidebar (Terax panel model, vanilla) ----------
+   Drag #sidebar-handle to resize .history. The width is written as --sidebar-w
+   on body so the CSS media ladder (which also drives --sidebar-w) is overridden
+   by the inline value. Double-click or Enter resets, arrow keys nudge when the
+   handle has focus. Every DOM API is feature-guarded so the fake-DOM tests run
+   inert instead of crashing (no getBoundingClientRect / setProperty there). */
+const SIDEBAR_MIN = 180, SIDEBAR_MAX = 480, SIDEBAR_DEFAULT = 300, GUTTER = 16;
+const sidebarHandle = $('sidebar-handle');
+function applySidebarW(w) {
+  prefs.sidebarW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(w)));
+  const body = document.body;
+  if (body && body.style && typeof body.style.setProperty === 'function') {
+    body.style.setProperty('--sidebar-w', prefs.sidebarW + 'px');
+  }
+}
+if (sidebarHandle && typeof sidebarHandle.addEventListener === 'function' &&
+    typeof sidebarHandle.getBoundingClientRect === 'function') {
+  let dragging = false;
+  const onMove = (e) => {
+    if (!dragging) return;
+    const bodyRect = document.body.getBoundingClientRect();
+    applySidebarW(e.clientX - bodyRect.left - GUTTER);
+  };
+  const onUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    sidebarHandle.classList.remove('dragging');
+    document.body.classList.remove('resizing');
+    if (window.removeEventListener) { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); }
+  };
+  sidebarHandle.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    sidebarHandle.classList.add('dragging');
+    document.body.classList.add('resizing');
+    if (window.addEventListener) { window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp); }
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  });
+  sidebarHandle.addEventListener('dblclick', () => applySidebarW(SIDEBAR_DEFAULT));
+  sidebarHandle.addEventListener('keydown', (e) => {
+    if (!e || !e.key) return;
+    const cur = prefs.sidebarW || SIDEBAR_DEFAULT;
+    if (e.key === 'Enter') applySidebarW(SIDEBAR_DEFAULT);
+    else if (e.key === 'ArrowLeft') applySidebarW(cur - 16);
+    else if (e.key === 'ArrowRight') applySidebarW(cur + 16);
+  });
+}
+if (prefs.sidebarW) applySidebarW(prefs.sidebarW);
+
 /* ---------- model context popover (wensity model-context-switcher port) ---------- */
 const modelPop = $('model-pop');
 function closeModelPop() {
@@ -1557,16 +1695,17 @@ async function refreshWorkbenchMemory() {
   } catch { $('wb-mem').textContent = '—'; }
 }
 /* ---------- appearance (session-only) ---------- */
-const THEMES = ['nimbus', 'shiva', 'dusk', 'carbon'];
-let currentTheme = 'nimbus';
+const THEMES = ['light', 'dark'];
+let currentTheme = 'light';
 function setTheme(name) {
-  if (!THEMES.includes(name)) name = 'shiva';
+  if (!THEMES.includes(name)) name = 'light';
   currentTheme = name;
-  if (name === 'nimbus') document.body.removeAttribute('data-theme');
+  if (name === 'light') document.body.removeAttribute('data-theme');
   else document.body.setAttribute('data-theme', name);
   for (const b of document.querySelectorAll('[data-theme-pick]')) {
     b.setAttribute('aria-checked', String(b.dataset.themePick === name));
   }
+  if (typeof window.__museShaderRefresh === 'function') window.__museShaderRefresh();
   addSysNote(`appearance: ${name}`, false, 'mem');
 }
 for (const b of document.querySelectorAll('[data-theme-pick]')) {
@@ -1711,7 +1850,7 @@ $('btn-project-create-save').addEventListener('click', guarded(async () => {
   $('project-name').value = ''; $('project-create').hidden = true;
   await openProject(res.record.id);
 }));
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Nimbus', () => setTheme('nimbus'), ''], ['Appearance: Shiva Blue', () => setTheme('shiva'), ''], ['Appearance: Dusk', () => setTheme('dusk'), ''], ['Appearance: Carbon', () => setTheme('carbon'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {
@@ -1928,6 +2067,286 @@ window.addEventListener('keydown', e => {
   splash.addEventListener('click', dismiss, { once: false });
   if (document.readyState === 'complete' || document.readyState === 'interactive') play();
   else document.addEventListener('DOMContentLoaded', () => play(), { once: true });
+})();
+
+/* ---------- ambient shaders: NeuroNoise background and heatmap hero glow --
+   Vanilla WebGL ports of two Paper Design shader looks. No dependency, no
+   eval, no external fetch, so CSP stays default-src 'self'. The background
+   canvas is full-bleed behind the panes, visible in the frame gutters and
+   the transparent navbar. The hero emblem gets a second canvas that traces
+   the spark mark silhouette as a heatmap glow, blended over it with
+   mix-blend-mode:screen. Both honor prefers-reduced-motion with one static
+   frame, and the Settings > Appearance toggle. All uniforms come from CSS
+   vars so themes restyle them without touching GLSL. */
+(function shaders() {
+  const VERT = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+
+  // NeuroNoise, ported from paper-design/shaders neuro-noise.ts (Apache 2.0,
+  // algorithm by zozuar). 15 rotating sine layers, not fbm: that recursion
+  // is what makes the web-like veins and soft crossing-point glows.
+  const FRAG_NOISE = [
+    'precision highp float;',
+    'uniform vec2 u_res;uniform float u_time;uniform vec3 u_front,u_mid,u_back;',
+    'uniform float u_bright,u_contrast,u_speed,u_dim;',
+    'vec2 rot(vec2 p,float a){float c=cos(a),s=sin(a);return vec2(c*p.x-s*p.y,s*p.x+c*p.y);}',
+    'float neuro(vec2 uv,float t){',
+    ' vec2 acc=vec2(0.);vec2 res=vec2(0.);float sc=8.;',
+    ' for(int j=0;j<15;j++){',
+    '  uv=rot(uv,1.);acc=rot(acc,1.);',
+    '  vec2 layer=uv*sc+float(j)+acc-t;',
+    '  acc+=sin(layer);',
+    '  res+=(.5+.5*cos(layer))/sc;',
+    '  sc*=1.2;',
+    ' }',
+    ' return res.x+res.y;}',
+    'void main(){vec2 uv=(gl_FragCoord.xy-.5*u_res)/u_res.y;',
+    ' vec2 s_uv=uv*.13;',
+    ' float t=.5*u_time*u_speed;',
+    ' float n=neuro(s_uv,t);',
+    ' n=(1.+u_bright)*n*n;',                  // faithful: brightness is a 0..1 multiplier
+    ' n=pow(n,.7+6.*u_contrast);',
+    ' n=min(1.4,n);',
+    ' float blend=smoothstep(.7,1.4,n);',
+    ' float a=clamp(n,0.,1.);',
+    ' vec3 col=mix(u_mid,u_front,blend)*n;',   // faithful blendFront * noise
+    ' col+=u_back*(1.-a);',                    // back fills where noise fades
+    ' col*=u_dim;',                            // darken in place: same pattern, less light
+    ' gl_FragColor=vec4(col,1.);}',
+  ].join('\n');
+
+  // SmokeRing, ported from paper-design/shaders smoke-ring.ts (Apache 2.0).
+  // Radial gradient shaped with layered value-noise into a smoky ring. White
+  // on transparent, premultiplied so it glows over the emblem with no square
+  // edge. Params follow the user spec: noiseScale 3, 8 iterations, radius .25,
+  // thickness .65, innerShape .7, speed .5, scale .8.
+  const FRAG_HEAT = [
+    'precision highp float;',
+    'uniform vec2 u_res;uniform float u_time;',
+    'uniform vec3 u_cFront;',
+    'uniform float u_thickness,u_radius,u_inner,u_scale,u_speed;',
+    'uniform float u_noiseScale,u_noiseIter;',
+    'float randomR(vec2 p){p=fract(p*vec2(443.897,441.423));',
+    ' p+=dot(p,p.yx+19.19);return fract((p.x+p.y)*p.x);}',
+    'float valueNoise(vec2 st){',
+    ' vec2 i=floor(st),f=fract(st);',
+    ' float a=randomR(i),b=randomR(i+vec2(1.,0.)),c=randomR(i+vec2(0.,1.)),d=randomR(i+vec2(1.,1.));',
+    ' vec2 u=f*f*(3.-2.*f);',
+    ' return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);}',
+    'vec2 fbm(vec2 n0,vec2 n1){',
+    ' vec2 total=vec2(0.);float amp=.4;',
+    ' for(int i=0;i<8;i++){',
+    '  if(i>=int(u_noiseIter))break;',
+    '  total.x+=valueNoise(n0)*amp;',
+    '  total.y+=valueNoise(n1)*amp;',
+    '  n0*=1.99;n1*=1.99;amp*=.65;',
+    ' }',
+    ' return total;}',
+    'float getNoise(vec2 uv,vec2 pUv,float t){',
+    ' vec2 pl=pUv+.03*t;',
+    ' float period=max(abs(u_noiseScale*6.2831853),1e-6);',
+    ' vec2 pr=vec2(fract(pUv.x/period)*period,pUv.y)+.03*t;',
+    ' vec2 noise=fbm(pl,pr);',
+    ' return mix(noise.y,noise.x,smoothstep(-.25,.25,uv.x));}',
+    'void main(){',
+    ' vec2 uv=(gl_FragCoord.xy-.5*u_res)/u_res.y;',
+    ' vec2 s_uv=uv/u_scale;',
+    ' float t=u_time*u_speed;',
+    ' float cyc=3.;float per=2.*cyc;',
+    ' float lt1=fract((.1*t+cyc)/per)*per;',
+    ' float lt2=fract((.1*t)/per)*per;',
+    ' float tbl=.5+.5*sin(.1*t*3.14159/cyc-.5*3.14159);',
+    ' float atg=atan(s_uv.y,s_uv.x)+.001;',
+    ' float l=length(s_uv);',
+    ' float rad=.5*l-inversesqrt(max(1e-4,l));',
+    ' vec2 p1=vec2(atg,lt1-rad)*u_noiseScale;',
+    ' vec2 p2=vec2(atg,lt2-rad)*u_noiseScale;',
+    ' float n=mix(getNoise(s_uv,p1,t),getNoise(s_uv,p2,t),tbl);',
+    ' s_uv*=.8+1.2*n;',
+    ' float d=length(s_uv);',
+    ' float ring=1.-smoothstep(u_radius,u_radius+u_thickness,d);',
+    ' ring*=smoothstep(u_radius-u_inner*u_inner*u_inner*u_thickness,u_radius,d);',
+    ' vec3 col=u_cFront;',
+    ' gl_FragColor=vec4(col*ring,ring);}',               // premultiplied
+  ].join('\n');
+
+  function hexToUnit(h, fb) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(h || '').trim());
+    if (!m) return fb;
+    const n = parseInt(m[1], 16);
+    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  }
+  function cssVar(name, fb) {
+    try {
+      const v = getComputedStyle(document.body).getPropertyValue(name).trim();
+      return v || fb;
+    } catch { return fb; }
+  }
+  function numVar(name, fb) {
+    const v = parseFloat(cssVar(name, String(fb)));
+    return Number.isFinite(v) ? v : fb;
+  }
+
+  // alpha=true for the heat layer: it must composite over the emblem, not cover
+  // it with an opaque square. The background stays opaque (alpha:false) so it
+  // never shows the window paint through.
+  function makeGl(canvas, frag, transparent) {
+    if (!canvas || typeof canvas.getContext !== 'function') return null;
+    let gl = null;
+    try {
+      gl = canvas.getContext('webgl', {
+        alpha: !!transparent, antialias: false, depth: false, stencil: false,
+        premultipliedAlpha: true,
+      });
+    } catch {}
+    if (!gl) return null;
+    if (transparent) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);   // premultiplied
+      gl.clearColor(0, 0, 0, 0);
+    }
+    const sh = (type, src) => {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src); gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { gl.deleteShader(s); return null; }
+      return s;
+    };
+    const vs = sh(gl.VERTEX_SHADER, VERT), fs = sh(gl.FRAGMENT_SHADER, frag);
+    if (!vs || !fs) return null;
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+    gl.useProgram(prog);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, 'p');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    return { gl, u: (n) => gl.getUniformLocation(prog, n) };
+  }
+
+  const RM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const bgCanvas = document.getElementById('bg-shader');
+  const bg = makeGl(bgCanvas, FRAG_NOISE);
+  const heat = { list: [] };        // hero canvases, rebuilt with each empty state
+
+  let lastTime = 0;
+  window.__museHeatAttach = (canvas) => {
+    const ctx = makeGl(canvas, FRAG_HEAT, true);
+    if (!ctx) return;
+    heat.list = heat.list.filter((e) => e.canvas.isConnected);
+    heat.list.push({ canvas, ctx });
+    // first layout may not have run yet: fit now if measurable, else next frame
+    const fit = () => { sizeCanvas(canvas, ctx, 1.5); drawHeat(lastTime); };
+    if (canvas.clientWidth > 0) fit();
+    else if (typeof requestAnimationFrame === 'function') requestAnimationFrame(fit);
+    else fit();
+  };
+
+  function sizeCanvas(canvas, ctx, dprCap) {
+    const dpr = Math.min(window.devicePixelRatio || 1, dprCap);
+    const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w; canvas.height = h;
+      ctx.gl.viewport(0, 0, w, h);
+    }
+    return [w, h];
+  }
+
+  function drawBg(time) {
+    if (!bg) return;
+    const [w, h] = sizeCanvas(bgCanvas, bg, 1.25);
+    const gl = bg.gl;
+    gl.uniform2f(bg.u('u_res'), w, h);
+    gl.uniform1f(bg.u('u_time'), time);
+    gl.uniform3fv(bg.u('u_front'), hexToUnit(cssVar('--shader-front', '#ffffff'), [1, 1, 1]));
+    gl.uniform3fv(bg.u('u_mid'), hexToUnit(cssVar('--shader-mid', '#47a6ff'), [.28, .65, 1]));
+    gl.uniform3fv(bg.u('u_back'), hexToUnit(cssVar('--shader-back', '#000000'), [0, 0, 0]));
+    gl.uniform1f(bg.u('u_bright'), numVar('--shader-brightness', .05));
+    gl.uniform1f(bg.u('u_contrast'), numVar('--shader-contrast', .3));
+    gl.uniform1f(bg.u('u_speed'), numVar('--shader-speed', 1));
+    gl.uniform1f(bg.u('u_dim'), numVar('--shader-dim', 1));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  function drawHeat(time) {
+    for (const entry of heat.list) {
+      if (!entry.canvas.isConnected) continue;
+      const [w, h] = sizeCanvas(entry.canvas, entry.ctx, 1.5);
+      const gl = entry.ctx.gl, u = entry.ctx.u;
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform2f(u('u_res'), w, h);
+      gl.uniform1f(u('u_time'), time);
+      gl.uniform3fv(u('u_cFront'), hexToUnit(cssVar('--smoke-front', '#ffffff'), [1, 1, 1]));
+      gl.uniform1f(u('u_thickness'), numVar('--smoke-thickness', .65));
+      gl.uniform1f(u('u_radius'), numVar('--smoke-radius', .25));
+      gl.uniform1f(u('u_inner'), numVar('--smoke-innerShape', .7));
+      gl.uniform1f(u('u_scale'), numVar('--smoke-scale', .8));
+      gl.uniform1f(u('u_speed'), numVar('--smoke-speed', .5));
+      gl.uniform1f(u('u_noiseScale'), numVar('--smoke-noiseScale', 3));
+      gl.uniform1f(u('u_noiseIter'), numVar('--smoke-noiseIterations', 8));
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+    heat.list = heat.list.filter((e) => e.canvas.isConnected);
+  }
+
+  let raf = 0, running = false, t0 = 0;
+  function frame(now) {
+    if (!running) return;
+    const time = (now - t0) / 1000;
+    lastTime = time;
+    drawBg(time);
+    drawHeat(time);
+    raf = requestAnimationFrame(frame);
+  }
+  function start() {
+    if (running || RM || document.body.classList.contains('shader-off')) return;
+    if (typeof requestAnimationFrame !== 'function') return;   // test DOMs: static only
+    running = true; t0 = performance.now();
+    raf = requestAnimationFrame(frame);
+  }
+  function stop() { running = false; cancelAnimationFrame(raf); }
+  function renderOnce() { drawBg(0); drawHeat(0); }
+
+  // theme or var changes repaint a static frame so colors follow immediately
+  window.__museShaderRefresh = () => {
+    heat.list = heat.list.filter((e) => e.canvas.isConnected);
+    if (RM || !running) renderOnce();
+  };
+
+  const toggle = document.getElementById('pref-shader');
+  if (toggle) {
+    toggle.addEventListener('change', () => {
+      document.body.classList.toggle('shader-off', !toggle.checked);
+      if (toggle.checked) { renderOnce(); start(); } else stop();
+    });
+  }
+  // glass opacity slider: writes --glass-opacity on body, which both theme
+  // --glass-fill formulas consume. Inline var beats the theme default.
+  const glassSlider = document.getElementById('glass-opacity');
+  const glassLabel = document.getElementById('glass-opacity-val');
+  if (glassSlider && glassLabel) {
+    glassSlider.addEventListener('input', () => {
+      const v = parseInt(glassSlider.value, 10) / 100;
+      const body = document.body;
+      if (body && body.style && typeof body.style.setProperty === 'function') {
+        body.style.setProperty('--glass-opacity', String(v));
+      }
+      glassLabel.textContent = glassSlider.value + '%';
+    });
+  }
+  if (document.addEventListener) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) stop();
+      else if (toggle && toggle.checked) start();
+    });
+  }
+  if (window.addEventListener) window.addEventListener('resize', () => { if (RM || !running) renderOnce(); });
+
+  if (!bg) document.body.classList.add('shader-off');
+  renderOnce();
+  start();
 })();
 
 /* ---------- boot ---------- */

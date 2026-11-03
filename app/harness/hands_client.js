@@ -75,7 +75,7 @@ function attachToSupervisor(proc) {
       if (tail) superviseNote(`sidecar stderr: ${tail}`);
     });
   } catch {}
-  proc.on('error', () => { starting = null; superviseNote('sidecar spawn error (python not found?)'); });
+  proc.on('error', (err) => { starting = null; superviseNote(`sidecar spawn error: ${err && err.code ? err.code : err && err.message ? err.message : 'unknown'}`); });
   proc.on('exit', (code) => {
     if (supervisor.proc !== proc) return;      // replaced already
     supervisor.proc = null;
@@ -114,16 +114,22 @@ function spawnSidecarProcess() {
   // PATH-independent fallback: the py launcher lives in C:\Windows and finds
   // every registered python even when PATH is broken. Fires on spawn error
   // (ENOENT), i.e. python not resolvable.
-  proc.on('error', () => {
+  proc.on('error', (err) => {
     if (process.platform === 'win32' && !/\.exe$/i.test(pyExe)) {
-      try {
-        const alt = spawn('py', ['-3', ...args], spawnOpts);
-        superviseNote(`python ("${pyExe}") not on PATH — sidecar via py launcher`);
+      const alt = spawn('py', ['-3', ...args], spawnOpts);
+      let attached = false;
+      alt.on('error', (e2) => {
+        if (attached) return;   // alt spawned ok but died later: supervisor owns it
+        superviseNote(`sidecar spawn failed: "${pyExe}" (${err && err.code}) and py launcher (${e2 && e2.code}). Install Python 3 or set MUSE_PYTHON to python.exe.`);
+      });
+      alt.on('spawn', () => {
+        attached = true;
+        superviseNote(`python ("${pyExe}") not on PATH, sidecar via py launcher`);
         attachToSupervisor(alt);
-      } catch { superviseNote('sidecar spawn error (no python on PATH and py launcher failed)'); }
+      });
       return;
     }
-    superviseNote('sidecar spawn error (python not found?)');
+    superviseNote(`sidecar spawn error: ${err && err.code ? err.code : err && err.message ? err.message : 'unknown'} (python "${pyExe}"; set MUSE_PYTHON to override)`);
   });
   return attachToSupervisor(proc);
 }

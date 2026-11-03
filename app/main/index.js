@@ -691,7 +691,11 @@ ipcMain.handle('sessions:load', async (e, id) => {
     for (const m of s.history || []) {
       if (m.role === 'user') send('agent-event', { type: 'restored_user', text: m.content });
       else if (m.role === 'assistant' && m.content) send('agent-event', { type: 'restored_assistant', text: m.content });
-      else if (m.role === 'tool') send('agent-event', { type: 'restored_tool', name: m.name || 'tool' });
+      else if (m.role === 'tool') {
+        let result;
+        try { result = JSON.parse(m.content); } catch { result = undefined; }
+        send('agent-event', { type: 'restored_tool', name: m.name || 'tool', result });
+      }
     }
     return { ok: true, title: s.title, turns: (s.history || []).length };
   } catch (e) {

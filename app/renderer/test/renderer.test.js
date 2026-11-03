@@ -51,3 +51,27 @@ test('new project session keeps root; leaving clears root and conversation',asyn
  assert.equal(root,null);assert.equal(resets,2);assert.equal(t.run('transcriptMessages.length'),0);assert.equal(t.nodes.get('btn-leave-project').hidden,true);
 });
 test('right panel can reopen from header after collapse',()=>{const t=setup();t.nodes.get('wb-close').click();assert.equal(t.nodes.get('workbench').classList.contains('collapsed'),true);assert.equal(t.nodes.get('btn-workbench-toggle')['aria-expanded'],'false');t.nodes.get('btn-workbench-toggle').click();assert.equal(t.nodes.get('workbench').classList.contains('collapsed'),false);assert.equal(t.nodes.get('btn-workbench-toggle')['aria-expanded'],'true');});
+
+test('execution card pairs call and result into one row with status and duration',async()=>{
+ const t=setup();
+ t.event({type:'tool_call',id:'c1',name:'shell',args:{cmd:'ls'}});
+ t.event({type:'tool_result',id:'c1',name:'shell',result:{ok:true,stdout:'x'}});
+ const transcript=t.nodes.get('transcript');
+ const cards=transcript.children.filter(n=>String(n.className||'').includes('tool-row'));
+ assert.equal(cards.length,1,'call and result must merge into one card');
+ const dot=cards[0].descendants().find(n=>String(n.className||'').includes('tr-dot'));
+ assert.ok(dot,'card has a status dot');
+ assert.ok([...dot.classes].includes('ok'),'dot shows ok');
+ const dur=cards[0].descendants().find(n=>String(n.className||'').includes('tr-dur'));
+ assert.match(dur.textContent,/s$/,'duration text present');
+ assert.equal(t.run('openCards.size'),0,'pairing map drained');
+});
+test('denied result renders denied card with reason',()=>{
+ const t=setup();
+ t.event({type:'tool_result',id:'c9',name:'shell',denied:true,reason:'policy'});
+ const transcript=t.nodes.get('transcript');
+ const card=transcript.children.find(n=>String(n.className||'').includes('tool-row'));
+ assert.ok(card,'denied card rendered');
+ assert.ok(String(card.className).includes('denied')||[...card.classes].includes('denied'),'card flagged denied');
+ assert.match(card.textContent,/denied/,'reason text present');
+});
