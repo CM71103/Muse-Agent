@@ -266,6 +266,15 @@ class Agent {
       tainted: this.tainted,
       projectId: this.projectId,
     });
+    // two-tier summary: if history carries a compacted block, record its text
+    // as full(<=280)/compact(<=60) keyed to the session. Derived, no LLM call.
+    const comp = this.history.find(m => m && m.name === 'compacted');
+    if (comp && typeof comp.content === 'string') {
+      const body = comp.content.replace(/^[^\n]*\n/, ''); // drop the marker line
+      const firstLine = body.split('\n').find(l => l.trim()) || body;
+      try { session.saveSummary(this.sessionId, { turnKey: 'compacted', full: body, compact: firstLine }); }
+      catch { /* summary is presentation-only; never break persist */ }
+    }
   }
 
   async restore(sessionId) {

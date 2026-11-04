@@ -750,7 +750,11 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
 .composer-meta{font-size:11px;color:var(--color-muted-fg)}.who{font-size:12px}.bubble{border-radius:var(--radius-lg);padding:17px 21px;background:var(--color-user-bubble);color:var(--color-foreground);font-size:15px;line-height:1.7}
 #workbench{width:320px;background:var(--glass-fill);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
 .workspace-stats{display:flex;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--color-border-soft)}.workspace-stats div{display:flex;flex-direction:column;gap:0}.workspace-stats strong{font-size:16px;font-weight:600;color:var(--color-foreground)}.workspace-stats span{font-size:11px;color:var(--color-muted-fg)}.inspector-heading{padding:18px 20px 0;display:flex;gap:8px;align-items:center;font-size:13px}.count-badge{font-size:11px;background:var(--color-secondary);color:var(--color-muted-fg);border-radius:20px;padding:0 6px}.inspector-hint{font-size:11px;color:var(--color-muted-fg);padding:6px 20px;margin:0}.wb-tabs{border:0;padding:10px 14px;gap:0}.wb-tabs button{font-size:11.5px;padding:7px 9px}.wb-tabs button[aria-selected=true]{background:var(--color-accent);color:var(--color-accent-fg);font-weight:600}.wb-tabs #wb-close{font-size:14px;padding:4px}.wb-panels{padding:0 20px 18px}.wb-section{padding:18px 0;border-color:var(--color-border-soft)}.wb-k{font-size:11px;margin-bottom:6px}.wb-v{font-size:13px;font-weight:500}.wb-section .wb-v{border-left:3px solid var(--color-border);padding:6px 11px;background:var(--color-surface-subtle);border-radius:var(--radius-sm)}.shortcut{font-size:11px}
-#settings,#palette-dialog{border-radius:var(--radius-floating)}.settings-nav{background:var(--color-surface-subtle)}.md-head{background:transparent}.focus-mode main{max-width:1100px;margin:auto;width:100%}
+#settings,#palette-dialog{border-radius:var(--radius-floating)}.settings-nav{background:var(--color-surface-subtle)}.md-head{background:transparent}
+/* focus mode: center horizontally ONLY. margin:auto on both axes in a flex
+   column body centers vertically too, which clips the top of the pane off
+   screen with no way to scroll to it. Keep top anchored at 0. */
+.focus-mode main{max-width:1100px;margin:0 auto;width:100%}
 /* Responsive sidebar width drives --sidebar-w on body, so a JS drag (inline
    --sidebar-w on body) always overrides the media default. */
 @media(min-width:1500px){body{--sidebar-w:320px}#workbench{width:320px}#transcript{padding-top:52px}}
