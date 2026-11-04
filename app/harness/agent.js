@@ -569,9 +569,13 @@ class Agent {
         type: 'fact',
       }]);
       this._collectSourceEvent({ source_event_id: sourceEventId, text: String(userText).slice(0, 2000), provenance: 'user', type: 'fact' });
+      // The one batched embed flush per turn: drains this row plus every tool
+      // row queued during run(). embedPending() is all-or-nothing on a provider
+      // error, so a 429 leaves everything pending for the next turn rather than
+      // losing it — report as a deferred flush, not a failed ingest.
       await this.memory.embedPending();
     } catch (e) {
-      this.events({ type: 'error', text: `memory: ingest failed (${e.message})` });
+      this.events({ type: 'error', text: `memory: embed flush deferred to next turn (${e.message})` });
     }
   }
 
@@ -587,8 +591,11 @@ class Agent {
         type: 'fact',
       }]);
       this._collectSourceEvent({ source_event_id: sourceEventId, text, provenance: 'tool', type: 'fact' });
-      // batch-embed lazily — tool results can be frequent; keep DB writes cheap
-      await this.memory.embedPending();
+      // Queue only — no embed here. Calling embedPending() per tool result meant
+      // one HTTP request PER TOOL CALL (a 40-turn loop made ~40, which providers
+      // answer with 429). Rows stay 'pending_embed'; the single flush in
+      // ingestUserTurn() (run once per turn, after run() returns) drains every
+      // pending row in one batched request.
     } catch (e) {
       this.events({ type: 'error', text: `memory: tool ingest failed (${e.message})` });
     }

@@ -199,8 +199,14 @@ class MemoryLayer {
   // Returns PackedContext. May clamp budget to zero — that is normal, not an error.
   async requestContext(query, budgetInfo, opts = {}) {
     const clamp = this._clampBudget(budgetInfo);
-    // Retry durable pending writes on next user request, including migrated vectors.
-    if (clamp > 0) await this.embedPending();
+    // Retry durable pending writes on next user request, including migrated
+    // vectors. Failure here must not abort retrieval: those rows are already
+    // durable as 'pending_embed', so they retry on a later turn. Throwing would
+    // turn a transient 429 into a memoryless turn AND skip the query embed.
+    if (clamp > 0) {
+      try { await this.embedPending(); }
+      catch (e) { this.lastError = `pending embed retry deferred: ${e.message}`; }
+    }
     const t0 = new Date().toISOString();
 
     // fetch all rows — packer applies the status filter and reports omissions

@@ -12,7 +12,13 @@
 const crypto = require('crypto');
 
 const TIMEOUT_MS = 30000;
+// 429s from embedding providers are usually per-minute quota, not a blip: a
+// 0.5/1/2s backoff cannot outlast one. Retry with Retry-After honored, and
+// when the header is absent back off long enough to cross a minute boundary.
 const MAX_RETRIES = 3;
+// Longest wait worth absorbing inside a turn. A provider saying "retry in 90s"
+// gets an immediate throw instead of a frozen composer.
+const MAX_SHORT_WAIT_S = 5;
 
 function norm(v) {
   let s = 0;
@@ -106,7 +112,13 @@ async function embed(cfg, texts) {
 
     if (res.status === 429 || res.status >= 500) {
       const ra = Number(res.headers.get('retry-after') || 0);
-      const wait = ra > 0 ? Math.min(ra, 60) * 1000 : backoff(attempt);
+      // A quota 429 with Retry-After=30 is a "come back later", not a stall
+      // this turn should absorb. Fail immediately and leave rows pending; the
+      // next turn retries. Only short waits are worth sitting through.
+      if (ra > MAX_SHORT_WAIT_S) {
+        throw new Error(`embeddings HTTP ${res.status}; retry after ${ra}s (rows left pending)`);
+      }
+      const wait = ra > 0 ? ra * 1000 : backoff(attempt);
       attempt++;
       if (attempt <= MAX_RETRIES) { await sleep(wait); continue; }
       throw new Error(`embeddings HTTP ${res.status} after ${attempt} attempts`);
@@ -139,7 +151,10 @@ async function embed(cfg, texts) {
 }
 
 function backoff(attempt) {
-  return 500 * Math.pow(2, attempt - 1);   // 500ms, 1s, 2s
+  // 2s, 4s, 8s, 16s — deliberately longer than the old 500ms start. A provider
+  // answering 429 with no Retry-After is usually metering a rolling window;
+  // sub-second retries just burn the remaining quota.
+  return 2000 * Math.pow(2, attempt - 1);
 }
 
 function sleep(ms) {

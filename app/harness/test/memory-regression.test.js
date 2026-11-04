@@ -66,3 +66,37 @@ test('credential vault encrypts and refuses insecure backend; config writer excl
  const v=vault(safe,x.dir);v.write({llm:'fixture-secret'});assert.equal(v.read().llm,'fixture-secret');assert.equal(fs.readFileSync(path.join(x.dir,'credentials.enc'),'utf8').includes('fixture-secret'),false);
  const file=path.join(x.dir,'config.toml');writeSections(deepMerge(x.cfg,{llm:{api_key:'fixture-secret'},memory:{embed_api_key:'fixture-secret'}}),file);assert.equal(fs.readFileSync(file,'utf8').includes('fixture-secret'),false);
 });
+// 429 regression: ingestToolResult used to call embedPending() per tool result,
+// so a 40-turn tool loop made ~40 HTTP requests to the embeddings endpoint and
+// providers rate-limited. Rows must queue and flush in ONE batched call.
+test('tool ingest queues without embedding; one flush drains all rows',async t=>{
+ const x=setup(t);const m=x.open();const a=new Agent(x.cfg);a.attachMemory(m);
+ let embedCalls=0,textsPerCall=[];
+ m.embed=async(_c,texts)=>{embedCalls++;textsPerCall.push(texts.length);return {model:'test',vectors:texts.map(()=>({vector:[1,0]}))};};
+ for(let i=0;i<12;i++) await a.ingestToolResult('write_file',`result ${i}`,`call-${i}`);
+ assert.equal(embedCalls,0,'tool ingest must not hit the network');
+ assert.equal(m.listMemories().filter(r=>r.status==='pending_embed').length,12);
+ // the single per-turn flush drains every queued row in one batched request
+ await a.ingestUserTurn('a user message');
+ assert.equal(embedCalls,1);
+ assert.deepEqual(textsPerCall,[13],'all rows in ONE request, not one per row');
+ assert.equal(m.listMemories().filter(r=>r.status==='pending_embed').length,0);
+});
+// A deferred flush that fails must not abort retrieval: rows stay durable and
+// requestContext still embeds the query rather than throwing out of the turn.
+test('requestContext survives a failed pending flush',async t=>{
+ const x=setup(t);const m=x.open();
+ await m.ingest([{source_event_id:'a',text:'fact one',provenance:'user'}]);
+ assert.equal(m.listMemories()[0].status,'pending_embed');
+ m.embed=async()=>{throw new Error('429 quota')};
+ const c=await m.requestContext('a query',{contextLimit:100000,otherInputTokens:0,outputReserve:1000});
+ assert.equal(c.payload,'','degrades to empty context, never throws');
+ assert.equal(c.turn_id,null);
+ assert.match(String(c.clamp_reason||''),/embed_failed/);
+ assert.match(m.lastError,/429 quota/);
+ assert.equal(m.listMemories()[0].status,'pending_embed','row survives for a later turn');
+ // once the endpoint recovers, the still-pending row flushes normally
+ m.embed=async(_c,texts)=>({model:'test',vectors:texts.map(()=>({vector:[1,0]}))});
+ assert.equal((await m.embedPending()).embedded,1);
+ assert.equal(m.listMemories()[0].status,'active');
+});
