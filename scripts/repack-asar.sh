@@ -37,11 +37,16 @@ fi
 
 echo "==> swapping into $RES"
 cp "$STAGE/app-new.asar" "$RES/app.asar"
-# the unpacked native tree is content-addressed by build; refresh it only when
-# better-sqlite3 actually changed (Windows may hold a lock on the .node files)
-rm -rf "$RES/app.asar.unpacked" 2>/dev/null || \
-  echo "    (unpacked dir partially locked — prebuilds are unchanged, safe to ignore)"
-cp -r "$STAGE/app-new.asar.unpacked" "$RES/" 2>/dev/null || true
+# template.toml is an extraResource, not part of the asar — it seeds
+# ~/.muse-agent/config.toml on first run, so it must be refreshed too or new
+# installs keep the defaults from whenever the dir was last built.
+cp config.example.toml "$RES/template.toml"
+# The unpacked tree MUST be refreshed with the asar: members flagged unpacked
+# in the header are read from here, so a missing or stale dir means
+# better-sqlite3's native binary can't load and the app dies at startup.
+# Never swallow this copy — a Windows file lock leaves the tree half-swapped.
+rm -rf "$RES/app.asar.unpacked"
+cp -r "$STAGE/app-new.asar.unpacked" "$RES/app.asar.unpacked"
 
 echo "==> verifying shipped asar"
 # full extract, not extract-file: piping single-file extraction to stdout has
@@ -52,5 +57,34 @@ echo "session.js jsonl markers:     $(grep -c jsonlFile "$STAGE/verify/app/harne
 echo "hands_client bundledPython:   $(grep -c bundledPython "$STAGE/verify/app/harness/hands_client.js" 2>/dev/null || echo 0)"
 echo "agent.js saveSummary:         $(grep -c saveSummary "$STAGE/verify/app/harness/agent.js" 2>/dev/null || echo 0)"
 echo "test dirs excluded:           $(ls "$STAGE/verify/app/harness/" 2>/dev/null | grep -c '^test$')"
+# template.toml seeds first-run config; report the memory default it will install
+awk -v q='[memory]' '/^\[/{s=$0} /^enabled/{if(s==q)print "template memory default:     " $3}' \
+  "$RES/template.toml" 2>/dev/null || echo "template.toml missing"
+
+# The native binary must survive the swap: better-sqlite3 is flagged unpacked in
+# the asar header, so it loads from app.asar.unpacked/, NOT from inside the
+# archive. A missing/locked dir here means the app dies at startup.
+NATIVE="$RES/app.asar.unpacked/node_modules/better-sqlite3/prebuilds/win32-x64.node"
+if [ -f "$NATIVE" ]; then
+  printf "native better_sqlite3:        %s bytes\n" "$(stat -c%s "$NATIVE" 2>/dev/null || stat -f%z "$NATIVE")"
+else
+  echo "FATAL: native binary missing at $NATIVE" >&2
+  echo "       the asar marks better-sqlite3 unpacked; the app cannot start without it." >&2
+  exit 1
+fi
+
+# The packaged version must match package.json. If it drifts, the app self-reports
+# a different version than the release it is tagged under, so the updater offers
+# the same build as an update forever. Same-length version strings also defeat any
+# size-only copy downstream, so check by content.
+PKG_VER=$(node -e "process.stdout.write(require('./package.json').version)")
+ASAR_VER=$(node -e "process.stdout.write(require('$STAGE/verify/package.json').version)")
+if [ "$PKG_VER" = "$ASAR_VER" ]; then
+  echo "packaged version:             $ASAR_VER"
+else
+  echo "FATAL: asar version $ASAR_VER != package.json $PKG_VER" >&2
+  echo "       bump the version BEFORE packing, or the updater will loop." >&2
+  exit 1
+fi
 ls -la "$RES/app.asar" | awk '{print "app.asar bytes:", $5}'
 echo "done."

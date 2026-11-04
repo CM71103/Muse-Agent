@@ -27,10 +27,13 @@ function mockReleaseServer(status, body) {
 // checkUpdate's URL is fixed to api.github.com — we test the fetchJson+parse
 // path indirectly through cmpSemver and the no-update/error paths here, and
 // the wire path is covered by the module's bounded-error contract:
-test('checkUpdate: same version -> no update', async () => {
-  const res = await checkUpdate('0.1.3', 'CM71103/Muse-Agent');
+test('checkUpdate: local newer than release -> no update', async () => {
+  // Pinned high on purpose: this exercises cmpSemver against whatever the live
+  // repo currently reports, without asserting anything about that state. A
+  // hardcoded real version (e.g. '0.1.3') breaks the day a newer tag is pushed.
+  const res = await checkUpdate('999.0.0', 'CM71103/Muse-Agent');
   // live network call may fail in sandbox; either way it must never throw
-  // and must not report an update for an equal-or-newer local version
+  // and must not report an update when the local version is already ahead
   assert.equal(res.update, false);
 });
 

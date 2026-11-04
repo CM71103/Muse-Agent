@@ -102,9 +102,10 @@ level = "info"
 # dir = "C:/muse-logs"   # default ~/.muse-agent/logs
 
 [memory]
-# Adaptive memory layer (Phase 0 baseline). OFF by default — it stores your
-# conversation and tool results in ~/.muse-agent/memory/memory.json.
-enabled = false
+# Adaptive memory layer (Phase 0 baseline). ON by default — it stores your
+# conversation and tool results in ~/.muse-agent/memory. Set false to opt out;
+# if the chat endpoint has no /embeddings, turns degrade to memoryless.
+enabled = true
 # Fixed token allowance for retrieved memories per turn (spec §4.3 clamp:
 # context_limit − other_input − output_reserve − 256, may clamp to 0).
 budget_tokens = 1200

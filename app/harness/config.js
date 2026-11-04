@@ -61,7 +61,9 @@ const DEFAULTS = {
     dir: '',                          // default ~/.muse-agent/logs
   },
   memory: {
-    enabled: false,                   // OFF by default — opt-in (writes user data)
+    enabled: true,                    // ON by default — stores conversation + tool
+                                      // results in ~/.muse-agent/memory. Set false to
+                                      // opt out; failures degrade to memoryless turns.
     budget_tokens: 1200,              // fixed Phase-0 memory allowance per turn
     score_cutoff: 0.20,               // retrieval gate
     project_id: '',                  // explicit personal/manual ID, never inferred
