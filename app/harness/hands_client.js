@@ -102,8 +102,20 @@ function attachToSupervisor(proc) {
   return proc;
 }
 
+// The self-contained interpreter shipped in resources/python/runtime (see
+// scripts/build-python-runtime.sh). Present in packaged builds; absent in dev.
+function bundledPython() {
+  const exe = process.platform === 'win32' ? 'python.exe' : 'bin/python3';
+  const p = path.join(SIDECAR_DIR, 'runtime', exe);
+  return fs.existsSync(p) ? p : null;
+}
+
 function spawnSidecarProcess() {
-  const pyExe = process.env.MUSE_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  // Precedence: explicit override > bundled runtime > system python. The
+  // bundled one carries muse_hands and every dependency, so a fresh machine
+  // needs no Python install and no pip step.
+  const pyExe = process.env.MUSE_PYTHON || bundledPython()
+    || (process.platform === 'win32' ? 'python' : 'python3');
   const args = ['-m', 'muse_hands.server'];
   const spawnOpts = {
     cwd: SIDECAR_DIR,
