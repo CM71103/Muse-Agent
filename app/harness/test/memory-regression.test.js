@@ -160,3 +160,35 @@ test('rate-limited embed opens breaker for cooldown then retries',async t=>{
  assert.match(c.payload,/fact one/,'queued row flushed and packed');
  assert.equal(m.listMemories()[0].status,'active');
 });
+// A misconfigured embeddings endpoint must tell the user once, not once per
+// turn — and a transient cooldown must not shout at all. Drives the breaker
+// through real embed failures (embed throws -> breaker opens) rather than poking
+// _embBreaker directly, so it exercises the actual degrade path end to end.
+test('agent surfaces a hard embed failure once and stays quiet on cooldown',async t=>{
+ const x=setup(t);const m=x.open();const a=new Agent(x.cfg);a.attachMemory(m);
+ const notes=[];a.events=(ev)=>{if(ev.type==='error'&&/^embed_/.test(String(ev.text)))notes.push(ev.text);};
+ a.llm.chat=async()=>({message:{content:'ok'},usage:{total_tokens:1},finish_reason:'stop'});
+ // A row must exist or requestContext short-circuits ('no_memories') before the
+ // query embed, so the breaker would never be consulted.
+ const perm=async()=>{const e=new Error('embeddings HTTP 503 (permanent) — model_not_found');e.permanent=true;throw e;};
+ m.embed=perm;
+ await m.ingest([{source_event_id:'a',text:'fact one',provenance:'user'}]);
+ // first turn opens the breaker (embed fails) and surfaces one notice
+ await a.run('first');assert.equal(notes.length,1,'one notice for a hard failure');
+ assert.match(notes[0],/^embed_disabled/);
+ // subsequent turns: breaker short-circuits, same reason, notice suppressed
+ await a.run('second');await a.run('third');
+ assert.equal(notes.length,1,'no repeat while it stays broken');
+ // transient cooldown: never surfaced as an error. Fresh layer = closed breaker
+ // (which is what a new session gets), so this exercises the 429 path cleanly.
+ x.close();
+ const m2=x.open();const b=new Agent(x.cfg);b.attachMemory(m2);const bnotes=[];
+ b.events=(ev)=>{if(ev.type==='error'&&/^embed_/.test(String(ev.text)))bnotes.push(ev.text);};
+ b.llm.chat=async()=>({message:{content:'ok'},usage:{total_tokens:1},finish_reason:'stop'});
+ const rl=async()=>{const e=new Error('embeddings HTTP 429 after 4 attempts');e.rateLimited=true;throw e;};
+ m2.embed=rl;
+ await m2.ingest([{source_event_id:'b',text:'fact two',provenance:'user'}]);
+ await b.run('rate limited turn');
+ assert.equal(bnotes.length,0,'a self-healing cooldown is not an error');
+ assert.match(String(m2.lastError||''),/^embed_cooldown/,'breaker did open, just silently');
+});

@@ -72,6 +72,7 @@ class Agent {
     this.memoryTurns = new Map();        // per-run memory turn ids (turnIndex -> turn_id)
     this._sourceEvents = [];             // source events for session-end extraction
     this._sourceSeq = 0;                 // stable per-session event numbering
+    this._lastEmbedNotice = null;        // dedupe repeated memory-degraded notices
     // Human-in-the-loop state (approved model):
     this.cwdOverride = null;             // project scope root (absolute) or null
     this.netPolicy = { allowLocal: false };
@@ -373,7 +374,20 @@ class Agent {
           otherInputTokens: otherInput,
           outputReserve: this.cfg.llm.max_tokens || 8192,
         });
-        if (memCtx.clamp_reason && memCtx.clamp_reason.startsWith('embed_failed')) this.events({type:'error',text:memCtx.clamp_reason});
+        // Surface a memory degradation the user can act on, but not one that
+        // will heal itself. 'embed_failed' and 'embed_disabled' mean the
+        // endpoint/config is wrong — worth saying, once, since the text is
+        // identical every turn. 'embed_cooldown' is a transient rate limit the
+        // breaker already backs off for; repeating it per turn is just noise.
+        const reason = memCtx.clamp_reason;
+        if (reason && (reason.startsWith('embed_failed') || reason.startsWith('embed_disabled'))) {
+          if (this._lastEmbedNotice !== reason) {
+            this._lastEmbedNotice = reason;
+            this.events({ type: 'error', text: reason });
+          }
+        } else if (!reason) {
+          this._lastEmbedNotice = null;   // recovered: allow a future notice
+        }
         if (memCtx.turn_id) {
           // obligation 8: render memory as DELIMITED DATA, labeled trust tier,
           // never instructions. Store the EXACT block we will hash-check after
@@ -553,6 +567,7 @@ class Agent {
     this._title = null;
     this.lastMemoryTurnId = null;   // /good /bad grade the current session's turn only
     this._sourceEvents = [];        // fresh session, fresh extraction window
+    this._lastEmbedNotice = null;   // a new session may re-warn about a bad endpoint
   }
 
   // --- memory ingestion (obligation 1): source events with stable IDs ---
