@@ -29,6 +29,16 @@ const prompts = require('./prompts/prompts');
 // lineage (spec §2 prompts: changing them starts a new evidence version).
 const EVIDENCE_VERSION_SEED = '1';
 
+// How long the embeddings circuit breaker stays open after a 429 with no
+// Retry-After. Long enough to cross a provider's rolling per-minute window.
+const EMBED_COOLDOWN_MS = 60000;
+// Longer window for failures that look permanent (unroutable model, bad auth).
+// Deliberately finite, not Infinity: a relay outage returns the same
+// "no available channel" body as a genuinely misconfigured embed_model, and a
+// process-lifetime lockout would never self-heal from the outage. Ten minutes
+// stops the per-turn hammering and repeated errors while still recovering.
+const EMBED_PERMANENT_COOLDOWN_MS = 600000;
+
 // ---------- MemoryLayer ----------
 
 class MemoryLayer {
@@ -78,6 +88,8 @@ class MemoryLayer {
     this.dailyTokenCap = Number(m.daily_token_cap ?? 200000);
     if (!Number.isFinite(this.dailyTokenCap) || this.dailyTokenCap < 0) { this.close(); throw new Error('Invalid memory.daily_token_cap'); }
     this._clock = opts.clock || (() => Date.now());   // injectable for tests
+    // embeddings circuit breaker: { openUntil, reason, detail } or null
+    this._embBreaker = null;
 
     // policy version: flags default false (Phase 0 baseline). Any change is
     // recorded as a new policy/evidence version (§9).
@@ -180,11 +192,53 @@ class MemoryLayer {
   }
   // Cap-aware embed wrapper. Refusal is a 429-style degrade — never a silent
   // bypass: callers surface `token_cap_exceeded` to the host/UI.
+  // Circuit breaker for the embeddings endpoint. Without it a misconfigured or
+  // rate-limited endpoint retries every turn for the life of the session: each
+  // turn burns its retry budget, stalls the composer, and surfaces the same red
+  // error. Open on a permanent-looking failure (unroutable model, bad auth) or a
+  // rate limit, and report that in the degrade reason instead of repeating the
+  // raw HTTP status. Both windows are finite so a relay outage still self-heals.
+  _embedBreakerOpen() {
+    const b = this._embBreaker;
+    if (!b || b.openUntil <= this._clock()) return null;
+    if (b.reason === 'permanent') {
+      return `embed_disabled: ${b.detail} (check memory.embed_model / embed_base_url against GET {base_url}/models)`;
+    }
+    const secs = Math.max(1, Math.round((b.openUntil - this._clock()) / 1000));
+    return `embed_cooldown: retrying in ${secs}s (${b.detail})`;
+  }
+
   async _embedCapped(texts) {
     if (this._capRemaining() <= 0) {
       const e = new Error('daily_token_cap_exceeded'); e.code = 'TOKEN_CAP'; throw e;
     }
-    const r = await this.embed(this.emb, texts);
+    const blocked = this._embedBreakerOpen();
+    if (blocked) {
+      const e = new Error(blocked); e.code = 'EMBED_BREAKER'; throw e;
+    }
+    let r;
+    try {
+      r = await this.embed(this.emb, texts);
+    } catch (err) {
+      // Clear first, then reopen only for the kinds that deserve a window. A
+      // plain timeout or malformed response leaves the breaker closed so the
+      // next turn retries immediately rather than inheriting a stale window.
+      this._embBreaker = null;
+      if (err.permanent) {
+        // Wrong model or auth: identical every turn, so retrying per turn only
+        // re-stalls the composer and re-prints the same error. Finite window,
+        // not Infinity — see EMBED_PERMANENT_COOLDOWN_MS.
+        this._embBreaker = {
+          openUntil: this._clock() + EMBED_PERMANENT_COOLDOWN_MS,
+          reason: 'permanent', detail: err.message,
+        };
+      } else if (err.rateLimited || err.cooldown) {
+        const ms = err.cooldown || EMBED_COOLDOWN_MS;
+        this._embBreaker = { openUntil: this._clock() + ms, reason: 'rate_limited', detail: err.message };
+      }
+      throw err;
+    }
+    this._embBreaker = null;       // success closes the breaker
     const used = r.usage && Number.isFinite(Number(r.usage.total_tokens))
       ? Number(r.usage.total_tokens)
       : this._estimateTokens(texts);   // disclosed estimate when usage missing
@@ -227,7 +281,10 @@ class MemoryLayer {
     } catch (e) {
       // Embedding failure is NOT a memory failure that poisons the turn — degrade to empty context.
       // Token-cap refusal is likewise a disclosed degrade, never a silent bypass.
-      const reason = e.code === 'TOKEN_CAP' ? 'token_cap_exceeded' : `embed_failed: ${e.message}`;
+      // Breaker reasons are already self-describing; do not wrap them again.
+      const reason = e.code === 'TOKEN_CAP' ? 'token_cap_exceeded'
+        : e.code === 'EMBED_BREAKER' ? e.message
+        : `embed_failed: ${e.message}`;
       this.lastError = reason;
       this.store.bumpMeta('stats:requests_empty');
       return this._emptyContext(clamp, t0, reason);
@@ -651,6 +708,13 @@ class MemoryLayer {
     try { r = await this._embedCapped(texts); }
     catch (e) {
       if (e.code === 'TOKEN_CAP') return { embedded: 0, refused: 'daily_token_cap_exceeded', pending: pending.length };
+      // Breaker open = the endpoint is known-bad right now. That is a disclosed
+      // degrade with rows left durable-pending, not a write failure; throwing
+      // would make every turn surface the same red error.
+      if (e.code === 'EMBED_BREAKER') {
+        this.lastError = e.message;
+        return { embedded: 0, refused: e.message, pending: pending.length };
+      }
       this.lastError = `Embedding write failed: ${e.message}`; throw new Error(this.lastError);
     }
     const out = [];

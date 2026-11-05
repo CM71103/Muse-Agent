@@ -100,3 +100,63 @@ test('requestContext survives a failed pending flush',async t=>{
  assert.equal((await m.embedPending()).embedded,1);
  assert.equal(m.listMemories()[0].status,'active');
 });
+// The 429 that was really a 503 model_not_found: a misconfigured embed_model
+// fails identically every turn. The breaker must open permanently, degrade
+// quietly, and never keep hammering the endpoint or repeating the red error.
+test('permanent embed failure opens breaker; later turns degrade without calling provider',async t=>{
+ const x=setup(t);const m=x.open();
+ await m.ingest([{source_event_id:'a',text:'fact one',provenance:'user'}]);
+ let now=0;m._clock=()=>now;
+ let calls=0;
+ // emulate the relay's real reply for an unroutable model
+ m.embed=async()=>{calls++;const e=new Error('embeddings HTTP 503 (permanent) — {"error":{"code":"model_not_found"}}');e.permanent=true;throw e;};
+ // turn 1: one attempt reaches the wire, then the breaker opens
+ let c=await m.requestContext('q',{contextLimit:100000,otherInputTokens:0,outputReserve:1000});
+ assert.equal(calls,1);
+ assert.match(c.clamp_reason,/^embed_disabled/,'reason says disabled, not embed_failed');
+ assert.match(c.clamp_reason,/model_not_found/,'carries the provider detail');
+ // turn 2+: breaker short-circuits, provider never called again
+ c=await m.requestContext('q',{contextLimit:100000,otherInputTokens:0,outputReserve:1000});
+ assert.equal(calls,1,'breaker must not re-hit a permanently-failing endpoint');
+ assert.match(c.clamp_reason,/^embed_disabled/);
+ // pending flush also degrades to a returned refusal, not a thrown error
+ const r=await m.embedPending();
+ assert.equal(r.embedded,0);
+ assert.match(String(r.refused||''),/^embed_disabled/);
+ assert.equal(m.listMemories()[0].status,'pending_embed','row stays durable');
+ // Recovery is NOT in-process-immediate: a permanent failure locks out for a
+ // long window (a relay outage and a bad embed_model look identical, and a
+ // process-lifetime lockout would never heal from the outage). Past that window
+ // the endpoint is retried and the backlog flushes.
+ now+=601000;
+ m.embed=async(_c,texts)=>{calls++;return {model:'test',vectors:texts.map(()=>({vector:[1,0]}))};};
+ assert.equal((await m.embedPending()).embedded,1,'retried after the permanent window');
+ assert.equal(calls,2);
+ assert.equal(m.listMemories()[0].status,'active');
+});
+// A transient 429 opens the breaker only for the cooldown window, then retries.
+test('rate-limited embed opens breaker for cooldown then retries',async t=>{
+ const x=setup(t);const m=x.open();
+ await m.ingest([{source_event_id:'a',text:'fact one',provenance:'user'}]);
+ let now=0;m._clock=()=>now;
+ let calls=0;
+ m.embed=async()=>{calls++;const e=new Error('embeddings HTTP 429 after 4 attempts');e.rateLimited=true;throw e;};
+ let c=await m.requestContext('q',{contextLimit:100000,otherInputTokens:0,outputReserve:1000});
+ assert.equal(calls,1);
+ assert.match(c.clamp_reason,/^embed_cooldown/);
+ // still open mid-cooldown: no provider call
+ now+=1000;
+ c=await m.requestContext('q',{contextLimit:100000,otherInputTokens:0,outputReserve:1000});
+ assert.equal(calls,1,'cooldown must not hammer the rate-limited endpoint');
+ assert.match(c.clamp_reason,/^embed_cooldown/);
+ // After the window the breaker lets one turn through. That turn makes TWO
+// embeds — the pending flush and the query — and the previously-queued row
+// becomes retrievable, so a transient limit costs a turn but no data.
+ m.embed=async(_c,texts)=>{calls++;return {model:'test',vectors:texts.map(()=>({vector:[1,0]}))};};
+ now+=120000;
+ c=await m.requestContext('q',{contextLimit:100000,otherInputTokens:0,outputReserve:1000});
+ assert.equal(calls,3,'flush + query once the cooldown elapses');
+ assert.equal(c.clamp_reason,null,'recovered: no degrade reason');
+ assert.match(c.payload,/fact one/,'queued row flushed and packed');
+ assert.equal(m.listMemories()[0].status,'active');
+});

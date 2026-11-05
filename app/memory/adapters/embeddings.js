@@ -75,6 +75,29 @@ function makePin(model, dims) {
   return { model: model, dims: dims };
 }
 
+// Read a provider error body for the message we throw. Bounded, and never
+// throws: the body is diagnostic text, not a contract.
+// Without this, "HTTP 503" hides that the relay actually said
+// model_not_found — which is a config error, not a transient one.
+async function errorBody(res) {
+  try {
+    const t = await res.text();
+    return t ? t.replace(/\s+/g, ' ').slice(0, 200) : '';
+  } catch { return ''; }
+}
+
+// Permanent = retrying cannot help. Relays signal "this model isn't routable"
+// as 503 model_not_found or 404/400/422, sometimes as 429, so match on the
+// body too, not just the status.
+function isPermanent(status, body) {
+  if (status === 400 || status === 401 || status === 403 || status === 404 || status === 422) return true;
+  if (!body) return false;
+  const b = body.toLowerCase();
+  return b.includes('model_not_found') || b.includes('does not exist')
+    || b.includes('invalid model') || b.includes('no available channel')
+    || b.includes('invalid_api_key') || b.includes('incorrect api key');
+}
+
 // ---- provider client ----
 
 // cfg: { baseUrl, apiKey, model, dims }
@@ -110,22 +133,34 @@ async function embed(cfg, texts) {
     }
     clearTimeout(timer);
 
-    if (res.status === 429 || res.status >= 500) {
-      const ra = Number(res.headers.get('retry-after') || 0);
-      // A quota 429 with Retry-After=30 is a "come back later", not a stall
-      // this turn should absorb. Fail immediately and leave rows pending; the
-      // next turn retries. Only short waits are worth sitting through.
-      if (ra > MAX_SHORT_WAIT_S) {
-        throw new Error(`embeddings HTTP ${res.status}; retry after ${ra}s (rows left pending)`);
-      }
-      const wait = ra > 0 ? ra * 1000 : backoff(attempt);
-      attempt++;
-      if (attempt <= MAX_RETRIES) { await sleep(wait); continue; }
-      throw new Error(`embeddings HTTP ${res.status} after ${attempt} attempts`);
-    }
-
     if (!res.ok) {
-      throw new Error(`embeddings HTTP ${res.status}`);
+      const body = await errorBody(res);
+      const detail = body ? ` — ${body}` : '';
+      // A wrong embed_model/auth fails identically every turn; retrying it 4x
+      // just stalls the composer and reports a misleading "after N attempts".
+      if (isPermanent(res.status, body)) {
+        const e = new Error(`embeddings HTTP ${res.status} (permanent)${detail}`);
+        e.permanent = true;
+        throw e;
+      }
+      if (res.status === 429 || res.status >= 500) {
+        const ra = Number(res.headers.get('retry-after') || 0);
+        // A quota 429 with Retry-After=30 is a "come back later", not a stall
+        // this turn should absorb. Fail immediately and leave rows pending; the
+        // next turn retries. Only short waits are worth sitting through.
+        if (ra > MAX_SHORT_WAIT_S) {
+          const e = new Error(`embeddings HTTP ${res.status}; retry after ${ra}s (rows left pending)${detail}`);
+          e.cooldown = ra * 1000;
+          throw e;
+        }
+        const wait = ra > 0 ? ra * 1000 : backoff(attempt);
+        attempt++;
+        if (attempt <= MAX_RETRIES) { await sleep(wait); continue; }
+        const e = new Error(`embeddings HTTP ${res.status} after ${attempt} attempts${detail}`);
+        e.rateLimited = res.status === 429;
+        throw e;
+      }
+      throw new Error(`embeddings HTTP ${res.status}${detail}`);
     }
 
     const data = await res.json();
