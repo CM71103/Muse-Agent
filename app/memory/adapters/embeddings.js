@@ -46,8 +46,17 @@ function cosine(a, b) {
 // A real swap ("text-embedding-3-large" behind a small config) still mismatches.
 function canonicalModel(name) {
   const s = String(name || '');
-  const i = s.lastIndexOf('/');
-  return i >= 0 ? s.slice(i + 1) : s;
+  let seg = s.slice(s.lastIndexOf('/') + 1);
+  // Drop an OpenRouter-style routing variant suffix (`:free`, `:beta`, `:extended`).
+  // These select a routing tier for the SAME weights, and relays commonly drop
+  // them when echoing the model back — observed: asking for
+  // nvidia/nemotron-3-embed-1b:free returns private/openrouter/nvidia/nemotron-3-embed-1b.
+  // Keeping the suffix makes the pin reject every vector from a provider that
+  // omits it, which is a false positive; a genuine model swap still differs in
+  // the model segment ("text-embedding-3-large" vs "-3-small").
+  const variant = seg.indexOf(':');
+  if (variant > 0) seg = seg.slice(0, variant);
+  return seg;
 }
 
 // Per-row pin check. Returns {ok, reason} — reason is a short stable token.

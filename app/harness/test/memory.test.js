@@ -394,3 +394,34 @@ test('completeTurn: provider failure recorded, memory rows untouched', async (t)
   // failed turn bumps nothing: counters may exist (ensure normalizes) but packed_n stays 0
   assert.deepEqual(mem.store.getMemory('m1').evidence, {});
 });
+
+// The model pin's job is catching a provider that SWAPS MODELS behind one
+// endpoint name. It must not reject the same model wearing a routing-variant
+// suffix the relay dropped when echoing it back — observed with OpenRouter:
+// asking for nvidia/nemotron-3-embed-1b:free returns
+// private/openrouter/nvidia/nemotron-3-embed-1b, which failed every pin check.
+test('canonicalModel strips routing variants but still catches a real swap', () => {
+  const { canonicalModel, checkRowPin } = require('../../memory/adapters/embeddings');
+  // provider namespace prefixes and routing variants are cosmetic
+  assert.equal(canonicalModel('nvidia/nemotron-3-embed-1b:free'), 'nemotron-3-embed-1b');
+  assert.equal(canonicalModel('private/openrouter/nvidia/nemotron-3-embed-1b'), 'nemotron-3-embed-1b');
+  assert.equal(canonicalModel('openai/text-embedding-3-small'), 'text-embedding-3-small');
+  assert.equal(canonicalModel('text-embedding-3-small'), 'text-embedding-3-small');
+  assert.equal(canonicalModel(''), '');
+  // splitting is on the FIRST ':' only — the variant is the tail, not a nested path
+  assert.equal(canonicalModel('a/b/c:v1:v2'), 'c');
+
+  const returned = 'private/openrouter/nvidia/nemotron-3-embed-1b';
+  const pin = (cfgModel, retModel = returned, dims = 2048) =>
+    checkRowPin({ embedding: new Array(dims).fill(0.02), model_pin: retModel, generation: 'v1' },
+                cfgModel, dims, 'v1');
+  // same model, different spelling: accepted
+  assert.equal(pin('nvidia/nemotron-3-embed-1b:free').ok, true);
+  assert.equal(pin('nvidia/nemotron-3-embed-1b').ok, true);
+  // a genuine swap behind one endpoint: still rejected
+  assert.equal(pin('text-embedding-3-small', 'openai/text-embedding-3-large').reason, 'model_mismatch');
+  assert.equal(pin('nvidia/nemotron-3-embed-1b', 'openai/text-embedding-3-small').reason, 'model_mismatch');
+  // dims stay independently pinned — stripping a variant must not loosen them
+  assert.equal(checkRowPin({ embedding: new Array(1024).fill(0.02), model_pin: returned, generation: 'v1' },
+                           'nvidia/nemotron-3-embed-1b:free', 2048, 'v1').reason, 'dim_mismatch');
+});
