@@ -1,10 +1,11 @@
 'use strict';
 // policy.test.js - regression tests for the approved security model:
-// side effects always ask, reads follow scope grants, live hands revocation,
+// side effects always ask, reads follow scope grants,
 // credential origin binding, deny-by-default for unknown tools.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const { Sentinel } = require('../sentinel');
+const { DEFAULTS } = require('../config');
 const { isPrivateHost, buildTools } = require('../tools');
 const { fetchModels, originOf } = require('../models');
 
@@ -18,7 +19,7 @@ function cfg(over={}) {
 
 test('ask mode: side-effect tools always ask', () => {
   const s = new Sentinel(cfg());
-  for (const tool of ['write_file','web_fetch','shell','hands']) {
+  for (const tool of ['write_file','web_fetch','shell']) {
     assert.equal(s.decide({tool,args:{}}).decision,'ask',tool);
   }
 });
@@ -43,7 +44,6 @@ test('accept_edits: writes inside scope auto-approve, outside ask; shell still a
   assert.equal(s.decide({tool:'write_file',args:{},resolvedPath:outside}).decision,'ask');
   assert.equal(s.decide({tool:'shell',args:{}}).decision,'ask');
   assert.equal(s.decide({tool:'web_fetch',args:{}}).decision,'ask');
-  assert.equal(s.decide({tool:'hands',args:{}}).decision,'ask');
 });
 
 test('plan mode: every side effect denied outright; reads keep scope policy', () => {
@@ -51,7 +51,7 @@ test('plan mode: every side effect denied outright; reads keep scope policy', ()
   const root = process.platform==='win32' ? 'C:\\proj' : '/proj';
   const inside = process.platform==='win32' ? 'C:\\proj\\a.js' : '/proj/a.js';
   s.addGrant(root);
-  for (const tool of ['write_file','web_fetch','shell','hands']) {
+  for (const tool of ['write_file','web_fetch','shell']) {
     const d = s.decide({tool,args:{}});
     assert.equal(d.decision,'deny',tool);
     assert.match(d.reason,/plan mode/i);
@@ -60,33 +60,36 @@ test('plan mode: every side effect denied outright; reads keep scope policy', ()
   assert.equal(s.decide({tool:'read_file',args:{},resolvedPath:'/etc/passwd'}).decision,'ask');
 });
 
-test('auto mode: side effects auto-approve but shell + hands keep asking', () => {
+test('auto mode: all known tools run without approvals, including out-of-project file access', () => {
   const s = new Sentinel(cfg({sentinel:{mode:'auto',deny_rules:[],egress_allowlist:[]}}));
-  for (const tool of ['write_file','web_fetch']) {
-    assert.equal(s.decide({tool,args:{}}).decision,'allow',tool);
-  }
-  assert.equal(s.decide({tool:'shell',args:{}}).decision,'ask');   // always_ask_tools default
-  assert.equal(s.decide({tool:'hands',args:{}}).decision,'ask');
+  const root = process.platform==='win32' ? 'C:\\proj' : '/proj';
+  const inside = process.platform==='win32' ? 'C:\\proj\\a.js' : '/proj/a.js';
+  const outside = process.platform==='win32' ? 'C:\\other\\a.js' : '/other/a.js';
+  s.addGrant(root);
+  assert.equal(s.decide({tool:'web_fetch',args:{}}).decision,'allow');
+  assert.equal(s.decide({tool:'write_file',args:{},resolvedPath:inside}).decision,'allow');
+  assert.equal(s.decide({tool:'write_file',args:{},resolvedPath:outside}).decision,'allow');
+  assert.equal(s.decide({tool:'read_file',args:{},resolvedPath:outside}).decision,'allow');
+  assert.equal(s.decide({tool:'list_dir',args:{},resolvedPath:outside}).decision,'allow');
+  assert.equal(s.decide({tool:'shell',args:{}}).decision,'allow');
+  assert.equal(s.decide({tool:'spawn_agent',args:{}}).decision,'allow');
+  assert.equal(s.decide({tool:'mcp__fixture__lookup',args:{}}).decision,'allow');
 });
 
-test('auto mode honors custom always_ask_tools', () => {
+test('auto mode does not inherit approval exceptions from legacy config', () => {
   const s = new Sentinel(cfg({sentinel:{mode:'auto',deny_rules:[],egress_allowlist:[]},agent:{always_ask_tools:['web_fetch'],approval_timeout_s:1}}));
-  assert.equal(s.decide({tool:'web_fetch',args:{}}).decision,'ask');
+  assert.equal(s.decide({tool:'web_fetch',args:{}}).decision,'allow');
   assert.equal(s.decide({tool:'shell',args:{}}).decision,'allow');
 });
 
-test('mode invariants: deny rules + hands revocation + fail-closed hold in EVERY mode', () => {
+test('mode invariants: deny rules + fail-closed hold in EVERY mode', () => {
   for (const mode of ['ask','accept_edits','plan','auto']) {
     const s = new Sentinel(cfg({sentinel:{mode,deny_rules:['*nuclear*'],egress_allowlist:[]}}));
     // deny rule beats even auto
     assert.equal(s.decide({tool:'shell',args:{command:'launch nuclear missiles'}}).decision,'deny',mode);
-    // hands revocation denies in every mode
-    s.revokeHands();
-    assert.equal(s.decide({tool:'hands',args:{}}).decision,'deny',mode);
     // unknown tools fail closed in every mode
     assert.equal(s.decide({tool:'mystery',args:{}}).decision,'deny',mode);
-    // reads outside scope still ask in every mode
-    assert.equal(s.decide({tool:'read_file',args:{},resolvedPath:'/outside/x'}).decision,'ask',mode);
+    assert.equal(s.decide({tool:'read_file',args:{},resolvedPath:'/outside/x'}).decision,mode==='auto'?'allow':'ask',mode);
   }
 });
 
@@ -108,15 +111,6 @@ test('no-project mode: reads ask, chat unaffected', () => {
   const s = new Sentinel(cfg());
   assert.equal(s.decide({tool:'read_file',args:{},resolvedPath:'/any/where'}).decision,'ask');
   s.setProjectScope && s.setProjectScope();
-});
-
-test('hands revocation denies immediately, even after approval would be granted', () => {
-  const s = new Sentinel(cfg());
-  assert.equal(s.decide({tool:'hands',args:{}}).decision,'ask');
-  s.revokeHands();
-  const d = s.decide({tool:'hands',args:{}});
-  assert.equal(d.decision,'deny');
-  assert.match(d.reason,/revoked/);
 });
 
 test('unknown tools fail closed', () => {
@@ -172,5 +166,13 @@ test('write_file requires approval (gate integration)', async () => {
 test('tool registry keeps central policy (no alwaysAsk drift)', () => {
   const { tools } = buildTools(cfg());
   const names = tools.map(t=>t.name);
-  assert.deepEqual(names.sort(),['hands','list_dir','read_file','shell','spawn_agent','web_fetch','write_file'].sort());
+  assert.deepEqual(names.sort(),['list_dir','read_file','shell','spawn_agent','web_fetch','write_file'].sort());
+});
+
+test('shipped DEFAULTS and absent legacy fields both support approval-free Auto', () => {
+  assert.deepEqual(DEFAULTS.agent.always_ask_tools, []);
+  const s = new Sentinel({ sentinel:{mode:'auto',deny_rules:[],egress_allowlist:[]}, agent:DEFAULTS.agent });
+  assert.equal(s.decide({tool:'shell',args:{command:'dir'}}).decision,'allow');
+  const legacy = new Sentinel({ sentinel:{mode:'auto'}, agent:{} });
+  assert.equal(legacy.decide({tool:'shell',args:{command:'dir'}}).decision,'allow');
 });

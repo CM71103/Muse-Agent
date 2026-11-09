@@ -78,6 +78,9 @@ function mkLayer(t, over = {}) {
     memory: Object.assign({
       enabled: true, budget_tokens: 1200, score_cutoff: 0.20,
       project_id_strategy: 'manual', embed_model: 'test-embed-model', embed_dims: 4,
+      // baseline-by-default fixture: config defaults are now adaptive-on, so
+      // tests that assert baseline serving must pin the flags explicitly
+      adaptive_ranking: false, adaptive_budget: false, query_clustering: false,
     }, over.memory || {}),
   });
   const mem = new MemoryLayer(cfg, Object.assign({
@@ -295,7 +298,7 @@ test('healthMetrics: utilization, c_empty share, cost rollup, calibration bucket
 
 test('flag activation: new evidence version, baseline feedback not replayed, de-promotion restores baseline', async (t) => {
   const mem = mkLayer(t);
-  assert.equal(mem.evidenceVersion, 'baseline-v1');
+  assert.equal(mem.evidenceVersion, 'baseline-v2');
   plantRow(mem, { id: 'm1', text: 'fact one', seed: 4 });
 
   // baseline grade recorded, evidence untouched
@@ -310,9 +313,9 @@ test('flag activation: new evidence version, baseline feedback not replayed, de-
   // activate adaptive_ranking: NEW evidence version + audit
   const f1 = mem.setFlags({ adaptive_ranking: true });
   assert.equal(mem.flags.adaptive_ranking, true);
-  assert.equal(mem.evidenceVersion, 'adaptive-rank-v1');
-  assert.equal(f1.evidence_version, 'adaptive-rank-v1');
-  assert.equal(mem.store.getMeta('policy:version'), 'adaptive-rank-v1');
+  assert.equal(mem.evidenceVersion, 'adaptive-rank-v2');
+  assert.equal(f1.evidence_version, 'adaptive-rank-v2');
+  assert.equal(mem.store.getMeta('policy:version'), 'adaptive-rank-v2');
 
   // pre-activation turn grade attempt: version-mismatch refusal (never replayed)
   const gOld = mem.grade(ctx.turn_id, 1);
@@ -332,8 +335,8 @@ test('flag activation: new evidence version, baseline feedback not replayed, de-
 
   // de-promotion: all flags off -> baseline serving restored, nothing deleted
   const f2 = mem.setFlags({ adaptive_ranking: false });
-  assert.equal(mem.evidenceVersion, 'baseline-v1');
-  assert.equal(f2.evidence_version, 'baseline-v1');
+  assert.equal(mem.evidenceVersion, 'baseline-v2');
+  assert.equal(f2.evidence_version, 'baseline-v2');
   assert.equal(mem.listMemories().length, 1);
   assert.equal(mem.store.getMemory('m1').status, 'active');
 
@@ -343,7 +346,7 @@ test('flag activation: new evidence version, baseline feedback not replayed, de-
 
 test('adaptive budget: eligible /bad grows next budget on the x1.5 ladder, never shrinks or penalizes', async (t) => {
   const mem = mkLayer(t, { memory: { budget_tokens: 1000, adaptive_budget: true } });
-  assert.equal(mem.evidenceVersion, 'adaptive-budget-v1');
+  assert.equal(mem.evidenceVersion, 'adaptive-budget-v2');
   assert.equal(mem._allowance(), 1000, 'level 0 = base');
   plantRow(mem, { id: 'm1', text: 'fact one', seed: 4 });
 
@@ -378,7 +381,7 @@ test('adaptive budget: eligible /bad grows next budget on the x1.5 ladder, never
 
 test('clustering: frozen centroids persisted, abstention below floor, assignments diagnostics when ranking off', async (t) => {
   const mem = mkLayer(t, { memory: { query_clustering: true, cluster_floor: 0.35 } });
-  assert.equal(mem.evidenceVersion, 'adaptive-cluster-v1');
+  assert.equal(mem.evidenceVersion, 'adaptive-cluster-v2');
   for (let i = 0; i < 6; i++) plantRow(mem, { id: `m${i}`, text: `fact ${i}`, seed: i + 1 });
 
   const ctx = await mem.requestContext('fact', { contextLimit: 100000, otherInputTokens: 0, outputReserve: 256 });

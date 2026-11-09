@@ -7,7 +7,9 @@
 const fs = require('fs');
 const { parseToml } = require('./config');
 
-// serialize in stable section order; strings escaped, arrays one-per-line
+// serialize in stable section order; strings escaped, arrays one-per-line.
+// Nested object values become dotted [a.b.c] headers to any depth —
+// mcp.server.<name> needs this — but arrays are values, not sections.
 function serializeToml(obj) {
   const out = [];
   const scalars = [];
@@ -16,15 +18,24 @@ function serializeToml(obj) {
     scalars.push(`${k} = ${tomlValue(v)}`);
   }
   out.push(...scalars);
-  for (const [k, v] of Object.entries(obj)) {
-    if (!v || typeof v !== 'object') continue;
-    out.push('', `[${k}]`);
-    for (const [k2, v2] of Object.entries(v)) {
-      if (v2 && typeof v2 === 'object' && !Array.isArray(v2)) continue; // no nested sections written
-      out.push(`${k2} = ${tomlValue(v2)}`);
-    }
-  }
+  emitSections(obj, [], out);
   return out.join('\n') + '\n';
+}
+
+function emitSections(node, path, out) {
+  for (const [k, v] of Object.entries(node)) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+    const here = [...path, k];
+    out.push('', `[${here.join('.')}]`);
+    let any = false;
+    for (const [k2, v2] of Object.entries(v)) {
+      if (v2 && typeof v2 === 'object' && !Array.isArray(v2)) continue;
+      out.push(`${k2} = ${tomlValue(v2)}`);
+      any = true;
+    }
+    if (!any) out.pop(), out.pop();           // drop empty-header artifacts
+    emitSections(v, here, out);
+  }
 }
 
 function tomlValue(v) {
@@ -36,7 +47,7 @@ function tomlValue(v) {
   return JSON.stringify(String(v));
 }
 
-// Write full llm + hands + sentinel sections (whole-section replace, not key surgery).
+// Write full llm + sentinel sections (whole-section replace, not key surgery).
 // cfg = the merged config object (from loadConfig), file = target path.
 function writeSections(cfg, file) {
   const existing = fs.existsSync(file) ? parseToml(fs.readFileSync(file, 'utf8')) : {};
@@ -45,6 +56,7 @@ function writeSections(cfg, file) {
     provider: cfg.llm.provider,
     base_url: cfg.llm.base_url,
     model: cfg.llm.model,
+    ...(cfg.llm.visible_models === undefined ? {} : { visible_models: cfg.llm.visible_models }),
     api_key_env: cfg.llm.api_key_env,
 
     temperature: cfg.llm.temperature,
@@ -62,14 +74,11 @@ function writeSections(cfg, file) {
     deny_rules: cfg.sentinel.deny_rules,
     egress_allowlist: cfg.sentinel.egress_allowlist,
   };
-  doc.hands = {
-    enabled: !!cfg.hands.enabled,
-    host: cfg.hands.host,
-    port: cfg.hands.port,
-  };
   doc.memory = {...cfg.memory};
   delete doc.memory.embed_api_key;
   doc.log = { level: cfg.log.level };
+  // MCP: whole-section replace from the merged config (mcp.server.<name> nests).
+  if (cfg.mcp) doc.mcp = JSON.parse(JSON.stringify(cfg.mcp));
   fs.writeFileSync(file, serializeToml(doc));
 }
 

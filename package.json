@@ -2,19 +2,24 @@
   "name": "muse-agent",
   "productName": "Muse Agent",
   "version": "0.1.7",
-  "description": "Personal AI agent - Electron shell + Node harness + Python hands sidecar",
+  "description": "Personal AI agent - Electron shell + Node harness",
   "license": "MIT",
   "main": "app/main/index.js",
   "scripts": {
-    "start": "electron .",
+    "start": "bun run build:renderer && electron .",
+    "build:renderer": "bun scripts/build-renderer.mts",
     "agent": "node app/harness/cli.js",
-    "test": "node --test app/harness/test/*.test.js app/renderer/test/*.test.js",
-    "dist": "node scripts/check-native.js && electron-builder --win",
-    "dist:portable": "node scripts/check-native.js && electron-builder --win portable",
-    "dist:dir": "node scripts/check-native.js && electron-builder --win --dir",
+    "test": "node --test app/harness/test/*.test.js app/harness/test/*.test.ts app/renderer/test/*.test.js scripts/test/*.test.mts",
+    "release:check": "node scripts/release-check.mts",
+    "dist": "bun run build:renderer && node scripts/check-native.js && node scripts/build-windows.mts --win",
+    "dist:portable": "bun run build:renderer && node scripts/check-native.js && node scripts/build-windows.mts --win portable",
+    "dist:dir": "bun run build:renderer && node scripts/check-native.js && node scripts/build-windows.mts --win --dir",
     "postinstall": "electron-builder install-app-deps",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-builder install-app-deps"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "devDependencies": {
     "electron": "^45.0.0",
@@ -28,6 +33,7 @@
     },
     "files": [
       "app/**/*",
+      "build/icon.ico",
       "config.example.toml",
       "!app/harness/test/**",
       "!app/renderer/test/**"
@@ -36,14 +42,6 @@
       {
         "from": "config.example.toml",
         "to": "template.toml"
-      },
-      {
-        "from": "python",
-        "to": "python",
-        "filter": [
-          "**/*",
-          "!**/__pycache__/**"
-        ]
       }
     ],
     "win": {
@@ -70,6 +68,7 @@
     ]
   },
   "dependencies": {
+    "@paper-design/shaders": "0.0.82",
     "better-sqlite3": "^13.0.3"
   }
 }

@@ -2,7 +2,7 @@
 'use strict';
 // cli.js - headless agent runner. Usage:
 //   node app/harness/cli.js "task text"
-// Approvals: CLI cannot prompt interactively mid-loop safely, so shell/hands default-deny
+// Approvals: CLI cannot prompt interactively mid-loop safely, so shell default-denies
 // unless --yes (auto-approve) or MUSE_APPROVE=1. Mirrors nanoMuse "no approver = deny".
 
 const path = require('path');
@@ -48,11 +48,12 @@ async function main() {
   try {
     const res = await agent.run(task);
     await agent.ingestUserTurn(task);
-    if(agent.memory)agent.memory.close();
+    await agent.endSessionExtract();
+    if(agent.memory)await agent.memory.close();
     process.stdout.write(`\n=== done (${res.turns} turns) ===\n`);
     process.exit(0);
   } catch (e) {
-    if(agent.memory)agent.memory.close();
+    if(agent.memory)await agent.memory.close();
     console.error(`agent failed: ${e.message}`);
     process.exit(1);
   }

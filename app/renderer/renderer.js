@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 // renderer.js - sidebar sessions, settings modal, transcript, approvals.
 // No framework, no deps.
 
@@ -14,6 +14,8 @@ let busy = false;
 let currentApproval = null;
 let settingsOpen = false;
 let loadingSession = false;
+let switchingModel = false;
+let modelRevision = 0;
 let restoredEvents = [];
 let activeSessionId = null;
 let crumbTitle = 'New session';   // declared: assigned in strict mode at 5 places (load/new/reset paths)
@@ -42,15 +44,16 @@ function reveal(el, fromY) {
   else el.classList.add('reveal-in');
   return el;
 }
-function resetTranscript() { transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null; renderEmpty(); }
+function resetTranscript() { subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null; renderEmpty(); }
 function renderEmpty() {
   if (projectHomeVisible && activeProjectId) { renderProjectHome(); return; }
   if (transcript.children.length) return;
   const box = document.createElement('section'); box.id = 'empty';
   const hero = buildHeroEmblem();
   attachSparkReplay(hero, false);
+  const eyebrow = document.createElement('div'); eyebrow.className = 'empty-eyebrow'; eyebrow.textContent = 'A little spark. A clear next step.';
   const title = document.createElement('h1'); title.textContent = 'What are we working on?' ; title.style.whiteSpace = 'pre-line';
-  const text = document.createElement('p'); text.textContent = 'A place for your projects, questions and next steps. Start a conversation or pick a task below.';
+  const text = document.createElement('p'); text.textContent = 'Think it through, build something, or pick up where you left off.';
   const starters = document.createElement('div'); starters.className = 'starters';
   for (const [label, task, hint] of [
     ['Understand a project', 'List the files here and summarize the README.', 'Files & context'],
@@ -61,7 +64,7 @@ function renderEmpty() {
     const small = document.createElement('span'); small.textContent = hint; b.append(small);
     b.addEventListener('click', () => { if (!busy && !loadingSession) { input.value = task; autosize(); input.focus(); } }); starters.append(b);
   }
-  box.append(hero, title, text, starters); transcript.append(box);
+  box.append(hero, eyebrow, title, text, starters); transcript.append(box);
 }
 
 // Mini spark mark: the agent's logo chip (sidebar brand + message pip).
@@ -512,138 +515,11 @@ function renderMarkdown(root, text) {
   }
 }
 
-const TOOL_HUE = { read_file: 'tw-fs', write_file: 'tw-fs', list_dir: 'tw-fs', web_fetch: 'tw-web', shell: 'tw-shell', hands: 'tw-hands' };
-
-// Execution cards: one card per tool call, paired with its result by call id.
+// Execution cards share the existing call-id map with transcript lifecycle handling.
 const openCards = new Map();
-
-function trCopyBtn(raw) {
-  const btn = document.createElement('button');
-  btn.className = 'cb-copy';
-  btn.textContent = 'copy';
-  btn.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(String(raw)); btn.textContent = 'copied'; }
-    catch { btn.textContent = 'failed'; }
-    setTimeout(() => { btn.textContent = 'copy'; }, 1400);
-  });
-  return btn;
-}
-
-function trSection(label, text) {
-  const sec = document.createElement('div');
-  sec.className = 'tr-io';
-  const head = document.createElement('div');
-  head.className = 'tr-io-head';
-  const l = document.createElement('span');
-  l.textContent = label;
-  head.append(l, trCopyBtn(text));
-  const pre = document.createElement('pre');
-  mdCode(pre, String(text).slice(0, 4000));
-  sec.append(head, pre);
-  return { sec, pre };
-}
-
-function addToolRow(ev) {
-  clearEmpty();
-  // Paired result for a live call: fill the existing card, never a second row.
-  if (ev.id && openCards.has(ev.id)) {
-    const card = openCards.get(ev.id);
-    openCards.delete(ev.id);
-    card.finish(ev);
-    return;
-  }
-  const row = document.createElement('div');
-  row.className = 'tool-row' + (TOOL_HUE[ev.name] ? ' ' + TOOL_HUE[ev.name] : '');
-  if (ev.result !== undefined && ev.result && ev.result.ok === false && !ev.args) row.classList.add('denied');
-
-  // header: name badge, status dot, duration slot
-  const head = document.createElement('div');
-  head.className = 'tr-head';
-  const name = document.createElement('span');
-  name.className = 'tname';
-  name.textContent = ev.name;
-  const dot = document.createElement('span');
-  dot.className = 'tr-dot';
-  const dur = document.createElement('span');
-  dur.className = 'tr-dur';
-  head.append(name, dot, dur);
-  if (ev.restored) {
-    const tag = document.createElement('span');
-    tag.className = 'tr-tag';
-    tag.textContent = 'restored';
-    head.append(tag);
-  }
-
-  const det = document.createElement('details');
-  det.open = !ev.restored && ev.result === undefined;
-  const sum = document.createElement('summary');
-  sum.append(head);
-  det.append(sum);
-  row.append(det);
-
-  const started = Date.now();
-  if (ev.args !== undefined && ev.args !== null) {
-    const argsText = JSON.stringify(ev.args, null, 2);
-    det.append(trSection('Input', argsText).sec);
-    dot.classList.add('running');
-    if (ev.id) {
-      row.finish = (resEv) => {
-        dot.classList.remove('running');
-        dot.classList.add(resEv.result && resEv.result.ok === false ? 'fail' : 'ok');
-        dur.textContent = ((Date.now() - started) / 1000).toFixed(1) + 's';
-        const out = trSection('Output', typeof resEv.result === 'string' ? resEv.result : JSON.stringify(resEv.result, null, 2));
-        det.append(out.sec);
-        det.open = !!(resEv.result && resEv.result.ok === false);
-        if (resEv.result && resEv.result.ok === false) row.classList.add('denied');
-        reveal(row, 4);
-        scrollDown();
-      };
-      openCards.set(ev.id, row);
-    } else {
-      // no id to pair with: complete immediately as call-only card
-      dot.classList.add('ok');
-    }
-  } else if (ev.result !== undefined) {
-    const r = ev.result || {};
-    dot.classList.add(r.ok === false ? 'fail' : 'ok');
-    const out = trSection('Output', typeof r === 'string' ? r : JSON.stringify(r, null, 2));
-    det.append(out.sec);
-  } else {
-    // restored with no recorded output
-    dot.classList.add('ok');
-    const pre = document.createElement('pre');
-    pre.textContent = '(no output recorded)';
-    det.append(pre);
-  }
-  transcript.append(row);
-  reveal(row, 8);
-  scrollDown();
-}
-
-function addDeniedRow(toolName, reason) {
-  clearEmpty();
-  const row = document.createElement('div');
-  row.className = 'tool-row denied';
-  const head = document.createElement('div');
-  head.className = 'tr-head';
-  const tag = document.createElement('span');
-  tag.className = 'tname';
-  tag.textContent = toolName;
-  const dot = document.createElement('span');
-  dot.className = 'tr-dot fail';
-  head.append(tag, dot);
-  const det = document.createElement('details');
-  det.open = true;
-  const sum = document.createElement('summary');
-  sum.append(head);
-  const pre = document.createElement('pre');
-  pre.textContent = `denied — ${reason}`;
-  det.append(sum, pre);
-  row.append(det);
-  transcript.append(row);
-  reveal(row, 8);
-  scrollDown();
-}
+const activityUI = window.MuseActivity.create({ transcript, openCards, clearEmpty, reveal, scrollDown });
+function addToolRow(event) { activityUI.add(event); }
+function addDeniedRow(name, reason) { activityUI.denied(name, reason); }
 
 function addSysNote(text, warn, cls) {
   clearEmpty();
@@ -684,17 +560,30 @@ function showThinking(on) {
 
 /* ---------- agent events ---------- */
 
+const subagentUI = window.MuseSubagents?.create({ transcript, clearEmpty,
+  activity: text => wbEvent(text, 'tool'),
+  count: count => { $('subagent-count').textContent = count ? `${count} running` : 'Ready'; },
+});
+
 function handleAgentEvent(ev) {
   if (loadingSession && ev.type.startsWith('restored_')) { restoredEvents.push(ev); return; }
+  if (ev.subagent || ev.type === 'subagent_start' || ev.type === 'subagent_done') {
+    subagentUI?.handle(ev);
+    return;
+  }
   switch (ev.type) {
     case 'message':
       if (ev.text && ev.text.trim()) addMsg('assistant', ev.text);
       break;
     case 'tool_call':
-      addToolRow({ id: ev.id, name: ev.name, args: ev.args });
+      if (ev.name !== 'spawn_agent') addToolRow({ id: ev.id, name: ev.name, args: ev.args });
       wbCounters.tools++; wbUpdateDetails(); wbEvent('tool: ' + ev.name, 'tool');
       break;
     case 'tool_result':
+      if (ev.name === 'spawn_agent' && !ev.denied) {
+        if (ev.result && !ev.result.ok && !ev.result.subagentId) addSysNote(ev.result.error || 'Subagent could not start.', true);
+        break;
+      }
       if (ev.denied) addDeniedRow(ev.name, ev.reason);
       else addToolRow({ id: ev.id, name: ev.name, args: null, result: ev.result });
       break;
@@ -732,11 +621,31 @@ window.muse.onAgentEvent(handleAgentEvent);
 /* ---------- approval flow ---------- */
 
 window.muse.onApprovalRequest((req) => {
+  $('approval-title').textContent = req.subagent ? `${subagentUI?.label(req.subagentId) || 'Subagent'} needs approval` : 'Your approval is required';
   currentApproval = req;
   composer.style.display = 'none';
   approvalBox.classList.add('active');
-  $('approval-args').textContent = `${req.tool}\n${JSON.stringify(req.args, null, 2)}`;
+  const action = window.MuseActivity.describe(req.tool, req.args || {});
+  $('approval-action').textContent = action.title;
+  $('approval-tool').textContent = `${action.category} · ${req.tool}`;
+  $('approval-description').textContent = req.tool === 'shell' ? 'Muse wants to run this command on your device.'
+    : req.tool === 'write_file' ? 'Muse wants to write the following content to this file.'
+    : req.tool === 'read_file' || req.tool === 'list_dir' ? 'Muse wants to access this location.' : 'Muse wants to use this tool. Review the request before continuing.';
+  $('approval-args').textContent = action.input;
+  $('approval-raw').textContent = JSON.stringify(req.args || {}, null, 2);
   $('btn-deny').focus();
+});
+
+window.muse.onApprovalResolved((result) => {
+  if (!currentApproval || currentApproval.id !== result.id) return;
+  currentApproval = null;
+  approvalBox.classList.remove('active');
+  composer.style.display = 'flex';
+  $('btn-allow').disabled = $('btn-deny').disabled = false;
+  addSysNote(result.decision === 'allow'
+    ? 'permission mode changed — request approved by the current policy'
+    : 'permission mode changed — request blocked by the current policy', result.decision === 'deny');
+  // Resolving approval does not finish the turn; terminal agent events own busy.
 });
 
 // Approval timed out server-side: restore composer so the agent is never stuck.
@@ -755,11 +664,12 @@ async function answerApproval(approved) {
   $('btn-allow').disabled = $('btn-deny').disabled = true;
   try {
     const res = await window.muse.respondApproval(req.id, approved);
+    if (!currentApproval || currentApproval.id !== req.id) return;
     if (!res || !res.ok) throw new Error(res && res.error || 'Approval response failed. Retry or deny.');
     currentApproval = null;
     approvalBox.classList.remove('active'); composer.style.display = 'flex';
     addSysNote(approved ? 'approved' : 'denied by you', !approved);
-  } catch (e) { reportError(e); }
+  } catch (e) { if (currentApproval && currentApproval.id === req.id) reportError(e); }
   finally { $('btn-allow').disabled = $('btn-deny').disabled = false; }
 }
 $('btn-allow').addEventListener('click', () => answerApproval(true));
@@ -770,6 +680,7 @@ $('btn-deny').addEventListener('click', () => answerApproval(false));
 let currentQuestion = null;
 
 window.muse.onQuestion((q) => {
+  $('question-title').textContent = q.subagent ? `${subagentUI?.label(q.subagentId) || 'Subagent'} has a question` : 'The agent has a question';
   currentQuestion = q;
   const box = $('question');
   $('question-text').textContent = q.question || 'The agent has a question.';
@@ -817,7 +728,8 @@ cancelBtn.addEventListener('click', async () => {
 
 function setBusy(b) {
   busy = b;
-  sendBtn.disabled = b || loadingSession;
+  sendBtn.disabled = b || loadingSession || switchingModel;
+  modelUI?.busyChanged();
   cancelBtn.style.display = b ? 'inline-block' : 'none';
   input.disabled = b || loadingSession;
   $('btn-new').disabled = b || loadingSession;
@@ -826,30 +738,16 @@ function setBusy(b) {
 
 async function submit() {
   const text = input.value.trim();
-  const img = pendingImage;              // {b64, name} or null
-  if ((!text && !img) || busy || loadingSession || currentApproval) return;
+  if (!text || busy || loadingSession || currentApproval || switchingModel) return;
   input.value = '';
   autosize();
-  addMsg('user', text + (img ? `\n[attached image: ${img.name}]` : ''));
+  addMsg('user', text);
   setBusy(true);
   showThinking(true);
   $('crumb').textContent = t('crumb.working', 'WORKING…'); wbSetStatus(t('wb.working', 'Working…'));
   refreshStatus();
   try {
-    let finalText = text;
-    if (img) {
-      // OCR at send time: deterministic, no model cooperation needed.
-      const ocr = await window.muse.ocrImage(img.b64);
-      if (ocr && ocr.ok) {
-        const extracted = String(ocr.text || '').trim();
-        finalText = `${text || 'Read this image.'}\n\n[image "${img.name}" — extracted text]\n${extracted || '(no text found in image)'}`;
-        addSysNote(`image OCR: ${ocr.lines || ''} ${extracted ? 'text attached' : 'no text found'} (${ocr.engine})`);
-      } else {
-        addSysNote(`image OCR failed: ${ocr && ocr.error || 'unknown'} — sending text only`, true);
-      }
-      clearPendingImage();
-    }
-    const res = await window.muse.send(finalText);
+    const res = await window.muse.send(text);
     if (!res || !res.ok) addSysNote(`agent error: ${res && res.error || 'No response'}`, true);
     else if (res.cancelled) addSysNote('task cancelled — partial progress kept');
   } catch (e) { reportError(e); }
@@ -872,99 +770,6 @@ function autosize() {
   input.style.height = Math.min(input.scrollHeight, 160) + 'px';
 }
 input.addEventListener('input', autosize);
-
-/* ---------- image attach (OCR via sidecar) ---------- */
-let pendingImage = null;   // {b64, name}
-
-function clearPendingImage() {
-  pendingImage = null;
-  const chip = $('img-chip');
-  if (chip) chip.remove();
-  const btn = $('btn-attach');
-  if (btn) btn.value = '';
-}
-
-function setPendingImage(b64, name) {
-  if (!b64 || b64.length > 7 * 1024 * 1024) {   // >5MB after decode
-    addSysNote('image too large (max 5 MB)', true);
-    return;
-  }
-  pendingImage = { b64, name: name || 'pasted-image.png' };
-  let chip = $('img-chip');
-  if (!chip) {
-    chip = document.createElement('div');
-    chip.id = 'img-chip';
-    chip.style.cssText = 'display:flex;align-items:center;gap:8px;margin:0 auto 6px;max-width:740px;font-size:12px;color:var(--color-muted-fg);background:var(--color-surface-subtle);border-radius:8px;padding:6px 10px;';
-    const rm = document.createElement('button');
-    rm.textContent = '×';
-    rm.style.cssText = 'border:none;background:none;cursor:pointer;font-size:14px;color:var(--faint);padding:0 2px;';
-    rm.addEventListener('click', clearPendingImage);
-    chip.appendChild(rm);
-    composer.parentNode.insertBefore(chip, composer);
-  }
-  chip.firstChild.textContent = `📎 ${pendingImage.name} — will be OCR'd on send`;
-}
-
-// Ctrl+V paste into the composer
-input.addEventListener('paste', (e) => {
-  const items = e.clipboardData && e.clipboardData.items;
-  if (!items) return;
-  for (const it of items) {
-    if (it.type && it.type.startsWith('image/')) {
-      e.preventDefault();
-      const f = it.getAsFile();
-      if (!f) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const b64 = String(reader.result).split(',')[1] || '';
-        setPendingImage(b64, f.name || 'pasted-image.png');
-      };
-      reader.readAsDataURL(f);
-      return;
-    }
-  }
-});
-
-// drag & drop onto the composer
-composer.addEventListener('drop', (e) => {
-  e.preventDefault();
-  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-  if (!f || !f.type.startsWith('image/')) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const b64 = String(reader.result).split(',')[1] || '';
-    setPendingImage(b64, f.name);
-  };
-  reader.readAsDataURL(f);
-});
-composer.addEventListener('dragover', (e) => e.preventDefault());
-
-// attach button (hidden file input next to send)
-window.addEventListener('DOMContentLoaded', () => {
-  const btn = document.createElement('input');
-  btn.type = 'file';
-  btn.id = 'btn-attach';
-  btn.accept = 'image/png,image/jpeg,image/webp';
-  btn.style.cssText = 'display:none';
-  btn.addEventListener('change', () => {
-    const f = btn.files && btn.files[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const b64 = String(reader.result).split(',')[1] || '';
-      setPendingImage(b64, f.name);
-    };
-    reader.readAsDataURL(f);
-  });
-  document.body.appendChild(btn);
-  const trigger = document.createElement('button');
-  trigger.id = 'btn-attach-trigger';
-  trigger.title = 'Attach image (OCR)';
-  trigger.textContent = '📎';
-  trigger.style.cssText = 'padding:9px 12px;border:1px solid var(--composer-border);background:var(--color-surface);border-radius:9px;cursor:pointer;';
-  trigger.addEventListener('click', () => btn.click());
-  sendBtn.parentNode.insertBefore(trigger, sendBtn);
-});
 
 /* ---------- sidebar sessions ---------- */
 
@@ -1006,7 +811,7 @@ async function loadSession(s) {
   try {
     const res = await window.muse.loadSession(s.id);
     if (!res || !res.ok) throw new Error(res && res.error || 'Session could not be loaded');
-    projectHomeVisible = false; transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null;
+    projectHomeVisible = false; subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null;
     const events = restoredEvents; loadingSession = false;
     events.forEach(handleAgentEvent); renderEmpty();
     activeSessionId = s.id; crumbTitle = res.title || 'Session'; $('crumb').textContent = crumbTitle; wbCounters = { msgs: 0, tools: 0 }; wbUpdateDetails(); wbEvent('session loaded: ' + crumbTitle); await refreshProject(); renderSessions();
@@ -1037,14 +842,18 @@ let statusCache = null;
 let statusMem = null;
 async function refreshStatus() {
   try {
+  const revision = modelRevision;
   const cfg = await window.muse.getConfig();
+  if (revision !== modelRevision) return;
   statusCache = cfg;
+  modelUI?.sync(cfg.llm || {});
   $('tag-model').textContent = cfg.llm.model || 'no model';
   $('tag-sentinel').textContent = `Safety: ${cfg.sentinel.mode}`;
+  $('stat-permissions').textContent = cfg.sentinel.mode === 'accept_edits' ? 'Edits' : cfg.sentinel.mode === 'auto' ? 'Auto' : cfg.sentinel.mode === 'plan' ? 'Plan' : 'Ask';
+  $('mode-safety-note').textContent = cfg.sentinel.mode === 'auto' ? 'Auto runs tools and commands without approval prompts.' : cfg.sentinel.mode === 'plan' ? 'Plan mode is read-only. Side effects are blocked.' : cfg.sentinel.mode === 'accept_edits' ? 'Project edits run automatically. Other actions ask.' : 'Tools ask before they act. You stay in control.';
   $('pip-llm').classList.toggle('on', true);
   $('pip-llm').classList.toggle('blink', busy);
   $('pip-llm').title = `${cfg.llm.base_url} · ${cfg.llm.model}${cfg.llm.has_key ? '' : ' · NO KEY'}`;
-  $('pip-hands').classList.toggle('on', !!cfg.hands.enabled);
   $('pip-sent').classList.toggle('on', cfg.sentinel.mode === 'ask');
   const mt = $('mode-toggle');
   if (mt) {
@@ -1054,10 +863,6 @@ async function refreshStatus() {
     $('mode-label').textContent = `Mode: ${m}`;
     mt.title = MODE_TIPS[m] || 'Click to cycle permission modes';
   }
-  const tg = $('hands-toggle');
-  tg.classList.toggle('on', !!cfg.hands.enabled);
-  tg.setAttribute('aria-pressed', String(!!cfg.hands.enabled));
-  $('hands-label').textContent = cfg.hands.enabled ? t('sidebar.handsOn', 'Hands on') : t('sidebar.handsOff', 'Hands off');
   $('tag-model').title = `${cfg.llm.base_url}${cfg.llm.has_key ? '' : ' · NO KEY'}`;
   // memory pip: real layer status (enabled + attached), not session count
   try {
@@ -1077,28 +882,14 @@ async function refreshStatus() {
   } catch { /* workbench optional */ }
 }
 
-$('hands-toggle').addEventListener('click', guarded(async () => {
-  const cfg = await window.muse.getConfig();
-  const next = !cfg.hands.enabled;
-  const res = await window.muse.toggleHands(next);
-  if (res.ok) {
-    if (!busy) {
-      addSysNote(next
-        ? 'hands enabled — computer control can now be requested (each action still asks)'
-        : 'hands disabled');
-    }
-    refreshStatus();
-  }
-}));
-
 /* ---------- permission mode ---------- */
 
 const MODES = ['ask', 'accept_edits', 'plan', 'auto'];
 const MODE_TIPS = {
   ask: 'Every side effect asks for approval. Safest.',
-  accept_edits: 'File writes inside the project folder auto-approve; shell/web/hands still ask.',
-  plan: 'Read-only. Writes, shell, web and hands are blocked outright.',
-  auto: 'Side effects auto-approve; hands and shell still ask. Use with care.',
+  accept_edits: 'File writes inside the project folder auto-approve; shell/web still ask.',
+  plan: 'Read-only. Writes, shell and web are blocked outright.',
+  auto: 'All tools and commands run without approval. Deny rules still block matching calls.',
 };
 
 $('mode-toggle').addEventListener('click', guarded(async () => {
@@ -1107,7 +898,7 @@ $('mode-toggle').addEventListener('click', guarded(async () => {
   const next = MODES[(MODES.indexOf(cur) + 1) % MODES.length];
   const res = await window.muse.setMode(next);
   if (res && res.ok) {
-    if (!busy) addSysNote(`permission mode → ${next}${next === 'plan' ? ' — side effects blocked; ask me to plan instead of act' : next === 'auto' ? ' — side effects auto-approve (hands and shell still ask)' : next === 'accept_edits' ? ' — writes inside the project folder auto-approve' : ' — every side effect asks'}`);
+    if (!busy) addSysNote(`permission mode → ${next}${next === 'plan' ? ' — side effects blocked; ask me to plan instead of act' : next === 'auto' ? ' — all tools and commands run without approval; deny rules still apply' : next === 'accept_edits' ? ' — writes inside the project folder auto-approve' : ' — every side effect asks'}`);
     refreshStatus();
   }
 }));
@@ -1115,14 +906,31 @@ $('mode-toggle').addEventListener('click', guarded(async () => {
 /* ---------- settings modal ---------- */
 
 const backdrop = $('backdrop');
+const settingsUI = window.MuseSettings?.create({ visibleModels: () => modelUI?.draftModels() || [] });
+const modelUI = window.MuseModelPicker.create({
+  changed: () => settingsUI?.changed(),
+  busy: () => busy || loadingSession || !!currentApproval,
+  switching: active => { switchingModel = active; if (active) modelRevision++; sendBtn.disabled = active || busy || loadingSession; },
+  select: async model => {
+    const result = await window.muse.selectModel(model);
+    if (result?.ok) { $('tag-model').textContent = result.model; $('wb-model').textContent = result.model; if (statusCache?.llm) statusCache.llm.model = result.model; }
+    return result;
+  },
+  manage: async () => { await openSettings(); modelUI.showSettings(); },
+});
+$('f-base').addEventListener('input', () => { modelUI.changedEndpoint($('f-base').value); settingsUI?.changed(); });
+let modelFetchVersion = 0;
 
 async function openSettings() {
-  if (settingsOpen) return;
+  if (settingsOpen || switchingModel) return;
   if (memOpen) closeMemory();
   dialogReturnFocus = document.activeElement;
   settingsOpen = true;
   backdrop.classList.add('active');
   $('settings-err').textContent = '';
+  modelFetchVersion++;
+  settingsUI?.loading();
+  modelUI.setLocked(true);
   try {
   const s = await window.muse.getSettings();
   $('f-base').value = s.base_url || '';
@@ -1130,12 +938,27 @@ async function openSettings() {
   $('model-list').value = s.model || '';
   $('btn-eye').textContent = 'show';
   $('f-key').type = 'password';
+  $('chat-key-hint').textContent = s.has_key
+    ? 'A key is saved securely or supplied by your environment. Leave empty to keep it.'
+    : 'Stored securely on this device. Enter a key, or use your environment key.';
+  // embeddings section
+  $('f-embed-base').value = s.embed_base_url || '';
+  $('f-embed-model').value = s.embed_model || '';
+  $('f-embed-key').value = '';
+  $('f-embed-key').type = 'password';
+  $('btn-embed-eye').textContent = 'show';
+  $('embed-key-hint').textContent = s.embed_key_set
+    ? 'A key is saved in the OS credential store. Type to replace it; leave empty to keep it.'
+    : 'Stored in the OS credential store, never in plain config. Empty = use the chat API key.';
   $('f-base').focus();
-  } catch (e) { $('settings-err').textContent = `Cannot load connection: ${e.message || e}`; }
+  modelUI.load(s); modelUI.setLocked(false); settingsUI?.loaded(s);
+  } catch (e) { settingsUI?.failedLoad(); $('settings-err').textContent = `Cannot load connection: ${e.message || e}`; }
 }
 
 function closeSettings() {
+  if (settingsUI?.isSaving()) return;
   settingsOpen = false;
+  modelUI.close();
   backdrop.classList.remove('active');
   if (dialogReturnFocus) dialogReturnFocus.focus();
 }
@@ -1155,41 +978,54 @@ $('btn-eye').addEventListener('click', () => {
   $('btn-eye').textContent = show ? 'hide' : 'show';
 });
 
+$('btn-embed-eye').addEventListener('click', () => {
+  const f = $('f-embed-key');
+  const show = f.type === 'password';
+  f.type = show ? 'text' : 'password';
+  $('btn-embed-eye').textContent = show ? 'hide' : 'show';
+});
+
 $('btn-fetch').addEventListener('click', async () => {
   const btn = $('btn-fetch');
+  if (btn.disabled) return;
+  const version = ++modelFetchVersion;
+  const baseUrl = $('f-base').value.trim(), key = $('f-key').value.trim();
   const err = $('settings-err');
   err.textContent = '';
+  $('models-status').textContent = 'Checking the endpoint for available models…';
   btn.disabled = true;
   btn.textContent = 'Fetching…';
   btn.classList.add('busy');
+  settingsUI?.fetching(true);
   try {
   const res = await window.muse.fetchModels({
-    base_url: $('f-base').value.trim(),
-    api_key: $('f-key').value.trim() || undefined, // undefined -> use stored key
+    base_url: baseUrl,
+    api_key: key || undefined, // undefined -> use stored key
   });
+  if (version !== modelFetchVersion || baseUrl !== $('f-base').value.trim() || key !== $('f-key').value.trim()) {
+    if (version === modelFetchVersion) $('models-status').textContent = 'Connection changed. Fetch again to see its models.';
+    return;
+  }
   btn.disabled = false;
   btn.textContent = 'Fetch models';
   btn.classList.remove('busy');
   if (!res.ok) {
+    $('models-status').textContent = '';
     err.textContent = `fetch failed: ${res.error}`;
     return;
   }
-  const dl = $('models-dl');
-  dl.innerHTML = '';
-  for (const id of res.models) {
-    const o = document.createElement('option');
-    o.value = id;
-    dl.append(o);
-  }
-  err.textContent = res.models.length
-    ? `found ${res.models.length} models — click the model field to pick one`
-    : 'endpoint returned no models';
-  } catch (e) { err.textContent = `Fetch failed: ${e.message || e}`; }
-  finally { btn.disabled = false; btn.textContent = 'Fetch models'; btn.classList.remove('busy'); }
+  modelUI.available(res.models);
+  $('models-status').textContent = res.models.length
+    ? `${res.models.length} models found. Browse the library to choose your chat models.`
+    : 'The endpoint returned no models. You can enter a model ID manually.';
+  } catch (e) { if (version === modelFetchVersion) { $('models-status').textContent = ''; err.textContent = `Fetch failed: ${e.message || e}`; } }
+  finally { if (version === modelFetchVersion) { btn.disabled = false; btn.textContent = 'Fetch models'; btn.classList.remove('busy'); settingsUI?.fetching(false); } }
 });
 
-/* Save button 3-state: saving → saved (green, 2s) → failed (red, 2s). */
+/* Keep progress and confirmation visible; local saves never test the provider. */
 function saveButtonState(state) {
+  modelUI.setLocked(state === 'saving');
+  if (settingsUI) { settingsUI.setState(state); return; }
   const btn = $('btn-save');
   btn.disabled = state === 'saving';
   btn.classList.toggle('ok', state === 'saved');
@@ -1200,30 +1036,34 @@ function saveButtonState(state) {
     : t('settings.saveConnection', 'Save connection');
 }
 $('btn-save').addEventListener('click', async () => {
+  if (settingsUI && (settingsUI.isSaving() || !settingsUI.isDirty())) return;
   const err = $('settings-err');
   err.textContent = '';
-  saveButtonState('saving');
   try {
+  settingsUI?.validate();
+  saveButtonState('saving');
   const res = await window.muse.saveSettings({
     base_url: $('f-base').value.trim(),
     api_key: $('f-key').value.trim(),
     model: $('model-list').value.trim(),
+    visible_models: modelUI.draftModels(),
+    // embeddings: '' keeps chat-endpoint fallback; key '' = keep saved key
+    embed_base_url: $('f-embed-base').value.trim(),
+    embed_model: $('f-embed-model').value.trim(),
+    ...($('f-embed-key').value.trim() ? { embed_api_key: $('f-embed-key').value.trim() } : {}),
   });
   if (!res.ok) {
     err.textContent = res.error;
     saveButtonState('failed');
-    setTimeout(() => saveButtonState('idle'), 2000);
     return;
   }
-  saveButtonState('saved');
-  closeSettings();
-  addSysNote(`settings saved — now using ${res.model}`);
+  modelUI.saved(); saveButtonState('saved');
+  const emb = res.embed_model ? ` · embed ${res.embed_model}${res.embed_base_url ? ' @ ' + res.embed_base_url : ''}` : '';
+  addSysNote(`settings saved — now using ${res.model}${emb}`);
   refreshStatus();
   } catch (e) {
     err.textContent = `Save failed: ${e.message || e}`;
     saveButtonState('failed');
-  } finally {
-    setTimeout(() => saveButtonState('idle'), 2000);
   }
 });
 
@@ -1468,12 +1308,14 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* ---------- Studio workspace controls ---------- */
-for (const name of ['connection', 'workspace', 'shortcuts']) {
+for (const name of ['connection', 'workspace', 'mcp', 'shortcuts']) {
   $('tab-' + name).addEventListener('click', () => {
-    for (const section of ['connection', 'workspace', 'shortcuts']) {
+    settingsUI?.selectTab(name);
+    for (const section of ['connection', 'workspace', 'mcp', 'shortcuts']) {
       $('tab-' + section).setAttribute('aria-selected', String(name === section));
       $('panel-' + section).hidden = name !== section;
     }
+    if (name === 'mcp') renderMcpList();
   });
 }
 for (const [id, key, cls] of [['pref-compact', 'compact', 'compact'], ['pref-tools', 'tools', 'hide-tools'], ['pref-enter', 'enter', null]]) {
@@ -1587,7 +1429,7 @@ function setNav(name) {
 }
 const NAV_ACTIONS = {
   chat: () => { if (memOpen) closeMemory(); input.focus(); },
-  projects: () => { if (memOpen) closeMemory(); if (activeProjectId) { projectHomeVisible = true; renderProjectHome(); } else { const s = document.getElementById('session-search'); if (s) s.focus(); } },
+  projects: () => { if (memOpen) closeMemory(); if (activeProjectId) { projectHomeVisible = true; renderProjectHome(); } else { const s = document.getElementById('project-search'); if (s) { s.focus(); s.scrollIntoView?.({ block: 'nearest' }); } } },
   activity: () => { if (memOpen) closeMemory(); setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); },
   memory: () => { openMemory(); },
 };
@@ -1662,7 +1504,6 @@ function openModelPop() {
   const mpUrl = $('mp-url'); if (mpUrl) mpUrl.textContent = pop(llm.base_url);
   const mpKey = $('mp-key'); if (mpKey) mpKey.textContent = llm.has_key ? 'configured' : 'missing';
   const mpSent = $('mp-sentinel'); if (mpSent) mpSent.textContent = cfg.sentinel ? pop(cfg.sentinel.mode) : '—';
-  const mpHands = $('mp-hands'); if (mpHands) mpHands.textContent = cfg.hands ? (cfg.hands.enabled ? 'enabled' : 'off') : '—';
   const mpMem = $('mp-mem'); if (mpMem) mpMem.textContent = statusMem
     ? (statusMem.enabled ? (statusMem.ready ? 'ready' + (statusMem.project_id ? ' · ' + String(statusMem.project_id).slice(0, 10) : '') : 'starting') : 'disabled')
     : '—';
@@ -1681,7 +1522,7 @@ const tm = $('tag-model');
 if (tm) tm.addEventListener('click', () => { modelPop && modelPop.hidden ? openModelPop() : closeModelPop(); });
 
 /* ---------- tooltips: enrich actionable chrome with data-tip ---------- */
-const TIPS = [['btn-project', 'Attach a working folder — reads inside it are automatic'], ['btn-leave-project', 'Detach the current project folder'], ['btn-workbench-toggle', 'Show or hide the right panel'], ['btn-focus', 'Distraction-free conversation view'], ['btn-export', 'Save the transcript as Markdown'], ['btn-command', 'Command palette — every action, one query'], ['btn-memory', 'Memory scopes, evidence and health'], ['btn-settings', 'Connection, workspace and shortcuts'], ['hands-toggle', 'Let the Python hands sidecar act on your machine'], ['mode-toggle', 'Permission mode: ask → accept-edits → plan → auto'], ['btn-new', 'Start a fresh conversation'], ['send', 'Send message'], ['wb-close', 'Collapse the right panel']];
+const TIPS = [['btn-project', 'Attach a working folder — reads inside it are automatic'], ['btn-leave-project', 'Detach the current project folder'], ['btn-workbench-toggle', 'Show or hide the right panel'], ['btn-focus', 'Distraction-free conversation view'], ['btn-export', 'Save the transcript as Markdown'], ['btn-command', 'Command palette — every action, one query'], ['btn-memory', 'Memory scopes, evidence and health'], ['btn-settings', 'Connection, workspace and shortcuts'], ['mode-toggle', 'Permission mode: ask → accept-edits → plan → auto'], ['btn-new', 'Start a fresh conversation'], ['send', 'Send message'], ['wb-close', 'Collapse the right panel']];
 for (const [id, tip] of TIPS) { const el = document.getElementById(id); if (el) el.setAttribute('data-tip', tip); }
 
 $('wb-open-mem').addEventListener('click', openMemory);
@@ -1696,7 +1537,7 @@ async function refreshWorkbenchMemory() {
 }
 /* ---------- appearance (session-only) ---------- */
 const THEMES = ['light', 'dark'];
-let currentTheme = 'light';
+let currentTheme = document.body.dataset?.theme || 'light';
 function setTheme(name) {
   if (!THEMES.includes(name)) name = 'light';
   currentTheme = name;
@@ -1733,8 +1574,9 @@ async function refreshProject() {
     activeProjectId = res && res.ok ? (res.projectId || null) : null;
     const short = p ? p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() : '';
     const btn = $('btn-project');
-    btn.textContent = activeProjectId ? (res.name + (p ? ' · Folder' : ' · Attach folder')) : p ? `📁 ${short}` : t('header.project', 'Project');
-    btn.title = p ? `Project: ${p} — Muse can read and list files inside it without asking` : 'No project — choose a folder so Muse can read files inside it without asking';
+    btn.textContent = p ? short : 'Attach folder';
+    btn.title = p ? `Working folder: ${p}` : 'Choose the folder Muse should work in';
+    $('btn-normal-chat').setAttribute('aria-pressed', String(!activeProjectId));
     $('btn-leave-project').hidden = !p && !activeProjectId;
     const pathEl = $('project-path');
     if (pathEl) pathEl.value = p || '';
@@ -1841,15 +1683,31 @@ $('project-editor-archive').addEventListener('click',guarded(async()=>{
 $('project-search').addEventListener('input',renderProjects);
 $('btn-archived-projects').addEventListener('click',()=>{showArchivedProjects=!showArchivedProjects;$('btn-archived-projects').setAttribute('aria-pressed',String(showArchivedProjects));$('btn-archived-projects').textContent=showArchivedProjects?'Show active projects':'Show archived projects';renderProjects();});
 $('btn-normal-chat').addEventListener('click', leaveProject);
-$('btn-create-project').addEventListener('click', () => { $('project-create').hidden = false; $('project-name').focus(); });
-$('btn-project-create-cancel').addEventListener('click', () => { $('project-create').hidden = true; });
-$('btn-project-create-save').addEventListener('click', guarded(async () => {
+function closeProjectCreate() {
+  $('project-create').hidden = true; $('btn-create-project').setAttribute('aria-expanded', 'false');
+  $('project-create-error').textContent = ''; $('btn-create-project').focus();
+}
+$('btn-create-project').addEventListener('click', () => {
   if (busy || loadingSession || currentApproval) return;
-  const res = await window.muse.createProject($('project-name').value.trim());
-  if (!res || !res.ok) throw Error(res && res.error || 'Could not create project');
-  $('project-name').value = ''; $('project-create').hidden = true;
-  await openProject(res.record.id);
-}));
+  $('project-create').hidden = false; $('btn-create-project').setAttribute('aria-expanded', 'true'); $('project-name').focus();
+});
+$('btn-project-create-cancel').addEventListener('click', closeProjectCreate);
+$('project-create').addEventListener('keydown', event => { if (event.key === 'Escape' && !$('btn-project-create-save').disabled) closeProjectCreate(); });
+$('project-name').addEventListener('input', () => { $('project-create-error').textContent = ''; $('project-name').setAttribute('aria-invalid', 'false'); });
+$('project-create').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (busy || loadingSession || currentApproval) return;
+  const name = $('project-name').value.trim();
+  if (!name) { $('project-create-error').textContent = 'Enter a project name.'; $('project-name').setAttribute('aria-invalid', 'true'); $('project-name').focus(); return; }
+  const save = $('btn-project-create-save'); if (save.disabled) return;
+  save.disabled = $('btn-project-create-cancel').disabled = true; save.textContent = 'Creating…';
+  try {
+    const res = await window.muse.createProject(name);
+    if (!res || !res.ok) throw Error(res && res.error || 'Could not create project');
+    $('project-name').value = ''; closeProjectCreate(); await openProject(res.record.id);
+  } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
+  finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
+});
 const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
@@ -1931,7 +1789,7 @@ window.addEventListener('keydown', e => {
     const svg = logoEl.querySelector('svg');
     const xml = new XMLSerializer().serializeToString(svg)
       .replace('<svg ', '<svg width="220" height="220" xmlns="http://www.w3.org/2000/svg" ');
-    const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml' }));
+    const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -2069,50 +1927,11 @@ window.addEventListener('keydown', e => {
   else document.addEventListener('DOMContentLoaded', () => play(), { once: true });
 })();
 
-/* ---------- ambient shaders: NeuroNoise background and heatmap hero glow --
-   Vanilla WebGL ports of two Paper Design shader looks. No dependency, no
-   eval, no external fetch, so CSP stays default-src 'self'. The background
-   canvas is full-bleed behind the panes, visible in the frame gutters and
-   the transparent navbar. The hero emblem gets a second canvas that traces
-   the spark mark silhouette as a heatmap glow, blended over it with
-   mix-blend-mode:screen. Both honor prefers-reduced-motion with one static
-   frame, and the Settings > Appearance toggle. All uniforms come from CSS
-   vars so themes restyle them without touching GLSL. */
+/* ---------- hero smoke glow ---------------------------------------------
+   The DotOrbit background is mounted separately by lib/dot-orbit.js.
+   This WebGL1 layer supplies the existing transparent hero emblem glow. */
 (function shaders() {
   const VERT = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
-
-  // NeuroNoise, ported from paper-design/shaders neuro-noise.ts (Apache 2.0,
-  // algorithm by zozuar). 15 rotating sine layers, not fbm: that recursion
-  // is what makes the web-like veins and soft crossing-point glows.
-  const FRAG_NOISE = [
-    'precision highp float;',
-    'uniform vec2 u_res;uniform float u_time;uniform vec3 u_front,u_mid,u_back;',
-    'uniform float u_bright,u_contrast,u_speed,u_dim;',
-    'vec2 rot(vec2 p,float a){float c=cos(a),s=sin(a);return vec2(c*p.x-s*p.y,s*p.x+c*p.y);}',
-    'float neuro(vec2 uv,float t){',
-    ' vec2 acc=vec2(0.);vec2 res=vec2(0.);float sc=8.;',
-    ' for(int j=0;j<15;j++){',
-    '  uv=rot(uv,1.);acc=rot(acc,1.);',
-    '  vec2 layer=uv*sc+float(j)+acc-t;',
-    '  acc+=sin(layer);',
-    '  res+=(.5+.5*cos(layer))/sc;',
-    '  sc*=1.2;',
-    ' }',
-    ' return res.x+res.y;}',
-    'void main(){vec2 uv=(gl_FragCoord.xy-.5*u_res)/u_res.y;',
-    ' vec2 s_uv=uv*.13;',
-    ' float t=.5*u_time*u_speed;',
-    ' float n=neuro(s_uv,t);',
-    ' n=(1.+u_bright)*n*n;',                  // faithful: brightness is a 0..1 multiplier
-    ' n=pow(n,.7+6.*u_contrast);',
-    ' n=min(1.4,n);',
-    ' float blend=smoothstep(.7,1.4,n);',
-    ' float a=clamp(n,0.,1.);',
-    ' vec3 col=mix(u_mid,u_front,blend)*n;',   // faithful blendFront * noise
-    ' col+=u_back*(1.-a);',                    // back fills where noise fades
-    ' col*=u_dim;',                            // darken in place: same pattern, less light
-    ' gl_FragColor=vec4(col,1.);}',
-  ].join('\n');
 
   // SmokeRing, ported from paper-design/shaders smoke-ring.ts (Apache 2.0).
   // Radial gradient shaped with layered value-noise into a smoky ring. White
@@ -2226,8 +2045,6 @@ window.addEventListener('keydown', e => {
   }
 
   const RM = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const bgCanvas = document.getElementById('bg-shader');
-  const bg = makeGl(bgCanvas, FRAG_NOISE);
   const heat = { list: [] };        // hero canvases, rebuilt with each empty state
 
   let lastTime = 0;
@@ -2252,22 +2069,6 @@ window.addEventListener('keydown', e => {
       ctx.gl.viewport(0, 0, w, h);
     }
     return [w, h];
-  }
-
-  function drawBg(time) {
-    if (!bg) return;
-    const [w, h] = sizeCanvas(bgCanvas, bg, 1.25);
-    const gl = bg.gl;
-    gl.uniform2f(bg.u('u_res'), w, h);
-    gl.uniform1f(bg.u('u_time'), time);
-    gl.uniform3fv(bg.u('u_front'), hexToUnit(cssVar('--shader-front', '#ffffff'), [1, 1, 1]));
-    gl.uniform3fv(bg.u('u_mid'), hexToUnit(cssVar('--shader-mid', '#47a6ff'), [.28, .65, 1]));
-    gl.uniform3fv(bg.u('u_back'), hexToUnit(cssVar('--shader-back', '#000000'), [0, 0, 0]));
-    gl.uniform1f(bg.u('u_bright'), numVar('--shader-brightness', .05));
-    gl.uniform1f(bg.u('u_contrast'), numVar('--shader-contrast', .3));
-    gl.uniform1f(bg.u('u_speed'), numVar('--shader-speed', 1));
-    gl.uniform1f(bg.u('u_dim'), numVar('--shader-dim', 1));
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   function drawHeat(time) {
@@ -2296,7 +2097,7 @@ window.addEventListener('keydown', e => {
     if (!running) return;
     const time = (now - t0) / 1000;
     lastTime = time;
-    drawBg(time);
+
     drawHeat(time);
     raf = requestAnimationFrame(frame);
   }
@@ -2307,10 +2108,11 @@ window.addEventListener('keydown', e => {
     raf = requestAnimationFrame(frame);
   }
   function stop() { running = false; cancelAnimationFrame(raf); }
-  function renderOnce() { drawBg(0); drawHeat(0); }
+  function renderOnce() { drawHeat(0); }
 
   // theme or var changes repaint a static frame so colors follow immediately
   window.__museShaderRefresh = () => {
+    if (typeof window.dispatchEvent === 'function') window.dispatchEvent(new Event('muse-shader-refresh'));
     heat.list = heat.list.filter((e) => e.canvas.isConnected);
     if (RM || !running) renderOnce();
   };
@@ -2329,9 +2131,10 @@ window.addEventListener('keydown', e => {
   if (glassSlider && glassLabel) {
     glassSlider.addEventListener('input', () => {
       const v = parseInt(glassSlider.value, 10) / 100;
-      const body = document.body;
-      if (body && body.style && typeof body.style.setProperty === 'function') {
-        body.style.setProperty('--glass-opacity', String(v));
+      // write on :root — --glass-fill consumes the var where it's declared,
+      // so a body-level inline value never reaches the panes.
+      if (document.documentElement && document.documentElement.style) {
+        document.documentElement.style.setProperty('--glass-opacity', String(v));
       }
       glassLabel.textContent = glassSlider.value + '%';
     });
@@ -2344,7 +2147,7 @@ window.addEventListener('keydown', e => {
   }
   if (window.addEventListener) window.addEventListener('resize', () => { if (RM || !running) renderOnce(); });
 
-  if (!bg) document.body.classList.add('shader-off');
+
   renderOnce();
   start();
 })();
@@ -2362,6 +2165,10 @@ try {
   }
 } catch {}
 setWorkbenchCollapsed(typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 1100px)').matches);
+if (typeof window.matchMedia === 'function') {
+  const panelMedia = window.matchMedia('(max-width: 1100px)');
+  panelMedia.addEventListener?.('change', event => setWorkbenchCollapsed(event.matches));
+}
 
 refreshStatus();
 refreshSessions();
@@ -2376,3 +2183,84 @@ document.body.addEventListener('pointermove', (e) => {
   card.style.setProperty('--mx', `${((e.clientX - r.left) / Math.max(1, r.width)) * 100}%`);
   card.style.setProperty('--my', `${((e.clientY - r.top) / Math.max(1, r.height)) * 100}%`);
 }, { passive: true });
+
+/* ---------- MCP servers panel (settings) ---------- */
+async function renderMcpList() {
+  const wrap = $('mcp-list');
+  if (!wrap) return;
+  wrap.textContent = 'loading…';
+  let servers = [];
+  try { servers = await window.muse.mcpList(); }
+  catch (e) { wrap.textContent = `Cannot load MCP servers: ${e.message || e}`; return; }
+  wrap.innerHTML = '';
+  if (!servers.length) { wrap.textContent = 'No MCP servers configured yet.'; return; }
+  for (const s of servers) {
+    const row = document.createElement('div');
+    row.className = 'pref';
+    row.style.cssText = 'align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap';
+    const left = document.createElement('span');
+    left.style.cssText = 'font-weight:600;font-size:13px';
+    left.textContent = `${s.name}${s.enabled ? '' : ' (disabled)'} — ${s.command} ${s.args.join(' ')}`.trim();
+    const st = document.createElement('span');
+    st.style.cssText = 'color:var(--color-muted-fg);font-size:12px';
+    st.textContent = s.enabled ? (s.running ? `connected · ${s.tools} tools` : 'not connected (starts next turn/restart)') : 'off';
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:6px';
+    const edit = document.createElement('button');
+    edit.className = 'btn-ghost'; edit.textContent = 'edit';
+    edit.addEventListener('click', () => {
+      $('f-mcp-name').value = s.name; $('f-mcp-command').value = s.command;
+      $('f-mcp-args').value = s.args.join(' '); $('f-mcp-env').value = s.env.join(', ');
+    });
+    const tog = document.createElement('button');
+    tog.className = 'btn-ghost'; tog.textContent = s.enabled ? 'disable' : 'enable';
+    tog.addEventListener('click', async () => {
+      tog.disabled = true;
+      const r = await window.muse.mcpSave({ name: s.name, server: { command: s.command, args: s.args, env: s.env, timeout_s: s.timeout_s }, enabled: !s.enabled });
+      tog.disabled = false;
+      if (!r.ok) { $('settings-err').textContent = r.error; return; }
+      addSysNote(`mcp: ${s.name} ${!s.enabled ? 'enabled' : 'disabled'}`);
+      renderMcpList();
+    });
+    const del = document.createElement('button');
+    del.className = 'btn-ghost'; del.textContent = 'remove';
+    del.addEventListener('click', async () => {
+      if (!confirm(`Remove MCP server "${s.name}"?`)) return;
+      del.disabled = true;
+      const r = await window.muse.mcpRemove(s.name);
+      del.disabled = false;
+      if (!r.ok) { $('settings-err').textContent = r.error; return; }
+      addSysNote(`mcp: ${s.name} removed`);
+      renderMcpList();
+    });
+    btns.append(edit, tog, del);
+    const grp = document.createElement('div');
+    grp.style.cssText = 'display:flex;flex-direction:column;gap:2px;min-width:0';
+    grp.append(left, st);
+    row.append(grp, btns);
+    wrap.append(row);
+  }
+}
+
+$('btn-mcp-refresh').addEventListener('click', renderMcpList);
+
+$('btn-mcp-save').addEventListener('click', async () => {
+  const err = $('settings-err');
+  err.textContent = '';
+  const btn = $('btn-mcp-save');
+  btn.disabled = true;
+  try {
+    // simple space-split respecting double quotes (npx "-y" style args survive)
+    const args = ($('f-mcp-args').value.trim().match(/"[^"]*"|\S+/g) || []).map(a => a.replace(/^"|"$/g, ''));
+    const env = $('f-mcp-env').value.split(',').map(x => x.trim()).filter(Boolean);
+    const r = await window.muse.mcpSave({
+      name: $('f-mcp-name').value.trim(),
+      server: { command: $('f-mcp-command').value.trim(), args, env },
+      enabled: true,
+    });
+    if (!r.ok) { err.textContent = r.error; return; }
+    addSysNote(`mcp: ${$('f-mcp-name').value.trim()} saved — reconnecting`);
+    renderMcpList();
+  } catch (e) { err.textContent = `Save failed: ${e.message || e}`; }
+  finally { btn.disabled = false; }
+});

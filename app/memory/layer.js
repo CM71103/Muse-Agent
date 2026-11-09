@@ -27,7 +27,8 @@ const prompts = require('./prompts/prompts');
 // Evidence-version seed. Bump ONLY when a frozen prompt changes or the
 // evidence semantics themselves change — a new seed starts a new evidence
 // lineage (spec §2 prompts: changing them starts a new evidence version).
-const EVIDENCE_VERSION_SEED = '1';
+// v2 records the final answer across the full tool loop, rather than its first reply.
+const EVIDENCE_VERSION_SEED = '2';
 
 // How long the embeddings circuit breaker stays open after a 429 with no
 // Retry-After. Long enough to cross a provider's rolling per-minute window.
@@ -61,18 +62,23 @@ class MemoryLayer {
 
     // project scoping: auto = Git root -> opaque registry id (spec §3)
     this._strategy = m.project_id_strategy || 'auto';
-    try { this.projectId = this._resolveProject(opts.cwd, opts.projectId || m.project_id); }
+    this._explicitProjectId = opts.projectId || m.project_id;
+    this._scopeVersion = 0;
+    try { this.projectId = this._resolveProject(opts.cwd, opts.projectId || m.project_id, !!opts.allowFolderScope); }
     catch (e) { this.store.close(); throw e; }
-    this.lastError = null;
+    this.lastError = this.projectId ? null : 'MEMORY_SCOPE_REQUIRED: select a project folder or an explicit personal scope';
     this.embed = opts.embed || embed;
 
     // embedding config: memory.embed_* overrides, else the chat endpoint + key
+    // embed_dims=0/absent = auto-detect from the first successful call; the
+    // adopted value persists in store meta and is restored here on restart.
+    const storedDims = (() => { try { return Number(this.store.getMeta('embed:dims')) || 0; } catch { return 0; } })();
     this.emb = {
       baseUrl: opts.embedBaseUrl || m.embed_base_url || llm.base_url,
       apiKey: opts.embedApiKey || m.embed_api_key || llm.api_key ||
         process.env[llm.api_key_env || 'MUSE_LLM_API_KEY'] || '',
       model: m.embed_model || 'text-embedding-3-small',
-      dims: m.embed_dims || 1536,
+      dims: Number(m.embed_dims) || storedDims || 0,
       generation: m.embed_generation || 'v1',
     };
     // extraction LLM: layer-owned endpoint config (defaults to the chat path)
@@ -107,7 +113,7 @@ class MemoryLayer {
     }
   }
 
-  _resolveProject(cwd, explicitId) {
+  _resolveProject(cwd, explicitId, allowFolderScope = false) {
     const strategy = this._strategy || 'auto';
     if ((strategy === '_default' || strategy === 'manual') && explicitId) {
       return explicitId;
@@ -116,16 +122,48 @@ class MemoryLayer {
       throw new Error('memory: project_id_strategy=manual requires explicit projectId — ' +
         'surface the selection prompt, never fall back silently (spec §3).');
     }
+    if (cwd === null) return null; // desktop: no selected folder, no implicit app scope
     let root;
     try {
       root = require('child_process').execFileSync('git', ['rev-parse', '--show-toplevel'], {
         cwd: cwd || process.cwd(), timeout: 5000, stdio: ['ignore','pipe','pipe'], windowsHide: true,
       }).toString().trim();
     } catch {
+      if (allowFolderScope && cwd) {
+        const folder = require('fs').realpathSync.native(cwd);
+        if (!require('fs').statSync(folder).isDirectory()) throw new Error('MEMORY_SCOPE_REQUIRED: selected folder is not a directory');
+        return this.store.registerProject(process.platform === 'win32' ? folder.toLowerCase() : folder);
+      }
       throw new Error('MEMORY_SCOPE_REQUIRED: Git detection failed. Explicitly select personal (_default + project_id) or manual project scope. Existing scopes stay separate.');
     }
     if (!root) throw new Error('MEMORY_SCOPE_REQUIRED: empty Git root');
     return this.store.registerProject(root);
+  }
+
+  // Switch serving scope without closing the store: old session extraction
+  // may still be writing its captured scope in the background.
+  setProjectScope(folder) {
+    const previous = this.projectId;
+    try {
+      this.projectId = this._resolveProject(folder || null, this._explicitProjectId, true);
+      this.lastError = this.projectId ? null : 'MEMORY_SCOPE_REQUIRED: select a project folder or an explicit personal scope';
+    } catch (error) {
+      this.projectId = null;
+      this.lastError = error.message;
+    }
+    const changed = previous !== this.projectId;
+    if (changed) { this._scopeVersion++; this.taskId = crypto.randomUUID(); }
+    return { changed, project_id: this.projectId, suspended: !this.projectId, reason: this.lastError };
+  }
+
+  setScope(strategy, projectId, folder) {
+    if (!['auto', 'manual', '_default'].includes(strategy)) throw new Error('Invalid scope strategy');
+    if (strategy !== 'auto' && (typeof projectId !== 'string' || !projectId.trim())) throw new Error('Explicit project ID required');
+    this._strategy = strategy;
+    this.memCfg.project_id_strategy = strategy;
+    this.memCfg.project_id = typeof projectId === 'string' ? projectId.trim() : '';
+    this._explicitProjectId = this.memCfg.project_id;
+    return this.setProjectScope(folder);
   }
 
   // ---------- policy / evidence-version machinery (§9) ----------
@@ -208,6 +246,16 @@ class MemoryLayer {
     return `embed_cooldown: retrying in ${secs}s (${b.detail})`;
   }
 
+  // embed_dims=0 auto-detect: adopt provider-reported dimensionality, persist
+  // per-project in store metadata so a restart resumes the same pin. Explicit
+  // config dims never overwritten (that pin is the user's contract).
+  _adoptDims(dims) {
+    const d = Number(dims);
+    if (!Number.isFinite(d) || d <= 0) return;
+    this.emb.dims = d;
+    try { this.store.setMeta('embed:dims', String(d)); } catch {}
+  }
+
   async _embedCapped(texts) {
     if (this._capRemaining() <= 0) {
       const e = new Error('daily_token_cap_exceeded'); e.code = 'TOKEN_CAP'; throw e;
@@ -219,6 +267,12 @@ class MemoryLayer {
     let r;
     try {
       r = await this.embed(this.emb, texts);
+      // Auto-detect dims (embed_dims = 0 / absent): adopt the provider's real
+      // dimensionality from the first successful call and pin it in store meta
+      // so restarts keep the same pin. Ends the dim_mismatch config-error class:
+      // the user never has to know dims, and D2 still holds (pin check runs
+      // with the adopted value from the very first vector).
+      if (!this.emb.dims && r.dims) this._adoptDims(r.dims);
     } catch (err) {
       // Clear first, then reopen only for the kinds that deserve a window. A
       // plain timeout or malformed response leaves the breaker closed so the
@@ -253,6 +307,8 @@ class MemoryLayer {
   // Returns PackedContext. May clamp budget to zero — that is normal, not an error.
   async requestContext(query, budgetInfo, opts = {}) {
     const clamp = this._clampBudget(budgetInfo);
+    const scopeVersion = this._scopeVersion;
+    if (!this.projectId) return this._emptyContext(clamp, new Date().toISOString(), 'memory_scope_required');
     // Retry durable pending writes on next user request, including migrated
     // vectors. Failure here must not abort retrieval: those rows are already
     // durable as 'pending_embed', so they retry on a later turn. Throwing would
@@ -261,6 +317,7 @@ class MemoryLayer {
       try { await this.embedPending(); }
       catch (e) { this.lastError = `pending embed retry deferred: ${e.message}`; }
     }
+    if (scopeVersion !== this._scopeVersion) return this._emptyContext(clamp, new Date().toISOString(), 'memory_scope_changed');
     const t0 = new Date().toISOString();
 
     // fetch all rows — packer applies the status filter and reports omissions
@@ -289,6 +346,7 @@ class MemoryLayer {
       this.store.bumpMeta('stats:requests_empty');
       return this._emptyContext(clamp, t0, reason);
     }
+    if (scopeVersion !== this._scopeVersion) return this._emptyContext(clamp, t0, 'memory_scope_changed');
 
     // query clustering (§9 phase 3): frozen project-local centroids; unfamiliar
     // queries abstain (cluster null → c_empty context key).
@@ -434,6 +492,7 @@ class MemoryLayer {
   // payload hash of what it really put on the wire. Unknown membership ⇒
   // feedback ineligible later — never guessed.
   commitPrepared(ctx) {
+    if (!this.projectId || ctx.prepared?.project_id !== this.projectId) throw new Error('MEMORY_REPACK_REQUIRED: scope changed before send');
     for (const id of ctx.packed_ids) {
       const m = this.store.getMemory(id);
       if (!m || m.project_id !== this.projectId || m.status !== 'active' || m.injection_risk > 0 ||
@@ -522,7 +581,12 @@ class MemoryLayer {
     const res = this.store.grade(turnId, r, this.evidenceVersion, (turn, rr) => {
       if (self.flags.adaptive_ranking) {
         const key = self.flags.query_clustering ? policy.contextKey(turn.query_cluster) : 'default';
-        const cited = new Set(Object.values(turn.citation_map || {}));
+        // Cited means the markers that actually appear in the recorded response,
+        // not every packed id. citation_map is the position to id table for the
+        // WHOLE pack, so reading it as "cited" credits every row the packer
+        // happened to include and F never moves. Adaptive ranking could then
+        // only ever promote, never demote a row the model ignored.
+        const cited = new Set(parseCitations(turn.response_text || '', turn.citation_map || {}).citedIds);
         for (const id of turn.sent_ids || []) {
           const m = self.store.getMemory(id);
           if (!m || m.status !== 'active') continue;
@@ -640,7 +704,9 @@ class MemoryLayer {
   // events: [{source_event_id, text, provenance, type?, channel?, trust_tier?}]
   // Idempotent by source_event_id: dedupe against existing rows keyed on
   // source_event_id. Provenance tier: user | tool | imported | unknown.
-  async ingest(events) {
+  async ingest(events, opts = {}) {
+    const projectId = opts.projectId === undefined ? this.projectId : opts.projectId;
+    if (!projectId) return (events || []).map(() => ({ ok: false, reason: 'memory_scope_required' }));
     const out = [];
     for (const ev of events || []) {
       if (!ev || !ev.source_event_id || !ev.text) {
@@ -650,12 +716,13 @@ class MemoryLayer {
       const ts = new Date().toISOString();
       const id = `mem-${crypto.randomUUID()}`;
       // dedupe: source_event_id stored in row (keyed map below)
-      if (this._sourceSeen(ev.source_event_id)) { out.push({ ok: true, id: this._sourceId(ev.source_event_id), dedup: true }); continue; }
+      const existing = this.store.findSource(projectId, ev.source_event_id);
+      if (existing) { out.push({ ok: true, id: existing.id, dedup: true }); continue; }
       const text = String(ev.text);
       const risk = injectionRisk(text, ev.provenance);
       const record = {
         id,
-        project_id: this.projectId,
+        project_id: projectId,
         agent_id: this.agentId,
         channel: ev.channel || 'desktop',
         provenance: ev.provenance || 'unknown',
@@ -681,7 +748,16 @@ class MemoryLayer {
 
   _sourceSeen(id) { return !!this.store.findSource(this.projectId,id); }
   _sourceId(id) { const m=this.store.findSource(this.projectId,id); return m && m.id; }
-  close() { this.store.close(); }
+  close() {
+    if (this._closePromise) return this._closePromise;
+    this._closing = true;
+    if (!this._pendingExtractions?.size) { this.store.close(); return; }
+    // Keep ownership until every already-started extraction finishes its
+    // ingest/embed/audit writes. Callers rebuilding the layer await this.
+    this._closePromise = Promise.allSettled([...this._pendingExtractions])
+      .then(() => { this.store.close(); });
+    return this._closePromise;
+  }
   startSession(sessionId) { this.sessionId=sessionId; this.taskId=crypto.randomUUID(); }
   scopes() {
     const counts={};for(const m of this.store.listAllMemories())counts[m.project_id]=(counts[m.project_id] || 0)+1;
@@ -697,8 +773,9 @@ class MemoryLayer {
   // Embed all pending rows (status pending_embed). Batch to the provider,
   // gated by the daily token cap. Cap refusal is a returned degrade, not a
   // silent skip; rows stay durable pending_embed until a later window.
-  async embedPending() {
-    const pending = this.store.listMemories(this.projectId).filter(m => m.status === 'pending_embed');
+  async embedPending(projectId = this.projectId) {
+    if (!projectId) return { embedded: 0, refused: 'memory_scope_required' };
+    const pending = this.store.listMemories(projectId).filter(m => m.status === 'pending_embed');
     if (!pending.length) return { embedded: 0 };
     if (this._capRemaining() <= 0) {
       return { embedded: 0, refused: 'daily_token_cap_exceeded', pending: pending.length };
@@ -750,7 +827,19 @@ class MemoryLayer {
   // candidates consumed are superseded (kept in the row, out of packing) so
   // extraction replaces noise rather than duplicating it; if extraction fails
   // or is refused, raw rows stay active — nothing is lost.
-  async extractSession(events, opts = {}) {
+  extractSession(events, opts = {}) {
+    if (this._closing) return Promise.resolve({ ok: false, reason: 'memory_closing' });
+    this._pendingExtractions = this._pendingExtractions || new Set();
+    const operation = this._extractSession(events, opts);
+    this._pendingExtractions.add(operation);
+    const finished = () => this._pendingExtractions.delete(operation);
+    operation.then(finished, finished);
+    return operation;
+  }
+
+  async _extractSession(events, opts = {}) {
+    const projectId = this.projectId; // capture before the first provider await
+    if (!projectId) return { ok: false, reason: 'memory_scope_required' };
     const evs = (events || []).filter(e => e && e.source_event_id && e.text);
     if (!evs.length) return { ok: true, extracted: 0, note: 'no_events' };
     const promptHash = prompts.load('extract-prompt.md').hash;
@@ -775,25 +864,25 @@ class MemoryLayer {
       return { ok: false, reason: `extract_failed: ${e.message}`, prompt_hash: promptHash };
     }
     if (!result.candidates.length) {
-      this.store.audit('extraction', { project_id: this.projectId, prompt_hash: result.prompt_hash, candidates: 0 });
+      this.store.audit('extraction', { project_id: projectId, prompt_hash: result.prompt_hash, candidates: 0 });
       return { ok: true, extracted: 0, note: result.note || 'no_candidates', prompt_hash: result.prompt_hash };
     }
     // dedupe + ingest candidates (provenance preserved, channel from opts)
     const derived = result.candidates.map(c => ({
       source_event_id: `extract:${crypto.createHash('sha256')
-        .update([this.projectId, result.prompt_hash, c.text].join('|')).digest('hex')}`,
+        .update([projectId, result.prompt_hash, c.text].join('|')).digest('hex')}`,
       text: c.text,
       provenance: c.provenance,
       type: c.type,
       channel: opts.channel || 'desktop',
     }));
-    const ingested = await this.ingest(derived);
+    const ingested = await this.ingest(derived, { projectId });
     // supersede raw rows whose source events the candidates consumed
     const consumed = new Set();
     for (const c of result.candidates) for (const sid of c.source_event_ids || []) consumed.add(sid);
     const superseded = [];
     for (const sid of consumed) {
-      const raw = this._sourceId(sid) && this.store.findSource(this.projectId, sid);
+      const raw = this.store.findSource(projectId, sid);
       if (raw && ['active', 'pending_embed'].includes(raw.status)) {
         this.store.updateStatus(raw.id, 'superseded', new Date().toISOString());
         superseded.push(raw.id);
@@ -801,10 +890,10 @@ class MemoryLayer {
     }
     // embed the new candidates (cap-guarded; pending rows stay durable)
     let embedRes = { embedded: 0 };
-    try { embedRes = await this.embedPending(); }
+    try { embedRes = await this.embedPending(projectId); }
     catch (e) { this.lastError = `extraction embed failed: ${e.message}`; }
     this.store.audit('extraction', {
-      project_id: this.projectId, prompt_hash: result.prompt_hash,
+      project_id: projectId, prompt_hash: result.prompt_hash,
       candidates: result.candidates.length, dedup: ingested.filter(x => x.dedup).length,
       superseded, embedded: embedRes.embedded || 0,
     });

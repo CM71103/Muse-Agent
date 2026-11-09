@@ -1,26 +1,15 @@
 'use strict';
-// scripts/check-native.js — pre-dist guard: refuse to package a native module
-// binary of the wrong platform (e.g. a Linux ELF left by a sandbox rebuild).
-// Wired via predist hooks in package.json.
+// Pre-dist guard: load and query the runtime-selected native binding.
 
-const fs = require('fs');
-const path = require('path');
-
-const p = path.join(__dirname, '..', 'node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node');
-if (!fs.existsSync(p)) {
-  console.error('better-sqlite3 native binary missing. Run: npm install');
+// Exercise the same binding selection as the app, including platform prebuilds.
+try {
+  const Database = require('better-sqlite3');
+  const db = new Database(':memory:');
+  try { require('node:assert/strict').equal(db.prepare('SELECT 1 AS n').get().n, 1); }
+  finally { db.close(); }
+  console.log(`native check ok: ${process.platform}-${process.arch}`);
+} catch (error) {
+  console.error('better-sqlite3 native binding failed:', error.message);
+  console.error('Run npm install on the target platform, then package again.');
   process.exit(1);
 }
-const head = fs.readFileSync(p).subarray(0, 2).toString('latin1');
-const wantPE = process.platform === 'win32';
-if (wantPE && head !== 'MZ') {
-  console.error('better-sqlite3 native binary is not a Windows executable (expected MZ header).');
-  console.error('Fix on Windows:  npm run rebuild:electron   then package again.');
-  process.exit(1);
-}
-if (!wantPE && head !== '\x7fE') {
-  console.error('better-sqlite3 native binary is not a Linux ELF.');
-  console.error('Fix:  npm rebuild better-sqlite3');
-  process.exit(1);
-}
-console.log('native check ok: ' + (wantPE ? 'win32 PE' : 'linux ELF'));

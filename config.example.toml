@@ -27,9 +27,9 @@ max_tokens = 8192
 max_turns = 40
 # Auto-deny approval after this many seconds (nanoMuse default: 1 hour).
 approval_timeout_s = 3600
-# Tools that always require explicit approval. Add "hands" to gate computer
-# control twice, or remove "shell" to trust shell calls (not recommended).
-always_ask_tools = ["shell"]
+# Legacy field retained for compatibility. Auto mode runs tools without prompts,
+# including shell commands, even when an older config lists "shell" here.
+always_ask_tools = []
 # Sandbox: none on Windows (approved commands run unsandboxed — same reality
 # as nanoMuse). Bubblewrap mode is Linux-only and not implemented in v0.1.
 sandbox = "none"
@@ -37,10 +37,10 @@ sandbox = "none"
 [sentinel]
 # Permission mode (Claude Code-style). Switchable live from the sidebar "Mode" button.
 #   "ask"          — side effects always prompt for approval (safest, default)
-#   "accept_edits" — writes inside the project folder auto-approve; shell/web/hands still ask
-#   "plan"         — read-only: writes, shell, web, hands are blocked outright
-#   "auto"         — side effects auto-approve; hands + always_ask_tools still ask
-# Deny rules, hands revocation and fail-closed unknown tools hold in EVERY mode.
+#   "accept_edits" — writes inside the project folder auto-approve; shell/web still ask
+#   "plan"         — read-only: writes, shell, web are blocked outright
+#   "auto"         — all known tools and shell commands run without approval prompts
+# Deny rules and fail-closed unknown tools hold in EVERY mode.
 mode = "ask"
 # Glob patterns matched against the whole rendered tool call (* = any text).
 deny_rules = [
@@ -53,14 +53,6 @@ deny_rules = [
 ]
 # After the agent reads a private file, web_fetch is limited to these hosts.
 egress_allowlist = ["duckduckgo.com", "wikipedia.org", "github.com", "pypi.org"]
-
-[hands]
-# Computer control (screenshot + mouse + keyboard) via the Python sidecar.
-# OFF by default. Toggle with the "hands" chip in the app header.
-# Each hands action still requires approval while shell/hands are in always_ask_tools.
-enabled = false
-host = "127.0.0.1"
-port = 8788
 
 [mcp]
 # MCP (Model Context Protocol) servers — extend the agent with third-party
@@ -114,20 +106,22 @@ score_cutoff = 0.20
 # manual = requires project_id passed by the host; detection failure surfaces
 # a prompt, never a silent fallback.
 project_id_strategy = "auto"
-# Embeddings default to text-embedding-3-small (1536d) on the chat endpoint.
+# Embeddings default to text-embedding-3-small on the chat endpoint.
 # Point at a dedicated endpoint if yours lacks /embeddings:
 # embed_base_url = "https://api.openai.com/v1"
 embed_model = "text-embedding-3-small"
-embed_dims = 1536
+# embed_dims: 0 = auto-detect from the first successful embeddings call
+embed_dims = 0
 # Layer-own provider spend per UTC day (embeddings + extraction LLM), persisted
 # in the store. Refusal at the cap is a disclosed degrade, never a silent bypass.
 daily_token_cap = 200000
-# Adaptive-policy flags (spec section 9). All default false. Enabling any starts
-# a NEW policy/evidence version (baseline feedback is never replayed into
-# evidence afterward); disabling restores baseline serving, nothing deleted.
-adaptive_ranking = false
-adaptive_budget = false
-query_clustering = false
+# Adaptive-policy flags (spec section 9). ON by default (user request 2026-11-07).
+# Enabling any starts a NEW policy/evidence version (baseline feedback is never
+# replayed into evidence afterward); disabling restores baseline serving, nothing
+# deleted.
+adaptive_ranking = true
+adaptive_budget = true
+query_clustering = true
 cluster_floor = 0.35
 # Session-end extraction LLM (defaults to the [llm] endpoint/model when unset).
 llm_base_url = ""

@@ -21,11 +21,11 @@ const DEFAULTS = {
   agent: {
     max_turns: 40,                    // hard cap on tool loop
     approval_timeout_s: 3600,         // auto-deny after this (nanoMuse default)
-    always_ask_tools: ['shell'],      // tools that require approval every call
+    always_ask_tools: [],             // legacy config compatibility; Auto never prompts
     sandbox: 'none',                  // none (Windows reality) | bubblewrap (Linux only, v2)
   },
   sentinel: {
-    mode: 'ask',                      // ask | auto  (NEVER recommend auto)
+    mode: 'ask',                      // ask | accept_edits | plan | auto
     deny_rules: [
       '*rm -rf*',
       '*del /s*',
@@ -36,12 +36,6 @@ const DEFAULTS = {
     ],
     // allowlist applied after agent reads private files (taint-lite)
     egress_allowlist: ['duckduckgo.com', 'wikipedia.org', 'github.com', 'pypi.org'],
-  },
-  hands: {
-    enabled: false,                   // OFF by default, like nanoMuse
-    host: '127.0.0.1',
-    port: 8788,
-    // token file: ~/.muse-agent/hands_token ; generated on first start
   },
   mcp: {
     // OFF by default — no servers configured means no MCP tools exposed.
@@ -72,13 +66,15 @@ const DEFAULTS = {
     // If unset, embeddings ride the chat endpoint + key.
     embed_base_url: '',
     embed_model: 'text-embedding-3-small',
-    embed_dims: 1536,
+    embed_dims: 0,                    // 0 = auto-detect from first successful call
     daily_token_cap: 200000,          // layer embeddings+LLM tokens per UTC day; <=0 disables
-    // Adaptive-policy flags (spec §9): all default false. Enabling any starts a
-    // new policy/evidence version; de-promotion restores baseline serving.
-    adaptive_ranking: false,          // posterior replaces cosine; /good updates evidence
-    adaptive_budget: false,           // ×1.5 ladder grows next budget on eligible /bad
-    query_clustering: false,          // frozen centroids; unfamiliar queries abstain
+    // Adaptive-policy flags (spec §9). USER REQUEST 2026-11-07: ON by default.
+    // Enabling any starts a new policy/evidence version; de-promotion restores
+    // baseline serving. PRD v2.1.1 gates say promote-on-evidence — overriding
+    // deliberately (personal agent, user accepts the risk).
+    adaptive_ranking: true,           // posterior replaces cosine; /good updates evidence
+    adaptive_budget: true,            // ×1.5 ladder grows next budget on eligible /bad
+    query_clustering: true,           // frozen centroids; unfamiliar queries abstain
     cluster_floor: 0.35,              // similarity floor below which a query abstains
     // Session-end extraction LLM (defaults to the chat endpoint/model when unset).
     llm_base_url: '',

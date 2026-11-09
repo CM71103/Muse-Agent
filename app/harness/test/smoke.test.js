@@ -69,13 +69,13 @@ test('config: TOML parse + merge', () => {
 [llm]
 model = "my-model"
 max_turns = 5
-[hands]
+[sentinel]
 enabled = true
 deny = ["a", "b"]
 `);
   assert.equal(t.llm.model, 'my-model');
-  assert.equal(t.hands.enabled, true);
-  assert.deepEqual(t.hands.deny, ['a', 'b']);
+  assert.equal(t.sentinel.enabled, true);
+  assert.deepEqual(t.sentinel.deny, ['a', 'b']);
   const merged = deepMerge({ a: { b: 1, keep: true } }, { a: { b: 2 } });
   assert.equal(merged.a.b, 2);
   assert.equal(merged.a.keep, true);

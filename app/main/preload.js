@@ -1,12 +1,11 @@
 'use strict';
 // preload.js - contextBridge surface. Renderer gets: send to agent, respond approvals,
-// read config summary, toggle hands.
+// read config summary, switch permission mode.
 
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('muse', {
   send: (text) => ipcRenderer.invoke('agent:send', text),
-  ocrImage: (b64) => ipcRenderer.invoke('image:ocr', b64),
   reset: () => ipcRenderer.invoke('agent:reset'),
   cancel: () => ipcRenderer.invoke('agent:cancel'),
   setProjectScope: (dir) => ipcRenderer.invoke('project:set', dir),
@@ -19,11 +18,14 @@ contextBridge.exposeInMainWorld('muse', {
   answerQuestion: (id, answer, cancelled) => ipcRenderer.invoke('question:respond', { id, answer, cancelled: !!cancelled }),
   respondApproval: (id, approved) => ipcRenderer.invoke('approval:respond', { id, approved }),
   getConfig: () => ipcRenderer.invoke('config:get'),
-  toggleHands: (enabled) => ipcRenderer.invoke('config:toggleHands', enabled),
   setMode: (mode) => ipcRenderer.invoke('sentinel:setMode', mode),
+  selectModel: (model) => ipcRenderer.invoke('model:select', model),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (patch) => ipcRenderer.invoke('settings:save', patch),
   fetchModels: (opts) => ipcRenderer.invoke('settings:fetchModels', opts),
+  mcpList: () => ipcRenderer.invoke('mcp:list'),
+  mcpSave: (srv) => ipcRenderer.invoke('mcp:save', srv),
+  mcpRemove: (name) => ipcRenderer.invoke('mcp:remove', { name }),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadSession: (id) => ipcRenderer.invoke('sessions:load', id),
   deleteSession: (id) => ipcRenderer.invoke('sessions:delete', id),
@@ -45,6 +47,11 @@ contextBridge.exposeInMainWorld('muse', {
     const h = (_e, req) => cb(req);
     ipcRenderer.on('approval-request', h);
     return () => ipcRenderer.removeListener('approval-request', h);
+  },
+  onApprovalResolved: (cb) => {
+    const h = (_e, result) => cb(result);
+    ipcRenderer.on('approval-resolved', h);
+    return () => ipcRenderer.removeListener('approval-resolved', h);
   },
   onQuestion: (cb) => {
     const h = (_e, q) => cb(q);

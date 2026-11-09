@@ -7,7 +7,7 @@ const {Agent}=require('../agent');const {DEFAULTS,deepMerge}=require('../config'
 function setup(t) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'muse-reg-'));let current;
  t.after(()=>{if(current)current.close();fs.rmSync(dir,{recursive:true,force:true});});
- const cfg=deepMerge(DEFAULTS,{memory:{enabled:true,project_id_strategy:'manual',project_id:'personal',embed_dims:2,embed_model:'test'},llm:{max_tokens:100}});
+ const cfg=deepMerge(DEFAULTS,{memory:{enabled:true,project_id_strategy:'manual',project_id:'personal',embed_dims:2,embed_model:'test',adaptive_ranking:false,adaptive_budget:false,query_clustering:false},llm:{max_tokens:100}});
  const embed=async(c,texts)=>({model:'test',vectors:texts.map(()=>({vector:[1,0]}))});
  return {dir,cfg,open(id='personal'){current=new MemoryLayer(cfg,{dataDir:dir,projectId:id,embed});return current;},close(){current.close();current=null;}};
 }
@@ -68,18 +68,23 @@ test('credential vault encrypts and refuses insecure backend; config writer excl
 });
 // 429 regression: ingestToolResult used to call embedPending() per tool result,
 // so a 40-turn tool loop made ~40 HTTP requests to the embeddings endpoint and
-// providers rate-limited. Rows must queue and flush in ONE batched call.
-test('tool ingest queues without embedding; one flush drains all rows',async t=>{
+// providers rate-limited. Raw outputs stay extraction events; durable facts batch.
+test('tool observations stay extraction-only; pending durable facts flush on next retrieval',async t=>{
  const x=setup(t);const m=x.open();const a=new Agent(x.cfg);a.attachMemory(m);
  let embedCalls=0,textsPerCall=[];
  m.embed=async(_c,texts)=>{embedCalls++;textsPerCall.push(texts.length);return {model:'test',vectors:texts.map(()=>({vector:[1,0]}))};};
  for(let i=0;i<12;i++) await a.ingestToolResult('write_file',`result ${i}`,`call-${i}`);
  assert.equal(embedCalls,0,'tool ingest must not hit the network');
- assert.equal(m.listMemories().filter(r=>r.status==='pending_embed').length,12);
- // the single per-turn flush drains every queued row in one batched request
+ assert.equal(m.listMemories().length,0,'raw outputs must not become facts');
+ assert.equal(a._sourceEvents.length,12,'outputs remain available to extraction');
+ await m.ingest(Array.from({length:12},(_,i)=>({source_event_id:`durable-${i}`,text:`durable fact ${i}`,provenance:'user'})));
+ // Completed answers do not wait for embeddings, even with a pending backlog.
  await a.ingestUserTurn('a user message');
- assert.equal(embedCalls,1);
- assert.deepEqual(textsPerCall,[13],'all rows in ONE request, not one per row');
+ assert.equal(embedCalls,0);
+ assert.equal(m.listMemories().filter(r=>r.status==='pending_embed').length,12);
+ await m.requestContext('recall durable facts');
+ assert.equal(embedCalls,2,'one batched pending flush, then one query embedding');
+ assert.deepEqual(textsPerCall,[12,1],'ordinary prompt excluded from durable capture');
  assert.equal(m.listMemories().filter(r=>r.status==='pending_embed').length,0);
 });
 // A deferred flush that fails must not abort retrieval: rows stay durable and

@@ -94,6 +94,9 @@ function mkLayer(t, over = {}) {
       project_id_strategy: 'manual',
       embed_model: 'test-embed-model',
       embed_dims: 4,
+      // these tests assert BASELINE lifecycle behavior; config defaults are now
+      // adaptive-on, so pin explicitly instead of inheriting
+      adaptive_ranking: false, adaptive_budget: false, query_clustering: false,
     }, over.memory || {}),
   });
   const mem = new MemoryLayer(cfg, Object.assign({
@@ -424,4 +427,42 @@ test('canonicalModel strips routing variants but still catches a real swap', () 
   // dims stay independently pinned — stripping a variant must not loosen them
   assert.equal(checkRowPin({ embedding: new Array(1024).fill(0.02), model_pin: returned, generation: 'v1' },
                            'nvidia/nemotron-3-embed-1b:free', 2048, 'v1').reason, 'dim_mismatch');
+});
+
+test('embed_dims auto-detect: 0 adopts provider dims, persists across restart, explicit never overwritten', async (t) => {
+  // scripted 6-dim vectors (unit norm) from the mock
+  const v6 = (() => { const n = Math.sqrt(6 * 0.25); return new Array(6).fill(0.5 / n); })();
+  embedScript.push({ vecs: [v6], model: 'test-embed-model' });
+  const mem = mkLayer(t, { memory: { embed_dims: 0 } });
+  assert.equal(mem.emb.dims, 0, 'pre-call: dims unknown (0)');
+  const r = await mem.ingest([
+    { source_event_id: 'ad1', text: 'auto dims fact', provenance: 'user' },
+  ]);
+  const res = await mem.embedPending();
+  assert.equal(res.embedded, 1);
+  assert.equal(mem.emb.dims, 6, 'adopted provider dims after first call');
+  const row = mem.store.getMemory(r[0].id);
+  assert.equal(row.status, 'active');
+  assert.equal(row.dims, 6);
+  assert.equal(mem.store.getMeta('embed:dims'), '6', 'adopted dims persisted in store meta');
+
+  // restart: close owner first, then fresh layer over the SAME store, config still 0
+  mem.close();
+  const cfg2 = JSON.parse(JSON.stringify(mem.cfg));
+  const mem2 = new MemoryLayer(cfg2, {
+    dataDir: mem.dataDir, projectId: mem.projectId,
+    embedBaseUrl: `http://127.0.0.1:${mockPort}/v1`, embedApiKey: 'test-key',
+  });
+  t.after(() => { mem2.close(); });
+  assert.equal(mem2.emb.dims, 6, 'adopted dims restored from store meta on restart');
+
+  // explicit config dims are the user's contract: never adopted/overwritten
+  const mem3 = mkLayer(t, { memory: { embed_dims: 4 } });
+  embedScript.push({ vecs: [v6], model: 'test-embed-model' });
+  await mem3.ingest([{ source_event_id: 'ad2', text: 'explicit dims fact', provenance: 'user' }]);
+  // 6-dim vector vs 4-dim pin -> dim_mismatch refuse (thrown), dims NOT adopted
+  let threw = null;
+  try { await mem3.embedPending(); } catch (e) { threw = e; }
+  assert.ok(threw && /pin validation/.test(threw.message), 'pin refusal surfaces');
+  assert.equal(mem3.emb.dims, 4, 'explicit dims stay pinned');
 });

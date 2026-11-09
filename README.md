@@ -2,12 +2,11 @@
 
 <img src="build/header.svg" alt="Muse Agent — a personal AI agent that runs entirely on your machine" width="760" />
 
-[![Release](https://img.shields.io/badge/release-v0.1.3-6cbf2e?style=flat-square)](../../releases)
+[![Release](https://img.shields.io/badge/release-v0.1.7-6cbf2e?style=flat-square)](../../releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-18181b?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-blue?style=flat-square)](../../releases)
-[![Tests](https://img.shields.io/badge/tests-94%2F94%20passing-6cbf2e?style=flat-square)](#)
 
-Electron shell · Node agent harness · Python hands sidecar
+Electron shell · Node agent harness
 
 No cloud relay · No telemetry · No account · Your key stays local
 
@@ -26,26 +25,26 @@ No cloud relay · No telemetry · No account · Your key stays local
 
 ## What it does
 
-**New in 0.1.3d:** smart context compaction — long sessions summarize old turns
+Smart context compaction — long sessions summarize old turns
 into a dense LLM-written block instead of silently dropping them (type
 `/compact` in the chat to force it), plus automatic update checks against
 GitHub Releases (notify-only — click the notification to open the download).
 
 
 Muse Agent is a local-first desktop agent. You talk to it; it reads files, runs
-commands, fetches the web, controls the mouse and keyboard — **only after you
-approve each action**.
+commands, and fetches the web. In the default `ask` mode, side-effect tools
+require approval; reads inside the selected project are automatic. Other
+permission modes can approve more actions automatically.
 
 | Layer | What it is |
 |---|---|
 | **Electron shell** | Chat window, approval dialogs, settings. Thin by design. |
-| **Agent harness (Node)** | OpenAI-compatible LLM loop with tools: `shell`, `read_file`, `write_file`, `list_dir`, `web_fetch`, `hands`, `spawn_agent`. Every call passes the **Sentinel** gate first. |
-| **Hands sidecar (Python)** | Screenshot / mouse / keyboard on `127.0.0.1:8788`, bearer-token auth, off by default. |
+| **Agent harness (Node)** | OpenAI-compatible LLM loop with tools: `shell`, `read_file`, `write_file`, `list_dir`, `web_fetch`, `spawn_agent`. Every call passes the **Sentinel** gate first. |
 
 ### Highlights
 
 - **Sentinel approval gate** — deny-rule globs short-circuit dangerous calls;
-  side-effect tools always ask; after reading local files, `web_fetch` is
+  side-effect tools ask in the default mode; after reading local files, `web_fetch` is
   restricted to a taint-based egress allowlist.
 - **Subagents** — delegate self-contained subtasks to a fresh child loop with
   its own context and turn budget. Children inherit your approval gates and
@@ -62,18 +61,18 @@ approve each action**.
 - **Headless mode** — run the same agent from a terminal:
   `node app/harness/cli.js "summarize this directory"`.
 - **Tray + notifications** — idle/working tray state, desktop notification on
-  approval requests, supervised sidecar with automatic restart.
+  approval requests.
 
 ## Quick start
 
-Requirements: Node 18+, Python 3.10+ (only for hands), an OpenAI-compatible API key.
+Requirements: Node 24+, Bun, and an OpenAI-compatible API key.
 
 ```bash
 git clone https://github.com/<you>/muse-agent.git
 cd muse-agent
-npm install
+bun install
 set MUSE_LLM_API_KEY=sk-...        # Windows (export on macOS/Linux)
-npm start
+bun run start
 ```
 
 First run creates `~/.muse-agent/config.toml` from the bundled template —
@@ -82,8 +81,17 @@ edit presets for OpenAI / OpenRouter / DeepSeek / Ollama / LM Studio there.
 Build a Windows installer:
 
 ```bash
-npm run dist        # NSIS installer + portable exe -> dist/
+bun run release:check  # Tests, native SQLite, Windows package and archive checks
+bun run dist           # NSIS installer + portable exe -> dist/
 ```
+
+`release:check` builds into `dist/release-check/` and writes a
+`release-report.json` only after all checks pass. It records source hashes,
+the Git commit and working-tree status, and package hashes, so local edits
+are visible in the release receipt. It verifies SQLite with the packaged
+Electron runtime. Installer behavior, the portable launcher, and visual UI
+behavior still require separate verification. Use
+`bun run release:check --preflight` for tests and host SQLite without packaging.
 
 ## Security model
 
@@ -92,11 +100,12 @@ Read this before enabling anything.
 - **Shell is unsandboxed.** Approved commands run with your user permissions —
   on Windows there is no OS-level sandbox in v0.x. Treat each approval like
   handing someone your keyboard for one command.
-- **Hands are off by default.** When enabled, the model sees your screen and can
-  move your mouse. Don't enable it with sensitive windows open. The sidecar
-  binds loopback only and requires a bearer token.
-- **Keep `sentinel.mode = "ask"`.** `auto` removes approval prompts; only deny
-  rules remain.
+- **Keep `sentinel.mode = "ask"` for explicit approvals.** `accept_edits` permits
+  in-project file writes, `plan` blocks side effects, and `auto` permits side
+  tools and shell commands without approval prompts, including file access
+  outside the selected folder. Legacy `agent.always_ask_tools` values do not
+  override Auto. Deny rules apply in every mode; file scope prompts apply in
+  the other modes.
 - **No code signing.** SmartScreen will warn on first run of the packaged exe —
   expected for an unsigned hobby build.
 
@@ -118,7 +127,6 @@ app/main/          Electron main process + preload bridge
 app/renderer/      Chat UI (vanilla JS, strict CSP)
 app/memory/        Adaptive memory layer (SQLite, embeddings, quarantine)
 app/harness/       config · llm · agent loop · sentinel · tools · cli
-python/muse_hands/ Loopback hands sidecar (aiohttp, token auth)
 config.example.toml
 ```
 

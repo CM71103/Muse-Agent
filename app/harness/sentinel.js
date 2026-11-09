@@ -4,24 +4,46 @@
 //   Modes: 'ask' | 'accept_edits' | 'plan' | 'auto'
 //     ask          — side-effect tools ALWAYS ask (previous default)
 //     accept_edits — file writes (write_file) inside granted scope auto-approve;
-//                    shell/web/hands/spawn_agent/mcp still ask
+//                    shell/web/spawn_agent/mcp still ask
 //     plan         — read-only: reads inside scope allowed, EVERY side effect
-//                    (writes, shell, web, hands, mcp, spawn) denied outright
-//     auto         — side-effect tools auto-approve EXCEPT hands and
-//                    always_ask_tools (default [shell]) — those still ask
+//                    (writes, shell, web, mcp, spawn) denied outright
+//     auto         — known tools run without approval, including shell and
+//                    file access outside project grants. Deny rules still apply.
 //   HARD INVARIANTS in EVERY mode (no mode ever escapes these):
 //     - deny_rules match -> deny, first, before anything else
-//     - hands revoked -> deny
 //     - unknown tool names -> deny (fail closed)
-//     - reads outside granted scope -> ask (auto mode: still ask)
+//     - reads outside granted scope -> ask except in explicit auto mode
 //   READ tools (read_file, list_dir) are allowed inside granted scopes
 //   without approval in all modes; outside scope they ask.
 // A grant is { root } (absolute path). Grants live for the session and are
-// cleared on reset. `handsRevoked` flips live: the hands tool re-checks this
-// gate right before every action, so disabling hands in the UI takes effect
-// for a running agent.
+// cleared on reset.
 
 const MODES = ['ask', 'accept_edits', 'plan', 'auto'];
+const fs = require('node:fs');
+const path = require('node:path');
+
+// Resolve links, including the existing ancestor of a not-yet-created file.
+// Permission checks must describe the filesystem destination, not its alias.
+function canonicalPath(value) {
+  let candidate = path.resolve(value);
+  const missing = [];
+  for (;;) {
+    try { return path.join(fs.realpathSync.native(candidate), ...missing); }
+    catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      // A dangling link is not a new directory: its destination is unknown.
+      try {
+        if (fs.lstatSync(candidate).isSymbolicLink()) throw new Error('dangling link in tool path');
+      } catch (linkError) {
+        if (linkError.code !== 'ENOENT') throw linkError;
+      }
+      const parent = path.dirname(candidate);
+      if (parent === candidate) throw error;
+      missing.unshift(path.basename(candidate));
+      candidate = parent;
+    }
+  }
+}
 
 class Sentinel {
   constructor(cfg, opts = {}) {
@@ -30,10 +52,9 @@ class Sentinel {
     this.timeoutMs = (this.agentCfg.approval_timeout_s || 3600) * 1000;
     this.denyRules = this.cfg.deny_rules || [];
     // Central policy. Tool registry `alwaysAsk` is advisory; this is the law.
-    this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell', 'hands']);
+    this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell']);
     this.readTools = new Set(['read_file', 'list_dir']);
-    // Tools that keep asking even in auto mode. Defaults from agent config.
-    this.alwaysAskTools = new Set(Array.isArray(this.agentCfg.always_ask_tools) ? this.agentCfg.always_ask_tools : ['shell']);
+    // Legacy always_ask_tools values are accepted in config but do not override Auto.
     // Modes live on the sentinel so a running agent picks up a switch
     // immediately (host calls setMode). Config value is the boot default.
     this.mode = MODES.includes(this.cfg.mode) ? this.cfg.mode : 'ask';
@@ -43,7 +64,6 @@ class Sentinel {
     this.mcpSideEffects = true;
     this.approver = opts.approver || null;
     this.grants = [];            // [{root}] absolute normalized paths
-    this.handsRevoked = false;   // live switch, flipped by host on toggle-off
     this.expiryListeners = new Set();
   }
 
@@ -56,18 +76,20 @@ class Sentinel {
   addGrant(root) {
     const p = String(root || '').trim();
     if (!p) return false;
-    this.grants.push(p);
+    try { this.grants.push(canonicalPath(p)); }
+    catch { return false; }
     return true;
   }
 
   clearGrants() { this.grants = []; }
 
-  revokeHands() { this.handsRevoked = true; }
-
   // Path containment: real fs paths only (tools resolve before calling).
   // Case-insensitive on Windows, exact elsewhere.
   inGrantedScope(resolvedPath) {
-    const p = String(resolvedPath || '');
+    if (!resolvedPath) return false;
+    let p;
+    try { p = canonicalPath(String(resolvedPath)); }
+    catch { return false; }
     const norm = process.platform === 'win32' ? p.toLowerCase() : p;
     for (const root of this.grants) {
       let r = root;
@@ -116,29 +138,33 @@ class Sentinel {
 
   decide(request) {
     // -- INVARIANT 1: deny rules short-circuit every mode --
-    const rendered = this.renderForRules(request);
+    const rendered = [this.renderForRules(request)];
+    // Keep the original rendering for anchored rules; independently check
+    // the real target so aliases cannot hide a denied destination.
+    if (request.resolvedPath) rendered.push(this.renderForRules({
+      ...request, args: { ...request.args, path: request.resolvedPath },
+    }));
     for (const rule of this.denyRules) {
-      if (this.matchesRule(rendered, rule.toLowerCase())) {
+      if (rendered.some(value => this.matchesRule(value, rule.toLowerCase()))) {
         return { decision: 'deny', reason: `matched deny rule: ${rule}` };
       }
     }
-    // -- INVARIANT 2: hands revocation denies regardless of mode --
-    if (request.tool === 'hands' && this.handsRevoked) {
-      return { decision: 'deny', reason: 'hands revoked (disabled while agent running)' };
+    const isRead = this.readTools.has(request.tool);
+    const sideEffect = this.sideEffectTools.has(request.tool);
+    const isMcp = this.mcpSideEffects && typeof request.tool === 'string' && request.tool.startsWith('mcp__');
+    const isSpawn = request.tool === 'spawn_agent';
+    if (!isRead && !sideEffect && !isMcp && !isSpawn) {
+      return { decision: 'deny', reason: `unknown tool "${request.tool}" (fail closed)` };
     }
-    // Read tools: scope-gated in every mode. Allow inside, ask outside.
+    if (this.mode === 'auto') {
+      return { decision: 'allow', reason: 'auto mode: tools are authorized without approval prompts' };
+    }
+    // Other modes retain project-scoped file approvals.
     if (this.readTools.has(request.tool)) {
       if (this.inGrantedScope(request.resolvedPath)) {
         return { decision: 'allow', reason: 'read inside granted scope' };
       }
       return { decision: 'ask', reason: 'read outside granted scope' };
-    }
-    const sideEffect = this.sideEffectTools.has(request.tool);
-    const isMcp = this.mcpSideEffects && typeof request.tool === 'string' && request.tool.startsWith('mcp__');
-    const isSpawn = request.tool === 'spawn_agent';
-    if (!sideEffect && !isMcp && !isSpawn) {
-      // Unknown tool names: fail closed in every mode.
-      return { decision: 'deny', reason: `unknown tool "${request.tool}" (fail closed)` };
     }
     const reason = sideEffect
       ? `side-effect tool "${request.tool}" requires approval`
@@ -155,13 +181,6 @@ class Sentinel {
         return { decision: 'allow', reason: 'accept-edits mode: write inside granted scope' };
       }
       return { decision: 'ask', reason };
-    }
-    if (this.mode === 'auto') {
-      // Auto: side effects auto-approve EXCEPT hands and always-ask list.
-      if (request.tool === 'hands' || this.alwaysAskTools.has(request.tool)) {
-        return { decision: 'ask', reason: `${request.tool} always asks (config agent.always_ask_tools / hands)` };
-      }
-      return { decision: 'allow', reason: 'auto mode: approved by permission setting' };
     }
     // ask mode (default) and everything else: side effects ask.
     return { decision: 'ask', reason };
@@ -181,10 +200,12 @@ class Sentinel {
     if (timedOut) {
       for (const fn of this.expiryListeners) { try { fn(request); } catch {} }
     }
-    return ok && ok.v
-      ? { decision: 'allow', reason: 'user approved' }
-      : { decision: 'deny', reason: 'user denied or approval timed out' };
+    if (!ok || !ok.v) return { decision: 'deny', reason: 'user denied or approval timed out' };
+    // A pending approval cannot override a newer plan mode or deny rule.
+    const latest = this.decide(request);
+    if (latest.decision === 'deny') return latest;
+    return { decision: 'allow', reason: 'user approved' };
   }
 }
 
-module.exports = { Sentinel };
+module.exports = { Sentinel, canonicalPath };

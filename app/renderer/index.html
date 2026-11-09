@@ -49,18 +49,9 @@
   --hero-disc:#ffffff;
   --hero-lime:#80e044;
   --splash-dot:rgba(38,37,31,.13);
-  /* ambient shader layer: faithful NeuroNoise, retuned to read on a dark
-     base. Paper's own default brightness is 1.3; .05 renders near-black, so
-     the visible-but-dark point sits between: brightness lifts the veins,
-     dim caps the light so it never floods the pane. */
+  /* ambient shader layer: DotOrbit (paper-design/shaders) — ember-colored
+     dots orbiting their grid cells. User preset. */
   --shader-opacity:1;
-  --shader-front:#ffffff;
-  --shader-mid:#47a6ff;
-  --shader-back:#000000;
-  --shader-brightness:.45;
-  --shader-contrast:.42;
-  --shader-speed:1;
-  --shader-dim:.8;
   /* SmokeRing on the hero emblem: white smoke over transparent, user spec */
   --smoke-front:#ffffff;--smoke-thickness:.65;--smoke-radius:.25;
   --smoke-innerShape:.7;--smoke-noiseScale:3;--smoke-noiseIterations:8;
@@ -70,7 +61,7 @@
      legible while the panes look like glass, not paint.
      --glass-opacity is the single knob: Settings slider writes it on body
      inline, which wins over both theme defaults below. */
-  --glass-opacity:.52;
+  --glass-opacity:.78;
   --glass-fill:rgb(255 255 255 / calc(var(--glass-opacity) * 100%));
   --glass-blur:blur(26px) saturate(1.5);
   --glass-border:rgba(255,255,255,.55);
@@ -181,10 +172,8 @@
   --hero-disc:#18181b;
   --hero-lime:#8be94f;
   --splash-dot:rgba(255,255,255,.12);
-  /* dark theme: veins lit stronger (they read on black), still dimmed */
+  /* dark theme: identical ember dots (dark bg already) */
   --shader-opacity:1;
-  --shader-brightness:.85;
-  --shader-dim:.9;
   /* dark glass: dark tinted fill, faint light edge to define the pane */
   --glass-fill:rgb(20 20 20 / calc(var(--glass-opacity) * 100%));
   --glass-blur:blur(26px) saturate(1.4);
@@ -474,7 +463,6 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .tool-row.tw-fs{border-left-color:var(--color-success)}
 .tool-row.tw-web{border-left-color:var(--color-primary)}
 .tool-row.tw-shell{border-left-color:var(--violet)}
-.tool-row.tw-hands{border-left-color:var(--color-warn)}
 .tool-row .err{color:var(--color-destructive);font-weight:600}
 .tool-row.denied{border-color:var(--color-destructive);border-left-color:var(--color-destructive)}
 .tool-row.denied .tname{color:var(--color-destructive)}
@@ -678,15 +666,15 @@ body.resizing{cursor:col-resize;user-select:none}
 
 body{position:relative;height:100dvh;padding:16px;gap:16px;font-size:15px;letter-spacing:-.2px}
 
-/* ---- Ambient shader layer (NeuroNoise-style) ----
+/* ---- Ambient shader layer (Paper Design DotOrbit) ----
    A full-bleed animated canvas painted behind the frame, showing through the
-   16px gutters and the frame tint. Panes stay opaque so text keeps its
-   contrast. Pure WebGL2, no dependency, no CSP relaxation (no eval, no
+   16px gutters and the translucent panes. Bundled WebGL2, no CSP relaxation (no eval, no
    external fetch). Reduced motion paints one static frame. */
 /* sits under every pane: negative z-index paints above the html canvas
    background but below body content, so no restacking of children needed */
 #bg-shader{position:fixed;inset:0;z-index:-1;pointer-events:none;display:block;width:100%;height:100%;
-  opacity:var(--shader-opacity,1);transition:opacity var(--dur-slow) var(--ease-soft)}
+  background:#000;opacity:var(--shader-opacity,1);transition:opacity var(--dur-slow) var(--ease-soft)}
+#bg-shader[data-shader-state="fallback"],#bg-shader[data-shader-state="lost"]{background:radial-gradient(ellipse at 22% 60%,#421100,transparent 65%),radial-gradient(ellipse at 80% 20%,#1a0000,#000 75%)}
 body.shader-off #bg-shader{opacity:0}
 body.shader-off .hero .heat-layer{display:none}
 .history,main,#workbench{border:1px solid var(--glass-border);border-radius:var(--pane-radius);background:var(--glass-fill);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);box-shadow:var(--pane-shadow);overflow:hidden}
@@ -701,11 +689,12 @@ body.shader-off .hero .heat-layer{display:none}
 #btn-new{background:var(--color-primary);color:var(--color-primary-fg);border:0;font-weight:600;padding:10px 12px;margin:6px 0 16px;border-radius:10px}#btn-new:hover{background:color-mix(in srgb,var(--color-primary) 88%,var(--color-primary-fg))}
 .searchlabel{font-size:12px}#session-search{border:0;background:var(--color-surface-subtle);padding:9px 12px;border-radius:10px}#session-filter{background:transparent;border:0;color:var(--color-muted-fg);font-size:11px;margin-bottom:12px}
 .rail-empty{padding:22px 8px;line-height:1.7;color:var(--color-muted-fg)}.sess{padding:6px 0;margin:6px 0}.sess .t{font-size:13px}.sess .m{background:var(--color-accent);color:var(--color-foreground);border-radius:20px;padding:1px 6px}
-.sidebar-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}.sidebar-actions button{border:0;background:transparent;color:var(--color-muted-fg);font-size:12px;padding:9px 8px;text-align:left}.sidebar-actions button:first-child{grid-column:1/-1;background:var(--color-surface-subtle);border-radius:9px}.pips{margin-top:16px}.pip{height:3px}.rail-foot{border-color:var(--color-border-soft)}.pip#pip-llm.on{background:var(--color-brand)}.pip#pip-hands.on{background:var(--color-success)}.pip#pip-sent.on{background:var(--color-warn)}.pip#pip-mem.on{background:var(--color-muted-fg)}
+.sidebar-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}.sidebar-actions button{border:0;background:transparent;color:var(--color-muted-fg);font-size:12px;padding:9px 8px;text-align:left}.sidebar-actions button:first-child{grid-column:1/-1;background:var(--color-surface-subtle);border-radius:9px}.pips{margin-top:16px}.pip{height:3px}.rail-foot{border-color:var(--color-border-soft)}.pip#pip-llm.on{background:var(--color-brand)}.pip#pip-sent.on{background:var(--color-warn)}.pip#pip-mem.on{background:var(--color-muted-fg)}
 
 /* ---- Centered-links navbar (segmented control on the frame) ---- */
 .navbar{position:relative;z-index:5;height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 14px;margin-bottom:12px}
 .navbar-side{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 0}
+.navbar{background:color-mix(in srgb,var(--color-background) 92%,transparent);border:1px solid var(--glass-border);border-radius:var(--pane-radius);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
 .navbar-side.right{justify-content:flex-end}
 /* Tabs sit above the chat in stacking order and scroll horizontally when the
    window is too narrow, instead of overflowing into the chat pane. */
@@ -844,9 +833,9 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   #splash .s-fx{ display:none; }
   #splash .s-logo{ opacity:1; }
 }
-</style></head><body>
+</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"></head><body data-theme="dark">
 
-<canvas id="bg-shader" aria-hidden="true"></canvas>
+<div id="bg-shader" aria-hidden="true"></div>
 
 <div id="splash" aria-hidden="true">
   <div class="s-dots"></div>
@@ -880,33 +869,41 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
 
 <aside class="history" aria-label="Session history">
   <div class="brand"><div class="brand-mark" aria-hidden="true">✳</div><div><strong>Muse</strong><small>Personal workspace</small></div></div>
-  <div class="session-heading"><strong>Sessions</strong><button id="btn-workspace" aria-label="Focus composer">↗</button></div>
+  <div class="sidebar-primary">
   <button id="btn-new" class="btn-primary" data-i18n="sidebar.newSession">＋ New session</button>
+  <button id="btn-create-project" class="project-create-trigger" aria-expanded="false" aria-controls="project-create">＋ New project</button>
+  <form id="project-create" class="project-create-form" hidden>
+    <label for="project-name">Project name</label>
+    <input id="project-name" placeholder="e.g. Website redesign" maxlength="100" autocomplete="off" aria-label="Project name">
+    <p id="project-create-error" role="alert"></p>
+    <div class="project-create-actions">
+      <button id="btn-project-create-save" type="submit">Create project</button>
+      <button id="btn-project-create-cancel" type="button">Cancel</button>
+    </div>
+  </form>
+  </div>
+  <div class="sidebar-scroll">
+  <div class="session-heading"><strong>Sessions</strong><button id="btn-workspace" aria-label="Focus composer">↗</button></div>
   <label class="searchlabel" for="session-search" data-i18n="sidebar.yourSessions">Your sessions</label>
   <input id="session-search" type="search" data-i18n-placeholder="sidebar.searchPlaceholder" placeholder="Search history…">
   <select id="session-filter" aria-label="Filter sessions">
     <option value="all" data-i18n="sidebar.filterAll">All sessions</option>
     <option value="active" data-i18n="sidebar.filterCurrent">Current session</option>
   </select>
-  <button id="btn-normal-chat" class="switchrow">Normal chats</button>
-  <div class="session-heading"><strong>Projects</strong><button id="btn-create-project" aria-label="Create project">＋</button></div>
-  <div id="project-create" hidden>
-    <input id="project-name" placeholder="Project name" maxlength="100" aria-label="Project name">
-    <button id="btn-project-create-save">Create</button>
-    <button id="btn-project-create-cancel">Cancel</button>
-  </div>
-  <input id="project-search" type="search" placeholder="Find a project…" aria-label="Search projects">
-  <button id="btn-archived-projects" class="switchrow" aria-pressed="false">Show archived projects</button>
-  <div id="projects-list" style="max-height:30vh;overflow:auto"></div>
+  <button id="btn-normal-chat" class="switchrow">General chats</button>
   <div id="sessions-scroll">
     <div id="sessions-empty" class="rail-empty" data-i18n="sidebar.empty">No saved sessions yet. Complete a task to keep it here.</div>
     <div id="sessions-list"></div>
   </div>
+  <div class="session-heading projects-heading"><strong>Projects</strong><span>Keep work together</span></div>
+  <input id="project-search" type="search" placeholder="Find a project…" aria-label="Search projects">
+  <button id="btn-archived-projects" class="switchrow" aria-pressed="false">Show archived projects</button>
+  <div id="projects-list" style="max-height:30vh;overflow:auto"></div>
+  </div>
   <div class="rail-foot"><div class="sidebar-actions"><button id="btn-command">⌕ Search actions</button><button id="btn-memory">Memory</button><button id="btn-settings">Settings</button></div>
-    <button class="switchrow" id="hands-toggle" aria-pressed="false"><span id="hands-label">Hands off</span></button>
     <button class="switchrow" id="mode-toggle" aria-pressed="false" title="Click to cycle permission modes"><span id="mode-label">Mode: ask</span></button>
-    <div class="pips"><div class="pip" id="pip-llm"></div><div class="pip" id="pip-hands"></div><div class="pip" id="pip-sent"></div><div class="pip" id="pip-mem"></div></div>
-    <div class="pips-labels"><i data-i18n="pips.model">Model</i><i data-i18n="pips.hands">Hands</i><i data-i18n="pips.safety">Safety</i><i data-i18n="pips.memory">Memory</i></div>
+    <div class="pips"><div class="pip" id="pip-llm"></div><div class="pip" id="pip-sent"></div><div class="pip" id="pip-mem"></div></div>
+    <div class="pips-labels"><i data-i18n="pips.model">Model</i><i data-i18n="pips.safety">Safety</i><i data-i18n="pips.memory">Memory</i></div>
   </div>
 </aside>
 <div class="pane-handle" id="sidebar-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"></div>
@@ -927,7 +924,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <div class="right">
         <span class="tag" id="tag-model" data-i18n="tag.loadingModel" data-tip="Model · connection details">Loading model</span>
         <span class="tag" id="tag-sentinel" data-i18n="tag.safetyAsk">Safety: ask</span>
-        <button id="btn-project" data-i18n="header.project">Project</button>
+        <button id="btn-project">Attach folder</button>
         <button id="btn-leave-project" hidden>Leave project</button>
         <button id="btn-workbench-toggle" aria-controls="workbench" aria-expanded="true" title="Hide right panel">Right panel</button>
         <button id="btn-focus" aria-pressed="false" data-i18n="header.focus">Focus</button>
@@ -942,7 +939,6 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
     <div class="row"><span>Endpoint</span><b id="mp-url">—</b></div>
     <div class="row"><span>API key</span><b id="mp-key">—</b></div>
     <div class="row"><span>Safety mode</span><b id="mp-sentinel">—</b></div>
-    <div class="row"><span>Hands sidecar</span><b id="mp-hands">—</b></div>
     <div class="row"><span>Memory</span><b id="mp-mem">—</b></div>
   </div>
   <div class="navbar-panel">
@@ -951,21 +947,25 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
     <div id="composer">
       <div class="inputwrap">
         <textarea id="input" aria-label="Task for Muse" rows="2" data-i18n-placeholder="composer.placeholder" placeholder="What would you like to work on?"></textarea>
+        <div class="composer-model-control"><button type="button" id="chat-model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-menu-chat" disabled><span aria-hidden="true">✧</span><span id="chat-model-label">Choose model</span><span aria-hidden="true">⌄</span></button><span id="chat-model-status" role="status"></span></div>
         <button id="btn-cancel-turn" aria-label="Stop the current task" style="display:none" data-i18n="composer.stop">Stop</button>
         <button id="send" data-i18n="composer.send">Send</button>
       </div>
     </div>
     <div id="approval" role="region" aria-label="Tool approval required">
-      <div class="a-title" data-i18n="approval.title">Your approval is required</div>
-      <div data-i18n="approval.body">Review this tool request before allowing it to run.</div>
+      <div class="permission-heading"><span class="permission-icon" aria-hidden="true">◇</span><div><span class="permission-eyebrow">YOU’RE IN CONTROL</span><div class="a-title" id="approval-title" data-i18n="approval.title">Your approval is required</div></div><span class="permission-badge">Awaiting you</span></div>
+      <p id="approval-description">Review this action before allowing Muse to continue.</p>
+      <div class="permission-action-heading"><strong id="approval-action">Tool request</strong><span id="approval-tool"></span></div>
       <pre id="approval-args"></pre>
+      <details class="permission-details"><summary>Full request details</summary><pre id="approval-raw"></pre></details>
       <div class="a-actions">
+        <span>Allow once applies to this request.</span>
         <button id="btn-deny" data-i18n="approval.deny">Deny</button>
         <button id="btn-allow" data-i18n="approval.allowOnce">Allow once</button>
       </div>
     </div>
     <div id="question" role="region" aria-label="Agent question">
-      <div class="a-title" data-i18n="question.title">The agent has a question</div>
+      <div class="permission-heading"><span class="permission-icon" aria-hidden="true">?</span><div><span class="permission-eyebrow">A QUICK CHECK-IN</span><div class="a-title" id="question-title" data-i18n="question.title">The agent has a question</div></div></div>
       <div id="question-text"></div>
       <div id="question-options" class="q-options"></div>
       <div class="q-inputrow">
@@ -975,14 +975,14 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       </div>
     </div>
     <div class="composer-meta">
-      <span data-i18n="meta.safetyNote">Tools ask before they act. You stay in control.</span>
+      <span id="mode-safety-note" data-i18n="meta.safetyNote">Tools ask before they act. You stay in control.</span>
       <span id="send-hint" data-i18n="meta.sendHint">Enter to send · Shift Enter for a new line</span>
     </div>
   </footer>
   </div>
 </main>
 
-<aside id="workbench" aria-label="Workbench"><div class="workspace-stats"><div><strong id="stat-session">1</strong><span>Workspace</span></div><div><strong>Local</strong><span>Storage</span></div><div><strong>Ask</strong><span>Permissions</span></div></div><div class="inspector-heading"><strong>Agent workspace</strong><span class="count-badge">3</span></div><p class="inspector-hint">Follow activity, memory and session details</p>
+<aside id="workbench" aria-label="Workbench"><div class="workspace-stats"><div><strong id="stat-session">1</strong><span>Workspace</span></div><div><strong>Local</strong><span>Storage</span></div><div><strong id="stat-permissions">Ask</strong><span>Permissions</span></div></div><div class="inspector-heading"><strong>Agent workspace</strong><span class="count-badge" id="subagent-count" aria-live="polite">Ready</span></div><p class="inspector-hint">Follow activity, memory and session details</p>
   <div class="wb-tabs" role="tablist" aria-label="Workbench panels">
     <button role="tab" id="wb-tab-activity" aria-controls="wb-panel-activity" aria-selected="true" data-i18n="wb.activity">Activity</button>
     <button role="tab" id="wb-tab-memory" aria-controls="wb-panel-memory" aria-selected="false" data-i18n="wb.memory">Memory</button>
@@ -1037,17 +1037,24 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
 
 <div id="backdrop">
   <section id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-    <h2 id="settings-title" data-i18n="settings.title">Settings</h2>
+    <header class="settings-header">
+      <div class="settings-emblem" aria-hidden="true">✳</div>
+      <div><span class="settings-eyebrow">MAKE IT YOURS</span><h2 id="settings-title" data-i18n="settings.title">Settings</h2><p>Your models, your workspace, your rhythm.</p></div>
+      <span class="settings-local">On this device</span>
+    </header>
     <div class="settings-layout">
       <nav class="settings-nav" aria-label="Settings sections" role="tablist">
-        <button role="tab" id="tab-connection" data-tab="connection" aria-controls="panel-connection" aria-selected="true" data-i18n="settings.connection">Connection</button>
-        <button role="tab" id="tab-workspace" data-tab="workspace" aria-controls="panel-workspace" aria-selected="false" data-i18n="settings.workspace">Workspace</button>
-        <button role="tab" id="tab-shortcuts" data-tab="shortcuts" aria-controls="panel-shortcuts" aria-selected="false" data-i18n="settings.shortcuts">Shortcuts</button>
+        <button role="tab" id="tab-connection" data-tab="connection" aria-controls="panel-connection" aria-selected="true"><span aria-hidden="true">↗</span><span>Connection<small>Models &amp; credentials</small></span></button>
+        <button role="tab" id="tab-workspace" data-tab="workspace" aria-controls="panel-workspace" aria-selected="false"><span aria-hidden="true">▱</span><span>Workspace<small>Look &amp; feel</small></span></button>
+        <button role="tab" id="tab-mcp" data-tab="mcp" aria-controls="panel-mcp" aria-selected="false"><span aria-hidden="true">⊕</span><span>Integrations<small>MCP tool servers</small></span></button>
+        <button role="tab" id="tab-shortcuts" data-tab="shortcuts" aria-controls="panel-shortcuts" aria-selected="false"><span aria-hidden="true">⌘</span><span>Shortcuts<small>Move a little faster</small></span></button>
+        <div class="settings-preview"><span class="settings-eyebrow">YOUR CONNECTION</span><strong id="settings-model-preview">Choose a model</strong><span id="settings-endpoint-preview">Your model endpoint</span></div>
       </nav>
       <div class="settings-content">
         <section id="panel-connection" role="tabpanel" aria-labelledby="tab-connection">
-          <h3 data-i18n="settings.connectTitle">Connect your model</h3>
-          <p class="sub" data-i18n="settings.connectSub">Use any OpenAI-compatible endpoint.</p>
+          <div class="settings-section-heading"><div><h3 data-i18n="settings.connectTitle">Connect your model</h3><p class="sub" data-i18n="settings.connectSub">Use any OpenAI-compatible endpoint.</p></div><span id="connection-state" role="status">Current connection</span></div>
+          <div class="settings-card">
+          <div class="settings-card-heading"><span class="settings-card-icon" aria-hidden="true">↗</span><div><h4>Model connection</h4><p>Where Muse thinks with you.</p></div></div>
           <div class="field">
             <label for="f-base" data-i18n="settings.baseUrl">Base URL</label>
             <input id="f-base" data-i18n-placeholder="settings.baseUrlPlaceholder" placeholder="https://api.example.com/v1" spellcheck="false">
@@ -1058,24 +1065,50 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
               <input id="f-key" type="password" placeholder="sk-…" spellcheck="false" autocomplete="off">
               <button class="btn-ghost" id="btn-eye" data-i18n="settings.show">show</button>
             </div>
-            <div class="hint" data-i18n="settings.keyHint">Stored in config.toml on your machine. Leave empty to use the MUSE_LLM_API_KEY env var.</div>
+            <div class="hint" id="chat-key-hint">Stored securely on this device. Leave empty to keep your saved key or use the environment key.</div>
           </div>
           <div class="field">
             <label for="model-list" data-i18n="settings.model">Model</label>
             <div class="row">
-              <input id="model-list" list="models-dl" data-i18n-placeholder="settings.modelPlaceholder" placeholder="model id" spellcheck="false">
-              <datalist id="models-dl"></datalist>
+              <div class="settings-model-field"><input id="model-list" data-i18n-placeholder="settings.modelPlaceholder" placeholder="model id" spellcheck="false" autocomplete="off" aria-label="Current model ID"><button type="button" id="btn-model-options" aria-label="Browse models and choose models for chat" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-menu-settings">⌄</button></div>
               <button class="btn-ghost" id="btn-fetch" data-i18n="settings.fetchModels">Fetch models</button>
             </div>
             <div class="hint" data-i18n="settings.fetchHint">Fetch queries the base URL above for its live model list.</div>
+            <p id="chat-models-summary" class="chat-models-summary">Choose which models appear in chat.</p>
+            <p id="models-status" role="status"></p>
           </div>
+          </div>
+          <details id="connection-advanced" class="settings-card settings-advanced">
+          <summary><span class="settings-card-icon" aria-hidden="true">✧</span><span>Memory embeddings<small id="embed-key-summary">Optional · customize how Muse recalls context</small></span><span class="settings-expand" aria-hidden="true">＋</span></summary>
+          <div class="settings-advanced-body">
+          <p class="sub" style="margin-top:0" data-i18n="settings.embedSub">Turns memories into vectors so old context can be recalled. Left empty, embeddings ride the chat endpoint above. Set these only if that endpoint has no /embeddings.</p>
+          <div class="field">
+            <label for="f-embed-base" data-i18n="settings.embedUrl">Embeddings URL</label>
+            <input id="f-embed-base" data-i18n-placeholder="settings.embedUrlPlaceholder" placeholder="same as chat base URL" spellcheck="false">
+            <div class="hint" data-i18n="settings.embedUrlHint">e.g. https://api.openai.com/v1 — leave empty to reuse the chat endpoint.</div>
+          </div>
+          <div class="field">
+            <label for="f-embed-model" data-i18n="settings.embedModel">Embedding model</label>
+            <input id="f-embed-model" data-i18n-placeholder="settings.embedModelPlaceholder" placeholder="text-embedding-3-small" spellcheck="false">
+            <div class="hint" data-i18n="settings.embedModelHint">Pick an embedding model your provider actually serves — not every endpoint lists them.</div>
+          </div>
+          <div class="field">
+            <label for="f-embed-key" data-i18n="settings.embedKey">Embeddings API key</label>
+            <span id="embed-key-state" class="saved-key-state" role="status">Checking…</span>
+            <div class="row">
+              <input id="f-embed-key" type="password" placeholder="sk-…" spellcheck="false" autocomplete="off">
+              <button class="btn-ghost" id="btn-embed-eye" data-i18n="settings.show">show</button>
+            </div>
+            <div class="hint" id="embed-key-hint">Saved keys are reused automatically. Enter a key only to add or replace it.</div>
+          </div>
+          </div></details>
         </section>
         <section id="panel-workspace" role="tabpanel" aria-labelledby="tab-workspace" hidden>
           <h3 data-i18n="settings.workspaceTitle">Make room for your work</h3>
           <p class="sub" data-i18n="settings.workspaceSub">Session-only preferences. Reset when this window reloads; changes apply immediately.</p>
           <div class="pref" style="flex-direction:column;gap:8px">
             <span style="font-weight:600;font-size:13px" data-i18n="settings.project">Project folder</span>
-            <p class="hint" style="margin:0" data-i18n="settings.projectHint">Muse can read and list files inside this folder without asking. Reads outside it, writes, and other side effects still ask first.</p>
+            <p class="hint" style="margin:0" data-i18n="settings.projectHint">Give Muse a working folder for files and project memory. Tool permissions follow your selected mode.</p>
             <div class="row">
               <input id="project-path" placeholder="No project selected" spellcheck="false" readonly>
               <button class="btn-ghost" id="btn-project-browse" data-i18n="settings.browse">Browse…</button>
@@ -1087,18 +1120,46 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
           <div class="pref" style="flex-direction:column;gap:10px">
             <span style="font-weight:600;font-size:13px" data-i18n="settings.appearance">Appearance</span>
             <div id="theme-picker" role="radiogroup" aria-label="Appearance">
-              <button type="button" role="radio" aria-checked="true" data-theme-pick="light" class="swatch sw-terax-light"><span aria-hidden="true"></span>Light</button>
-              <button type="button" role="radio" aria-checked="false" data-theme-pick="dark" class="swatch sw-terax-dark"><span aria-hidden="true"></span>Dark</button>
+              <button type="button" role="radio" aria-checked="false" data-theme-pick="light" class="swatch sw-terax-light"><span aria-hidden="true"></span>Light</button>
+              <button type="button" role="radio" aria-checked="true" data-theme-pick="dark" class="swatch sw-terax-dark"><span aria-hidden="true"></span>Dark</button>
             </div>
             <label class="pref"><input type="checkbox" id="pref-shader" checked><span>Ambient shader glow (background + emblem heat)</span></label>
             <div class="pref" style="flex-direction:column;gap:8px">
-              <label for="glass-opacity" style="font-weight:600;font-size:13px">Glass opacity <span id="glass-opacity-val" style="font-weight:400;color:var(--color-muted-fg)">52%</span></label>
-              <input type="range" id="glass-opacity" min="10" max="95" step="1" value="52" aria-label="Glass pane opacity">
+              <label for="glass-opacity" style="font-weight:600;font-size:13px">Glass opacity <span id="glass-opacity-val" style="font-weight:400;color:var(--color-muted-fg)">78%</span></label>
+              <input type="range" id="glass-opacity" min="10" max="95" step="1" value="78" aria-label="Glass pane opacity">
               <p class="hint" style="margin-top:0">Lower = more shader visible through the panes.</p>
             </div>
             <p class="hint" data-i18n="settings.appearanceHint">Session-only; resets on reload.</p>
           </div>
           <label class="pref"><input type="checkbox" id="pref-enter" checked><span data-i18n="settings.enterToSend">Enter to send</span></label>
+        </section>
+        <section id="panel-mcp" role="tabpanel" aria-labelledby="tab-mcp" hidden>
+          <h3>MCP servers</h3>
+          <p class="sub" style="margin-top:0">Give Muse more tools through MCP servers. Tool permissions follow your selected mode. Changes reconnect servers immediately.</p>
+          <div id="mcp-list" style="display:flex;flex-direction:column;gap:8px;margin:10px 0"></div>
+          <div class="field">
+            <label for="f-mcp-name">Server name</label>
+            <input id="f-mcp-name" placeholder="docs" spellcheck="false" maxlength="32">
+            <div class="hint">letters / digits / . - _ — also the tool prefix: mcp__&lt;name&gt;__&lt;tool&gt;</div>
+          </div>
+          <div class="field">
+            <label for="f-mcp-command">Command</label>
+            <input id="f-mcp-command" placeholder="npx" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="f-mcp-args">Arguments</label>
+            <input id="f-mcp-args" placeholder="-y @modelcontextprotocol/server-filesystem D:/projects" spellcheck="false">
+            <div class="hint">space-separated; quoted args keep their quotes</div>
+          </div>
+          <div class="field">
+            <label for="f-mcp-env">Environment</label>
+            <input id="f-mcp-env" placeholder="API_KEY=value" spellcheck="false">
+            <div class="hint">optional, comma-separated VAR=value entries</div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="btn-ghost" id="btn-mcp-save">Add / update server</button>
+            <button class="btn-ghost" id="btn-mcp-refresh">Refresh list</button>
+          </div>
         </section>
         <section id="panel-shortcuts" role="tabpanel" aria-labelledby="tab-shortcuts" hidden>
           <h3 data-i18n="settings.shortcutsTitle">Keep your hands on the keys</h3>
@@ -1112,7 +1173,8 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       </div>
     </div>
     <div id="settings-err" role="status"></div>
-    <div class="actions">
+    <div class="actions settings-actions">
+      <p id="settings-save-note" role="status">Connection is saved locally. Fetch models checks your endpoint.</p>
       <button id="btn-cancel" data-i18n="common.close">Close</button>
       <button id="btn-save" data-i18n="settings.saveConnection">Save connection</button>
     </div>
@@ -1141,5 +1203,23 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   </section>
 </div>
 
+<section id="model-menu-settings" class="model-picker-menu" role="dialog" aria-label="Available models and chat visibility" hidden>
+  <div class="model-picker-heading"><div><strong>Model library</strong><p>Tick models to show them in chat.</p></div><button type="button" id="model-close-settings" aria-label="Close model library">×</button></div>
+  <input id="model-search-settings" type="search" placeholder="Search models…" aria-label="Search available models" autocomplete="off">
+  <div class="model-picker-columns"><span>Use as current model</span><span>Show in chat</span></div>
+  <div id="model-results-settings" class="model-picker-results"></div>
+  <button type="button" id="model-add-manual" class="model-picker-footer">＋ Add entered model to chat</button>
+</section>
+<section id="model-menu-chat" class="model-picker-menu" role="dialog" aria-label="Choose a chat model" hidden>
+  <div class="model-picker-heading"><div><strong>Choose your model</strong><p>Your picks from Settings.</p></div><button type="button" id="model-close-chat" aria-label="Close chat model picker">×</button></div>
+  <input id="model-search-chat" type="search" placeholder="Search your models…" aria-label="Search chat models" autocomplete="off">
+  <div id="model-results-chat" class="model-picker-results"></div>
+  <p id="chat-model-error" role="alert"></p><button type="button" id="model-manage" class="model-picker-footer">Manage models in Settings ↗</button>
+</section>
 <script src="lib/i18n.js"></script>
+<script src="lib/dot-orbit.js"></script>
+<script src="lib/subagent-cards.js"></script>
+<script src="lib/settings-panel.js"></script>
+<script src="lib/activity-cards.js"></script>
+<script src="lib/model-picker.js"></script>
 <script src="renderer.js"></script></body></html>

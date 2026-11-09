@@ -11,6 +11,7 @@
 //     tagged so the UI can show nested activity.
 
 const { Agent } = require('./agent');
+const { randomUUID } = require('node:crypto');
 
 const SUBAGENT_MAX_DEPTH = 1;        // parent (depth 0) may spawn depth-1 children only
 const SUBAGENT_MAX_CONCURRENT = 2;   // children running at once per parent
@@ -27,7 +28,7 @@ function mkSubagentTool(opts = {}) {
       'Use for parallelizable/independent subtasks (research, file surveys, multi-file analysis) ' +
       'to keep your own context small. The child returns a final summary text to you. ' +
       'The child shares your tools, project folder, and approval gates — side-effect tools ' +
-      'still require user approval. Cannot be nested (child cannot spawn children).',
+      'follow the active permission mode and run without approval in Auto. Cannot be nested (child cannot spawn children).',
     parameters: {
       type: 'object',
       properties: {
@@ -50,66 +51,88 @@ function mkSubagentTool(opts = {}) {
       if (!parent || !(parent instanceof Agent)) {
         return { ok: false, error: 'spawn_agent requires a parent agent context' };
       }
-
-      // Child config: same LLM, tighter turn budget. Separate history. Same sentinel.
-      const childCfg = JSON.parse(JSON.stringify(parent.cfg));  // plain-data config
-      const childMaxTurns = Math.min(
-        Math.max(1, Math.floor(args.max_turns || 12)),
-        opts.maxTurnsCap || 24
-      );
-      childCfg.agent = { ...(childCfg.agent || {}), max_turns: childMaxTurns };
-
-      const child = new Agent(childCfg, {
-        disableSubagent: true,    // no nesting — child tool registry lacks spawn_agent
-        approver: (request) => new Promise(async (resolve) => {
-          // Route child approvals through the PARENT sentinel's approver with a
-          // child tag so the UI can label it. Same gate, same user.
-          try {
-            const tagged = { ...request, subagent: true };
-            const v = await parent.sentinel.approver(tagged);
-            resolve(v);
-          } catch { resolve(false); }
-        }),
-        onEvent: (ev) => {
-          // Tag + forward child events so the transcript shows nested work.
-          try { parent.events({ ...ev, subagent: true }); } catch {}
-        },
-        questionAsker: (q) => {
-          // Child questions flow to the same user, tagged.
-          if (!parent.questionAsker) return Promise.resolve(null);
-          return parent.questionAsker({ ...q, subagent: true });
-        },
-      });
-
-      // Inherit project scope + taint, mirroring the parent's working state.
-      if (parent.cwdOverride) child.setProjectScope(parent.cwdOverride);
-      child.tainted = parent.tainted;
-      child.netPolicy = { ...(parent.netPolicy || {}) };
-
-      // Child cancel: parent cancel flips the child's flag at the next hop.
       if (parent._cancelRequested) {
         return { ok: false, error: 'parent cancelled before child start' };
       }
-      const cancelWatcher = setInterval(() => {
-        if (parent._cancelRequested) { try { child.requestCancel(); } catch {} }
-      }, 250);
-      children.add(child);
+
+      const subagentId = randomUUID();
+      const emit = event => {
+        try { parent.events({ ...event, subagent: true, subagentId }); } catch {}
+      };
+      let child = null;
+      let cancelWatcher = null;
+      let terminal = { cancelled: false, result: '', turns: 0 };
+      emit({ type: 'subagent_start', task });
 
       try {
+
+        // Child config: same LLM, tighter turn budget. Separate history. Same sentinel.
+        const childCfg = JSON.parse(JSON.stringify(parent.cfg));  // plain-data config
+        const childMaxTurns = Math.min(
+          Math.max(1, Math.floor(args.max_turns || 12)),
+          opts.maxTurnsCap || 24
+        );
+        childCfg.agent = { ...(childCfg.agent || {}), max_turns: childMaxTurns };
+
+        child = new Agent(childCfg, {
+          disableSubagent: true,    // no nesting — child tool registry lacks spawn_agent
+          onEvent: (ev) => {
+            // Tag + forward child events so the transcript shows nested work.
+            if (ev.type === 'turn' && Number.isFinite(ev.turn)) terminal.turns = ev.turn + 1;
+            emit(ev);
+          },
+          questionAsker: (q) => {
+            // Child questions flow to the same user, tagged.
+            if (!parent.questionAsker) return Promise.resolve(null);
+            return parent.questionAsker({ ...q, subagent: true, subagentId });
+          },
+        });
+        child.subagentId = subagentId;
+
+        // Share the live policy rather than reconstructing a stale config copy.
+        // Do not call setProjectScope: it would clear the parent's shared grants.
+        child.sentinel = parent.sentinel;
+        child.cwdOverride = parent.cwdOverride;
+        Object.defineProperty(child, 'tainted', {
+          get: () => parent.tainted,
+          set: value => { if (value) parent.markTainted('subagent private read'); },
+        });
+        Object.defineProperty(child, 'netPolicy', { get: () => parent.netPolicy });
+        // Read the parent flag synchronously at each tool boundary; the timer
+        // below still aborts a child's in-flight provider request.
+        let childCancelled = false;
+        Object.defineProperty(child, '_cancelRequested', {
+          get: () => childCancelled || parent._cancelRequested,
+          set: value => { childCancelled = !!value; },
+        });
+
+        // Child cancel: parent cancel flips the child's flag at the next hop.
+        cancelWatcher = setInterval(() => {
+          if (parent._cancelRequested) { try { child.requestCancel(); } catch {} }
+        }, 250);
+        children.add(child);
+
         const res = await child.run(task);
         const text = String(res.text || '').slice(0, SUBAGENT_RESULT_CAP);
+        terminal = {
+          cancelled: !!res.cancelled,
+          result: text,
+          turns: Number.isFinite(res.turns) ? res.turns : terminal.turns,
+        };
         return {
           ok: true,
-          cancelled: !!res.cancelled,
-          turns: res.turns,
-          result: text,
+          subagentId,
+          ...terminal,
           ...(text.length >= SUBAGENT_RESULT_CAP ? { truncated: true } : {}),
         };
       } catch (e) {
-        return { ok: false, error: `subagent failed: ${e && e.message || e}` };
+        const error = `subagent failed: ${e && e.message || e}`;
+        terminal = { ...terminal, cancelled: !!(parent._cancelRequested || child && child._cancelRequested), error };
+        return { ok: false, subagentId, ...terminal };
       } finally {
         clearInterval(cancelWatcher);
-        children.delete(child);
+        if (child) children.delete(child);
+        emit({ type: 'subagent_done', ...terminal });
       }
     },
   };
