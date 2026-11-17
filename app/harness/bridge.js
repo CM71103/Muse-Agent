@@ -84,7 +84,7 @@ function startBridge({ port = 0, deps }) {
 
       if (route === 'GET /health') {
         const st = deps.getStatus();
-        reply(200, { ok: true, busy: !!st.busy, version: st.version || '0.1.3' });
+        reply(200, { ok: true, busy: !!st.busy, version: st.version || require('./version') });
         return;
       }
       if (route === 'GET /status') {

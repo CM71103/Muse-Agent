@@ -64,7 +64,7 @@ function mkFsTools() {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'Absolute or cwd-relative path' },
-        max_bytes: { type: 'number', description: 'Optional cap, default 65536' },
+        max_bytes: { type: 'number', description: 'Optional byte cap; default and maximum 24000' },
       },
       required: ['path'],
     },
@@ -189,9 +189,10 @@ function mkWebTool() {
         return { ok: false, error: `blocked: session is tainted (private file read) and ${url} not in egress allowlist` };
       }
       const ac = new AbortController();
-      const cancel = () => ac.abort();
+      let cancelled = false;
+      const cancel = () => { cancelled = true; ac.abort(); };
       ctx.signal?.addEventListener('abort', cancel, { once: true });
-      if (ctx.signal?.aborted) ac.abort();
+      if (ctx.signal?.aborted) cancel();
       const t = setTimeout(() => ac.abort(), 30000);
       try {
         // Validate the first hop ourselves, then follow redirects manually so
@@ -245,6 +246,8 @@ function mkWebTool() {
         }
         return { ok: false, error: 'too many redirects' };
       } catch (e) {
+        if (cancelled) return { ok: false, error: 'cancelled by user' };
+        if (ac.signal.aborted) return { ok: false, error: 'web_fetch timed out after 30s' };
         return { ok: false, error: String(e && e.message || e) };
       } finally { clearTimeout(t); ctx.signal?.removeEventListener('abort', cancel); }
     },

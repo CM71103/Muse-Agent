@@ -14,13 +14,14 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   this._runEventId = require('node:crypto').randomUUID();
   this.stripMemory();
   let memoryContext: any = null;
+  const memBudget = () => ({
+    contextLimit: this.ctxBudget,
+    otherInputTokens: this.estimateHistoryTokens() + Agent.estimateTokens({ content: JSON.stringify(this.toolSchemas()) }),
+    outputReserve: this.cfg.llm.max_tokens || 8192,
+  });
   if (this.memory && userText !== null) {
     try {
-      memoryContext = await this.memory.requestContext(userText, {
-        contextLimit: this.ctxBudget,
-        otherInputTokens: this.estimateHistoryTokens() + Agent.estimateTokens({ content: JSON.stringify(this.toolSchemas()) }),
-        outputReserve: this.cfg.llm.max_tokens || 8192,
-      });
+      memoryContext = await this.memory.requestContext(userText, memBudget());
       const reason = memoryContext.clamp_reason;
       if (reason && (reason.startsWith('embed_failed') || reason.startsWith('embed_disabled'))) {
         if (this._lastEmbedNotice !== reason) {
@@ -48,10 +49,31 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     restoreMemory();
     const controller = this._beginAbort();
     try {
-      const response = await this.sendWithMemory(memoryContext, controller.signal, tools, {
-        onDelta: (text: string) => this.events({ type: 'delta', text }),
-        onStreamReset: () => this.events({ type: 'stream_reset' }),
-      });
+      let response: any = null;
+      for (let repack = 0; ; repack++) {
+        try {
+          response = await this.sendWithMemory(memoryContext, controller.signal, tools, {
+            onDelta: (text: string) => this.events({ type: 'delta', text }),
+            onStreamReset: () => this.events({ type: 'stream_reset' }),
+          });
+          break;
+        } catch (error) {
+          // MEMORY_REPACK_REQUIRED / "retry turn to repack": the packed records
+          // changed between prepare and send (edited, deleted or revoked). The
+          // stale turn is already failed with a reason — repack a fresh context
+          // and retry instead of surfacing a raw protocol error. Bounded: after
+          // 2 repacks (or without memory/user text to repack) rethrow.
+          const message = String((error as Error).message || error);
+          if (!/MEMORY_REPACK_REQUIRED|retry turn to repack/.test(message) || repack >= 2
+              || this._cancelRequested || !this.memory || userText === null) throw error;
+          this.events({ type: 'info', text: 'memory: context changed before send — repacking and retrying' });
+          if (memoryContext?.turn_id) {
+            try { this.memory.failTurn(memoryContext.turn_id, 'unknown', 'memory_repack_required'); } catch { /* stale turn cleanup is best-effort */ }
+          }
+          memoryContext = await this.memory.requestContext(userText, memBudget());
+          restoreMemory();
+        }
+      }
       if (!response.usage) missingUsage = true;
       else for (const [key, value] of Object.entries(response.usage)) {
         if (typeof value === 'number' && Number.isFinite(value)) usage[key] = (usage[key] || 0) + value;
@@ -86,7 +108,9 @@ async function run(this: any, userText: string | null, opts: any = {}) {
         while (response.finish_reason === 'length' && continuations < 5) {
           continuations++;
           this.history.push({ role: 'assistant', content: finalText });
-          this.history.push({ role: 'user', content: 'Continue exactly where you stopped. Do not repeat any part of your previous output, do not restate the task, just continue the code/text seamlessly from the exact cut point.' });
+          // name:'synthetic' marks live-loop scaffolding; agent.restore() drops
+          // these so a restored session never shows them as real user turns.
+          this.history.push({ role: 'user', name: 'synthetic', content: 'Continue exactly where you stopped. Do not repeat any part of your previous output, do not restate the task, just continue the code/text seamlessly from the exact cut point.' });
           this.events({ type: 'info', text: `output hit the token limit — continuing (${continuations}/5)` });
           response = await send();
           const next = clean(response.message);
@@ -108,7 +132,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
         this.history.push({ role: 'tool', tool_call_id: call.id, content });
       }
     }
-    this.history.push({ role: 'user', content: 'Turn limit reached. Please summarize progress so far and stop.' });
+    this.history.push({ role: 'user', name: 'synthetic', content: 'Turn limit reached. Please summarize progress so far and stop.' });
     const response = await send(null);
     finalText = response.message.content || '(no reply)';
     await finishMemory('turn_limit');

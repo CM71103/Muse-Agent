@@ -112,7 +112,7 @@ class McpStdioClient {
       this._request('initialize', {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: 'muse-agent', version: '0.1.3' },
+        clientInfo: { name: 'muse-agent', version: require('./version') },
       }),
       new Promise((_, rej) => setTimeout(() => rej(new Error(`mcp "${this.name}" initialize timed out`)), INIT_TIMEOUT_MS)),
     ]);

@@ -54,7 +54,6 @@ module.exports = {
     this._sourceEvents ||= [];
     if (this._sourceEvents.length >= 200) return;
     this._sourceEvents.push(event);
-    this._sourceSeq++;
   },
   async endSessionExtract(this: any) {
     if (!this.memory) return null;

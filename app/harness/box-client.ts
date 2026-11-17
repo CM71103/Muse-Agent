@@ -80,7 +80,7 @@ class BoxClient {
   };
 
   private async open(signal: AbortSignal, timeout: number) {
-    const client = new Client({ name: 'muse-agent', version: '0.1.7' }, { capabilities: {} });
+    const client = new Client({ name: 'muse-agent', version: require('./version') }, { capabilities: {} });
     const transport = new StreamableHTTPClientTransport(new URL(BOX_MCP_URL), {
       authProvider: this.auth, fetch: this.request,
       reconnectionOptions: { maxRetries: 1, initialReconnectionDelay: 1000, maxReconnectionDelay: 5000, reconnectionDelayGrowFactor: 1.5 },

@@ -456,7 +456,7 @@ const menu = Menu.buildFromTemplate([
       },
       { label: 'About', click: () => dialog.showMessageBox(mainWindow, {
         type: 'info', title: 'Muse Agent',
-        message: 'Muse Agent 0.1.0', detail: 'Personal AI agent. Tools are approval-gated by Sentinel.',
+        message: `Muse Agent ${app.getVersion()}`, detail: 'Personal AI agent. Tools are approval-gated by Sentinel.',
       }) },
     ],
   },
@@ -478,7 +478,7 @@ async function startBridgeIfConfigured() {
       deps: {
         getStatus: () => ({
           busy: agentBusy,
-          version: app.getVersion ? app.getVersion() : '0.1.3',
+          version: app.getVersion ? app.getVersion() : require('../harness/version'),
           sessionId: agent ? agent.sessionId : null,
           projectDir: currentProjectDir,
           tools: agent ? agent.tools.map(t => t.name) : [],
@@ -490,8 +490,7 @@ async function startBridgeIfConfigured() {
           const raw = String(text).slice(0, 100000);
           setBusyState(true);
           try {
-            const res = await agent.run(raw, {});
-            await agent.ingestUserTurn(raw);
+            const res = await require('../harness/turns').runTurn({ agent, raw, project: currentProjectId ? projectStore.get(currentProjectId) : null });
             return { ok: true, text: res.text, turns: res.turns };
           } catch (e) {
             send('agent-event', { type: 'error', text: String(e && e.message || e) });
@@ -503,14 +502,7 @@ async function startBridgeIfConfigured() {
           return { ok: true };
         },
         reset: async () => {
-          if (agent) {
-            const events = (agent._sourceEvents || []).slice();
-            agent._sourceEvents = [];
-            if (agent.memory && events.length) agent.memory.extractSession(events).catch(() => {});
-            agent.reset();
-            agent.sentinel.clearGrants();
-            agent.setProjectScope(currentProjectDir);
-          }
+          require('../harness/turns').resetAgent({ agent, projectDir: currentProjectDir });
           return { ok: true };
         },
         listSessions: async () => sessionStore.list(),
@@ -559,7 +551,7 @@ function startUpdateChecks() {
   const { checkUpdate } = require('../harness/updater');
   const CHECK_MS = 6 * 60 * 60 * 1000;   // every 6h
   const run = async () => {
-    const cur = app.getVersion ? app.getVersion() : '0.1.3';
+    const cur = app.getVersion ? app.getVersion() : require('../harness/version');
     const res = await checkUpdate(cur);
     if (!res.update) return;
     send('agent-event', { type: 'info', text: `update available: v${res.latest} — click the notification or see ${res.url}` });
@@ -680,12 +672,7 @@ ipcMain.handle('agent:send', async (e, text) => {
     }
     refreshBoxTools();
     setBusyState(true);
-    const project = currentProjectId ? projectStore.get(currentProjectId) : null;
-    const projectInstructions = project && project.instructions ? `User project instructions (do not override tool approval or safety rules):\n${project.instructions}` : '';
-    const res = await agent.run(raw, { systemExtra: projectInstructions });
-    // remember the turn id for /good /bad grading
-    agent.lastMemoryTurnId = res.memory_turn_id || agent.lastMemoryTurnId;
-    await agent.ingestUserTurn(raw);   // fire-and-forget ingestion (obligation 1)
+    const res = await require('../harness/turns').runTurn({ agent, raw, project: currentProjectId ? projectStore.get(currentProjectId) : null });
     return { ok: true, text: res.text, turns: res.turns };
   } catch (e) {
     send('agent-event', { type: 'error', text: String(e && e.message || e) });
@@ -697,18 +684,10 @@ ipcMain.handle('agent:reset', async (e) => {
   requireTrusted(e);
   if (agentBusy) return {ok:false,error:'Agent busy'};
   if (agent) {
-    // Session-end extraction must not block the UI reset: on slow/reasoning
-    // extraction models the LLM call alone can take ~30-90s (30s timeout x
-    // retries). Snapshot events, reset immediately, extract in the background
-    // (extraction is fire-and-forget by contract — failures log, never throw).
-    const events = (agent._sourceEvents || []).slice();
-    agent._sourceEvents = [];
-    if (agent.memory && events.length) {
-      agent.memory.extractSession(events).catch(() => {});   // self-logs failures
-    }
-    agent.reset();
-    agent.sentinel.clearGrants();
-    agent.setProjectScope(currentProjectDir);
+    // Session-end extraction must not block the UI reset: agent.reset()
+    // snapshots the events and extracts in the background (fire-and-forget
+    // by contract — failures log, never throw).
+    require('../harness/turns').resetAgent({ agent, projectDir: currentProjectDir });
   }
   if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
   agent.projectId = currentProjectId;

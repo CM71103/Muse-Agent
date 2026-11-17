@@ -80,14 +80,30 @@ test('later provider failure leaves memory turn ungradeable and removes injected
   assert.equal(agent.memorySection(), '');
 });
 
-test('deleting recalled memory between tool calls prevents resending it', async t => {
+test('deleting recalled memory between tool calls repacks instead of resending it', async t => {
   const { agent, mem, id } = await setup(t);
   let calls = 0;
-  agent.llm.chat = async () => { calls++; return toolReply('delete-between-calls'); };
+  agent.llm.chat = async (messages: any) => {
+    calls++;
+    const block = Agent.memorySectionOf(messages);
+    if (calls === 1) {
+      assert.match(block, /release command/);
+      return toolReply('delete-between-calls');
+    }
+    // MEMORY_REPACK_REQUIRED is recoverable: the retry sends a fresh pack that
+    // must no longer contain the deleted record.
+    assert.doesNotMatch(block, /release command/);
+    return answer('The record was removed.');
+  };
   agent.toolMap.set('shell', { run: async () => { mem.deleteMemory(id); return { ok: true }; } });
-  await assert.rejects(() => agent.run('Release'), /MEMORY_REPACK_REQUIRED/);
-  assert.equal(calls, 1);
+  const result = await agent.run('Release');
+  assert.equal(calls, 2);
   assert.equal(agent.memorySection(), '');
+  assert.equal(mem.store.getMemory(id).status, 'deleted');
+  // the stale prepared turn is closed, not left dangling
+  assert.equal(mem.store.listTurns()[0].state, 'unknown');
+  assert.equal(mem.store.listTurns()[0].fail_reason, 'memory_repack_required');
+  assert.equal(result.text, 'The record was removed.');
 });
 
 test('tool-limit summary retains memory but does not claim successful completion', async t => {
@@ -130,7 +146,12 @@ test('completed IPC answers persist capture without waiting on a held embedding 
   assert.ok(body);
   const context: any = {
     agent, agentBusy: false, requireTrusted: () => {}, currentProjectId: null,
+    projectStore: { get: () => null },
     send: () => {}, refreshBoxTools: () => {}, learningService:{touch:()=>{},flush:async()=>{}}, setBusyState: (busy: boolean) => { context.agentBusy = busy; },
+    require: (name: string) => {
+      if (name === '../harness/turns') return require('../turns');
+      throw new Error(`Unexpected dependency: ${name}`);
+    },
   };
   const handler = require('node:vm').runInNewContext(`(async(e,text)=>{${body[1]}})`, context);
   const nextTick = Symbol('IPC still waiting');

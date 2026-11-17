@@ -78,13 +78,13 @@ class Agent {
     this.memory = null;                  // MemoryLayer, attached via attachMemory()
     this.memoryTurns = new Map();        // per-run memory turn ids (turnIndex -> turn_id)
     this._sourceEvents = [];             // source events for session-end extraction
-    this._sourceSeq = 0;                 // stable per-session event numbering
     this._lastEmbedNotice = null;        // dedupe repeated memory-degraded notices
     // Human-in-the-loop state (approved model):
     this.cwdOverride = null;             // project scope root (absolute) or null
     this.netPolicy = { allowLocal: false };
     this._cancelRequested = false;       // cooperative cancel flag
     this._abort = null;                  // AbortController for the active LLM call
+    this._toolAbort = null;              // AbortController for the active tool call
     this._pendingToolImages = [];        // request-only screenshots, never session history
     this._questionId = 0;
     this.questionAsker = opts.questionAsker || null;  // async (q) => answer | {cancelled:true}
@@ -170,6 +170,7 @@ class Agent {
     this._cancelRequested = true;
     this._pendingToolImages = [];
     try { if (this._abort) this._abort.abort(); } catch {}
+    try { if (this._toolAbort) this._toolAbort.abort(); } catch {}
     this.events({ type: 'cancelled' });
   }
 
@@ -187,8 +188,6 @@ class Agent {
     mem.startSession(this.sessionId);
     // source events collected during the session feed session-end extraction
     this._sourceEvents = [];
-    // seed memories from the user message + tool results after each run
-    this._memSeeded = this._memSeeded || false;
   }
 
   // --- context management ---
@@ -347,7 +346,7 @@ class Agent {
     this.sessionId = s.id;
     if (this.memory) this.memory.startSession(s.id);
     this.sessionCreated = s.created;
-    this.history = s.history || [];
+    this.history = (s.history || []).filter(m => !m || m.name !== 'synthetic');   // loop scaffolding never re-enters the model's context
     this.tainted = !!s.tainted;
     await this.compactHistory(true);   // old sessions may predate caps / exceed budget
     return s;
@@ -377,6 +376,9 @@ class Agent {
     if (desktopLine) lines.splice(index < 0 ? 0 : index, 0, desktopLine);
     index = lines.indexOf('Rules:');
     lines.splice(index < 0 ? 0 : index, 0, permissionModeLine(this.sentinel.mode));
+    // Legacy-session migration: sessions saved before the permission-mode
+    // prompt rewrite still carry the old rule line in their restored system
+    // prompt; upgrade it in place on the next send.
     first.content = lines.join('\n').replace(
       '- Ask before doing anything destructive; the user approves tool calls in the UI.',
       '- Follow the active permission mode. Auto already authorizes tool execution; do not ask for redundant tool approval. Denied calls remain blocked.');
@@ -435,12 +437,17 @@ class Agent {
     }
 
     this.events({ type: 'tool_call', id: call.id, name, args });
+    // Long-running tools (web_fetch) observe this signal so a user cancel
+    // aborts them mid-flight instead of waiting out their internal timeout.
+    this._toolAbort = new AbortController();
+    if (this._cancelRequested) this._toolAbort.abort();
     const ctx = {
       cwd,
       cfg: this.cfg,
       sentinel: this.sentinel,
       tainted: this.tainted,
       netPolicy: this.netPolicy || { allowLocal: false },
+      signal: this._toolAbort.signal,
       onPrivateRead: (p) => this.markTainted(p),
       agent: this,            // subagent tool needs the parent handle
     };
@@ -456,6 +463,8 @@ class Agent {
       this.events({ type: 'tool_result', id: call.id, name, result: { ok: false, error: msg } });
       // Failed tools never become success evidence or extracted facts.
       return JSON.stringify({ ok: false, error: msg });
+    } finally {
+      this._toolAbort = null;
     }
   }
 
