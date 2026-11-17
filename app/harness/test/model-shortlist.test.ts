@@ -94,6 +94,17 @@ test('shortlist normalization deduplicates bounded provider IDs and persists the
   assert.equal(f.reload().llm.model, 'current', 'Current model may be excluded without being silently changed');
 });
 
+test('bracketed model IDs survive saving, TOML reload, and chat selection', async t => {
+  const f = fixture(t), model = 'vendor/model[preview]';
+  const saved = await f.save({ model, visible_models: [model] });
+  assert.equal(saved.ok, true);
+  assert.equal(f.reload().llm.model, model);
+  assert.deepEqual(f.reload().llm.visible_models, [model]);
+  const selected = await f.select(model);
+  assert.equal(selected.ok, true);
+  assert.equal(f.reload().llm.model, model);
+});
+
 test('invalid shortlist and hidden model selection never persist or replace the client', async t => {
   const f = fixture(t, { models: ['current'] }); const client = f.agent.llm;
   for (const models of ['current', null, [42], [''], ['line\nbreak'], ['with space'], ['comma,id'], ['x'.repeat(257)], Array(101).fill('id')]) {

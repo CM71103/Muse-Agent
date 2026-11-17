@@ -189,6 +189,9 @@ function mkWebTool() {
         return { ok: false, error: `blocked: session is tainted (private file read) and ${url} not in egress allowlist` };
       }
       const ac = new AbortController();
+      const cancel = () => ac.abort();
+      ctx.signal?.addEventListener('abort', cancel, { once: true });
+      if (ctx.signal?.aborted) ac.abort();
       const t = setTimeout(() => ac.abort(), 30000);
       try {
         // Validate the first hop ourselves, then follow redirects manually so
@@ -243,18 +246,24 @@ function mkWebTool() {
         return { ok: false, error: 'too many redirects' };
       } catch (e) {
         return { ok: false, error: String(e && e.message || e) };
-      } finally { clearTimeout(t); }
+      } finally { clearTimeout(t); ctx.signal?.removeEventListener('abort', cancel); }
     },
   };
 }
 
 function buildTools(cfg, opts = {}) {
+  const sandbox = require('./sandbox-tools.ts');
+  if (sandbox.sandboxSelected()) {
+    const tools = opts.disableSubagent ? [] : sandbox.mkSandboxTools();
+    return { tools, map: new Map(tools.map(tool => [tool.name, tool])) };
+  }
   const tools = [...mkFsTools(), mkWebTool(), mkShellTool()];
   // Subagent (Antigravity-style delegation). Not registered for child agents
   // — mkSubagentTool's own depth check also fails closed.
   if (!(opts.disableSubagent)) {
     tools.push(require('./subagent').mkSubagentTool(opts.subagent || {}));
-    if (opts.mcp) tools.push(...require('./mcp').mkMcpTools(opts.mcp));
+    const mcp = require('./mcp');
+    if (opts.mcp || mcp.registry._external.size) tools.push(...mcp.mkMcpTools(opts.mcp));
   }
   const map = new Map(tools.map(t => [t.name, t]));
   return { tools, map };
@@ -269,4 +278,4 @@ function toSchema(tool) {
   };
 }
 
-module.exports = { buildTools, toSchema, IS_WIN, isPrivateHost };
+module.exports = { buildTools, toSchema, IS_WIN, isPrivateHost, mkWebTool };

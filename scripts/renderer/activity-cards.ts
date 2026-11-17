@@ -1,6 +1,10 @@
 type ToolEvent = {id?: string; name: string; args?: any; result?: any; restored?: boolean};
 type Hooks = {transcript: HTMLElement; openCards: Map<string, any>; clearEmpty: () => void; scrollDown: () => void; reveal: (el: HTMLElement, distance: number) => void};
 const labels: Record<string, [string, string]> = {
+  sandbox_screenshot: ['View Ubuntu sandbox', '▣'], sandbox_click: ['Click in sandbox', '↖'],
+  sandbox_type: ['Type in sandbox', '⌨'], sandbox_key: ['Press guest key', '⌨'], sandbox_scroll: ['Scroll sandbox', '↕'],
+  windows_screenshot: ['View selected window', '▣'], windows_click: ['Click in window', '↖'],
+  windows_type: ['Type in window', '⌨'], windows_key: ['Press key', '⌨'], windows_scroll: ['Scroll window', '↕'],
   shell: ['Run command', '⌘'], read_file: ['Read file', '↗'], write_file: ['Write file', '✎'],
   list_dir: ['Explore folder', '▱'], web_fetch: ['Read web page', '↗'],
 };
@@ -21,6 +25,8 @@ function outputOf(result: any): string {
   }
   if (typeof result.content === 'string') return result.content;
   if (typeof result.error === 'string') return result.error;
+  if (typeof result.result === 'string') return result.result;
+  if (Array.isArray(result.images) && result.images.length) return 'Screenshot captured. Open the desktop panel to view it.';
   return JSON.stringify(result, null, 2);
 }
 function node(tag: string, cls: string, text?: string) {
@@ -28,12 +34,22 @@ function node(tag: string, cls: string, text?: string) {
   if (text !== undefined) el.textContent = text;
   return el;
 }
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard) {
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
+  document.body.append(ta); ta.select(); ta.setSelectionRange(0, text.length);
+  const ok = document.execCommand('copy'); ta.remove();
+  return ok;
+}
 function copyButton(text: string, label: string) {
   const button = node('button', 'activity-copy', 'Copy') as HTMLButtonElement; button.type = 'button';
   button.setAttribute('aria-label', `Copy ${label.toLowerCase()}`);
   button.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(text); button.textContent = 'Copied'; }
-    catch { button.textContent = 'Copy failed'; }
+    const ok = await copyTextToClipboard(text);
+    button.textContent = ok ? 'Copied' : 'Copy failed';
     setTimeout(() => {button.textContent = 'Copy';}, 1500);
   });
   return button;

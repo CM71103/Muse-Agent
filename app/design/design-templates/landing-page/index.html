@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[Product] — [one-line promise]</title>
+<style>
+  :root{
+    --surface:#fbfaf8; --raised:#fff; --sunken:#f2f0ec;
+    --ink:#1c1a17; --muted:#6f6a62; --hairline:#e2ded7;
+    --accent:#b4531f; --accent-soft:#fbeee5;
+    --sans:ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
+    --step--1:.8125rem; --step-0:.9375rem; --step-1:1.0625rem; --step-2:1.3125rem; --step-3:1.75rem; --step-4:2.25rem;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--surface);color:var(--ink);font:400 var(--step-0)/1.55 var(--sans)}
+  a{color:inherit}
+  .wrap{max-width:68rem;margin:0 auto;padding:0 1.5rem}
+  h1,h2,h3{line-height:1.2;letter-spacing:-.01em;margin:0 0 .5em}
+  h1{font-size:clamp(2rem,5vw,var(--step-4));font-weight:600}
+  h2{font-size:var(--step-3);font-weight:600}
+  p{margin:0 0 1em}
+  .btn{display:inline-flex;align-items:center;gap:.5rem;min-height:2.5rem;padding:.6rem 1.1rem;border:1px solid transparent;border-radius:8px;background:var(--accent);color:#fff;font:inherit;font-weight:600;text-decoration:none;cursor:pointer;transition:filter 160ms ease-out,transform 160ms ease-out}
+  .btn:hover{filter:brightness(1.08)}
+  .btn:active{transform:translateY(1px)}
+  .btn:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .btn--ghost{background:transparent;color:var(--ink);border-color:var(--hairline)}
+  .btn--ghost:hover{background:var(--sunken)}
+  header{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--hairline)}
+  .nav{display:flex;align-items:center;gap:1rem;min-height:3.5rem}
+  .nav__links{display:flex;gap:1.25rem;margin-left:auto;font-size:var(--step--1)}
+  .hero{padding:clamp(3rem,9vw,6rem) 0 3rem;display:grid;gap:2.5rem;grid-template-columns:1.1fr .9fr;align-items:center}
+  .hero__lede{font-size:var(--step-1);color:var(--muted);max-width:46ch}
+  .hero__actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.5rem}
+  .visual{aspect-ratio:4/3;border:1px solid var(--hairline);border-radius:12px;background:linear-gradient(160deg,var(--raised),var(--accent-soft));display:grid;place-items:center;color:var(--muted);font-size:var(--step--1)}
+  .proof{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));padding:2rem 0;border-top:1px solid var(--hairline)}
+  .proof div{background:var(--raised);border:1px solid var(--hairline);border-radius:12px;padding:1.25rem}
+  .proof strong{display:block;font-size:var(--step-2);font-variant-numeric:tabular-nums}
+  .proof span{color:var(--muted);font-size:var(--step--1)}
+  section{padding:clamp(2.5rem,6vw,4rem) 0}
+  .grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr))}
+  .card{background:var(--raised);border:1px solid var(--hairline);border-radius:12px;padding:1.5rem}
+  .pricing{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr))}
+  .tier{display:flex;flex-direction:column;gap:.75rem}
+  .tier--featured{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .tier__price{font-size:var(--step-2);font-weight:600;font-variant-numeric:tabular-nums}
+  .tier ul{margin:0;padding-left:1.1rem;color:var(--muted);font-size:var(--step--1)}
+  details{border-bottom:1px solid var(--hairline);padding:.9rem 0}
+  summary{cursor:pointer;font-weight:600}
+  footer{border-top:1px solid var(--hairline);padding:2rem 0;color:var(--muted);font-size:var(--step--1)}
+  [hidden]{display:none!important}
+  .notice{margin-top:1rem;padding:.75rem 1rem;border-radius:8px;background:var(--accent-soft);font-size:var(--step--1)}
+  @media (max-width:56rem){.hero{grid-template-columns:1fr}.nav__links{display:none}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <strong>[Product]</strong>
+    <nav class="nav__links" aria-label="Sections">
+      <a href="#features">Features</a><a href="#pricing">Pricing</a><a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn" href="#cta">Get started</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="wrap hero" id="cta">
+    <div>
+      <h1>[Headline: what changes for the reader]</h1>
+      <p class="hero__lede">[One sentence of supporting detail — specific, no buzzwords.]</p>
+      <div class="hero__actions">
+        <a class="btn" href="#">[Primary action]</a>
+        <a class="btn btn--ghost" href="#features">See how it works</a>
+      </div>
+      <p class="notice" id="form-note" hidden role="status"></p>
+    </div>
+    <div class="visual">[Product visual — screenshot or diagram]</div>
+  </section>
+
+  <section class="wrap proof" aria-label="Proof">
+    <div><strong>[number]</strong><span>[what it measures, and the source]</span></div>
+    <div><strong>[number]</strong><span>[what it measures, and the source]</span></div>
+    <div><strong>[number]</strong><span>[what it measures, and the source]</span></div>
+  </section>
+
+  <section class="wrap" id="features">
+    <h2>[Feature section title]</h2>
+    <div class="grid">
+      <div class="card"><h3>[Feature one]</h3><p>[What it does and who it is for, in two sentences.]</p></div>
+      <div class="card"><h3>[Feature two]</h3><p>[What it does and who it is for, in two sentences.]</p></div>
+      <div class="card"><h3>[Feature three]</h3><p>[What it does and who it is for, in two sentences.]</p></div>
+    </div>
+  </section>
+
+  <section class="wrap" id="pricing">
+    <h2>[Pricing]</h2>
+    <div class="pricing">
+      <div class="card tier"><h3>[Starter]</h3><p class="tier__price">[price]</p><ul><li>[included]</li><li>[included]</li></ul><a class="btn btn--ghost" href="#cta">[Choose]</a></div>
+      <div class="card tier tier--featured"><h3>[Team]</h3><p class="tier__price">[price]</p><ul><li>[included]</li><li>[included]</li><li>[included]</li></ul><a class="btn" href="#cta">[Choose]</a></div>
+      <div class="card tier"><h3>[Scale]</h3><p class="tier__price">[price]</p><ul><li>[included]</li><li>[included]</li></ul><a class="btn btn--ghost" href="#cta">[Talk to us]</a></div>
+    </div>
+  </section>
+
+  <section class="wrap" id="faq">
+    <h2>Questions</h2>
+    <details><summary>[Question one]</summary><p>[Answer.]</p></details>
+    <details><summary>[Question two]</summary><p>[Answer.]</p></details>
+    <details><summary>[Question three]</summary><p>[Answer.]</p></details>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>[Product] · [contact] · [links]</p>
+</footer>
+
+<script>
+  // Placeholder detector: keeps unfinished copy visible instead of silently shipping it.
+  const outstanding = Array.from(document.querySelectorAll('main [id], main .card, main p'))
+    .filter(node => /\[[^\]]+\]/.test(node.textContent) && node.children.length === 0).length;
+  if (outstanding) {
+    const note = document.getElementById('form-note');
+    note.hidden = false;
+    note.textContent = outstanding + ' placeholder' + (outstanding === 1 ? '' : 's') + ' still to replace before this page ships.';
+  }
+</script>
+</body>
+</html>

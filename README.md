@@ -48,7 +48,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 3. Run the portable executable. Installation is not required.
 4. Open **Settings → Connection** and configure your endpoint, API key, and model.
 
-Release assets vary. If an installer is provided, `Muse Agent Setup <version>.exe` installs the app with shortcuts. If a Windows ZIP is provided, extract the **entire archive** and run `Muse Agent.exe` inside it; keep its accompanying folders and files together.
+Release assets vary. If an installer is provided, `Muse-Agent-Setup-<version>.exe` installs the app with shortcuts. If a Windows ZIP is provided, extract the **entire archive** and run `Muse Agent.exe` inside it; keep its accompanying folders and files together.
 
 ### Option B: run from source
 
@@ -104,6 +104,56 @@ Review the changes in this folder and identify likely bugs.
 ```text
 Make a plan for adding search to this application before editing files.
 ```
+
+## Design Studio workspace
+
+**Design** in the sidebar opens the Design Studio: a project folder, the design knowledge that shapes it, a live preview canvas, and the same conversation you use in chat. Everything is local — a project is an ordinary folder that Muse can also open in your editor.
+
+Selecting a project writes `.od/project.json` next to your files (name, kind, active design system, skill, template, craft rules). Nothing is copied into an app-owned database, so the folder stays usable on its own.
+
+### Registries
+
+Four registries feed the workspace, and each is scanned in the same order everywhere:
+
+| Registry | Entry document | Supplies |
+| --- | --- | --- |
+| `design-systems/<id>/` | `DESIGN.md` | Tokens, type, spacing, behaviour, accessibility rules |
+| `design-templates/<id>/` | `TEMPLATE.md` + starter files | A scaffolded starting point (landing page, deck, dashboard) |
+| `skills/<id>/` | `SKILL.md` | A reusable procedure the agent follows (design review, a11y audit) |
+| `craft/*.md` | the file itself | Brand-agnostic quality bars, on by default unless you pick a set |
+
+Roots are scanned **project → personal → bundled**, and the first hit for an id wins, so a project can override your personal copy, and your personal copy overrides the shipped defaults. The personal root is:
+
+```text
+%MUSE_HOME%\design\            (or ~\.muse-agent\design\ by default)
+```
+
+Create it once and drop in `design-systems\my-brand\DESIGN.md` to have it offered in every project. Bundled defaults ship with the app: two design systems, three templates, two skills, and two craft rule sets.
+
+### What the agent can do
+
+When the selected folder is a Design Studio project, five extra tools appear for the model:
+
+| Tool | Effect | Permission |
+| --- | --- | --- |
+| `design_status` | Active project, selections, current artifact, registry roots | Read |
+| `design_registry` | List entries or read an entry's document/asset | Read |
+| `design_configure` | Set design system, skill, template, craft, name, kind | Write (plan mode blocked) |
+| `design_scaffold` | Copy a template's starter files into the project, keeping existing files | Write |
+| `design_artifact` | Validate and publish `.od/artifact.json` for the canvas | Write |
+
+Selection changes take effect on the next model call — the live system prompt block is rewritten, so you do not need to start a new session.
+
+### Artifacts and preview
+
+The canvas renders the project's artifact: the manifest at `.od/artifact.json` if present, otherwise a detected `index.html` / `README.md` / `index.svg`. The entry path is validated to stay inside the project folder.
+
+Two execution shapes are supported:
+
+- **Filesystem** — the agent writes real files, then calls `design_artifact`.
+- **Inline artifact** — a runtime that answers with a single `<artifact identifier="page.html" title="…">…</artifact>` block has that block parsed and materialized into the project automatically, with the manifest written for it. Block identifiers are sanitized the same way, so `../` cannot escape the folder.
+
+A project that is also a runnable web app keeps its own framework: **Run project** starts its `dev`/`start`/`serve` script and streams the live server into the canvas instead of a static file.
 
 ## Permission modes
 
@@ -166,6 +216,26 @@ Keep credentials and personal configuration out of Git. `config.example.toml` is
 
 ## Integrations and terminal use
 
+### Ubuntu sandbox screen
+
+Open **Sandbox** beside the chat model picker. With Oracle VirtualBox installed, choose an Ubuntu desktop ISO, select **Create VM**, then **Start**. The guest screen appears inside Muse and refreshes while the panel is open. Click it to send mouse and keyboard input directly into the guest; press **F6** to return focus to Muse controls. Text input currently supports printable ASCII.
+
+You can use **Try Ubuntu** without installing, or install Ubuntu inside the guest. Muse creates its own VM with 3 GB RAM, two CPUs and a dynamically allocated 24 GB disk. Shared folders, clipboard transfer and drag-and-drop are not enabled. Your existing WSL distributions are separate. The guest uses NAT networking for internet access.
+
+Once the desktop is ready, choose **Save clean desktop**. **Reset to clean** restores that snapshot and discards later guest changes. **Stop & save** saves the running state. While the sandbox is selected, the agent receives only guest screen/input tools; host shell, file, Windows desktop, MCP and subagent tools are unavailable. Stopping the VM keeps that target selected. **Use host tools** explicitly switches the agent back.
+
+The live preview stays local. Screenshots requested by the agent go to your configured vision-capable model and are not stored as image bytes in chat history or memory. This integration does not install Ubuntu unattended or choose a guest password for you.
+
+### Box cloud desktop
+
+Open **Settings → Integrations → Box by Simular → Connect Box**, then sign in and approve Muse in your browser. Credentials are stored in the encrypted desktop vault; no API key needs to be pasted into chat.
+
+The **Box** button beside the chat model picker opens a Muse-themed panel with connection status, recent tool activity, and the latest returned screenshot. **Open desktop** opens Box's live desktop in your browser. Box operates a cloud Linux desktop, separate from your Windows computer.
+
+Box tools follow Muse's permission mode and deny rules. After a private-file read, the egress policy can block remote Box calls unless `mcp.box.simular.ai` is authorized in `sentinel.egress_allowlist`. Use a vision-capable model when interpreting screenshots. Screenshot bytes are passed to the next model request but are not saved in session history or memory records.
+
+You must complete sign-in yourself. Disconnecting removes Muse's locally stored Box authorization. Manage server-side access through your Simular account.
+
 ### MCP servers
 
 Open **Settings → Integrations** to add a stdio MCP server, its command, arguments, and environment settings. Server tools are exposed with names such as `mcp__server__tool` and follow the active permission mode.
@@ -209,7 +279,17 @@ User-facing builds are written to:
 %LOCALAPPDATA%\MuseAgent\releases\<version>\
 ```
 
-For example, the portable build is named `MuseAgent-0.1.7-portable.exe` for version `0.1.7`. The unpacked app lives under `win-unpacked` in the same release directory.
+For version `0.1.8` that release directory contains:
+
+| File | Purpose |
+| --- | --- |
+| `Muse-Agent-Setup-0.1.8.exe` | NSIS installer (auto-update payload) |
+| `Muse-Agent-Setup-0.1.8.exe.blockmap` | Differential-download block map |
+| `MuseAgent-0.1.8-portable.exe` | Portable executable |
+| `latest.yml` | Update manifest; its `url`, `sha512`, and `size` are generated from the installer beside it |
+| `win-unpacked/` | Unpacked application folder |
+
+Artifact names contain no spaces on purpose: `latest.yml` refers to the installer by URL, and a spaced filename is a classic source of download failures for the updater. If you rename an artifact by hand, regenerate or re-check `latest.yml`.
 
 This output location matters: executables built inside a Windows Low-integrity-labelled directory inherit restricted write access and can fail when using the normal Temp folder. The Windows build wrapper stages releases in the per-user release directory without changing the project's security labels.
 
@@ -228,6 +308,20 @@ bun scripts/verify-portable.mts
 
 `release:check` uses `dist/release-check` for its validation build and writes a receipt only after successful checks. The receipt records source hashes, Git state, and package hashes. It does not replace a portable-launch or visual UI check.
 
+#### Electron fuses
+
+`build.electronFuses` in `package.json` hardens every packaged executable:
+
+| Fuse | State | Why |
+| --- | --- | --- |
+| `enableNodeCliInspectArguments` | off | Blocks `--inspect` / `SIGUSR1` debugging of the main process |
+| `enableNodeOptionsEnvironmentVariable` | off | Blocks `NODE_OPTIONS` / `NODE_EXTRA_CA_CERTS` injection; nothing in the app reads them |
+| `enableEmbeddedAsarIntegrityValidation` | on | The EXE embeds the ASAR header hash (written by electron-builder before the fuse flip) and refuses a tampered `app.asar` |
+| `runAsNode` | **on** | `scripts/release-check.mts` and `scripts/verify-portable.mts` probe the packaged binary as Node. Turning it off also disables `process.fork` from the main process |
+| `onlyLoadAppFromAsar` | off | WebApps built by `app/main/site-app-packager.js` ship an unpacked `resources/app` folder, which this fuse would reject |
+
+The two intentionally open fuses are the remaining gap. Closing `runAsNode` means moving the packaged smoke probes onto a different entry point first (for example a self-check flag handled inside the app).
+
 The portable probe launches the release executable, checks packaged source files and SQLite, and verifies Temp writes without loading your real agent configuration or credentials.
 
 Additional native UI checks are available:
@@ -242,13 +336,17 @@ These use an isolated preview bridge and generate screenshots under `dist`. The 
 
 ### Publish a GitHub release
 
-After reviewing, committing, and pushing your release changes to `main`, use the GitHub CLI to upload the verified portable executable:
+After reviewing, committing, and pushing your release changes to `main`, use the GitHub CLI to upload the verified artifacts:
 
 ```powershell
 $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-$exe = Join-Path $env:LOCALAPPDATA "MuseAgent\releases\$version\MuseAgent-$version-portable.exe"
+$release = Join-Path $env:LOCALAPPDATA "MuseAgent\releases\$version"
 
-gh release create "v$version" "$exe" `
+gh release create "v$version" `
+    (Join-Path $release "Muse-Agent-Setup-$version.exe") `
+    (Join-Path $release "Muse-Agent-Setup-$version.exe.blockmap") `
+    (Join-Path $release "latest.yml") `
+    (Join-Path $release "MuseAgent-$version-portable.exe") `
     --repo CM71103/Muse-Agent `
     --target main `
     --title "Muse Agent v$version" `
@@ -256,7 +354,9 @@ gh release create "v$version" "$exe" `
     --latest
 ```
 
-Use a new version and tag for each new release. Build and verify the matching executable before uploading it.
+`electron-updater` is configured with the `github` provider (`resources/app-update.yml`), so the installer, its block map, and `latest.yml` must all be release assets with those exact names; the portable build alone leaves installed apps unable to update.
+
+Use a new version and tag for each new release — `latest.yml` for a version that is already installed is ignored. Build and verify the matching executables before uploading them.
 
 ## Troubleshooting
 

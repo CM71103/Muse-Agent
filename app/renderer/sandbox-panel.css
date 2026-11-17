@@ -1,0 +1,67 @@
+#sandbox-toolbar-open { display:flex; align-items:center; gap:6px; min-height:31px; border:1px solid var(--color-border-soft); border-radius:8px; padding:6px 9px; font-size:10px; background:var(--color-surface-subtle); color:var(--color-muted-fg); }
+#sandbox-toolbar-open::before { content:'▱'; color:var(--color-primary); font-size:13px; }
+#sandbox-toolbar-open[data-state=running]::before { content:'●'; font-size:7px; color:var(--color-success); }
+#sandbox-toolbar-open:hover,#sandbox-toolbar-open[aria-expanded=true] { color:var(--color-primary); background:var(--color-accent); }
+#sandbox-backdrop { position:fixed; inset:0; z-index:102; display:flex; align-items:center; justify-content:center; padding:22px; background:var(--color-scrim); backdrop-filter:blur(8px); }
+#sandbox-backdrop[hidden] { display:none; }
+#sandbox-panel { width:min(1100px,100%); max-height:calc(100vh - 44px); overflow:auto; scrollbar-width:thin; padding:22px; border:1px solid var(--color-border); border-radius:20px; color:var(--color-foreground); background:var(--color-background); box-shadow:0 24px 80px rgb(0 0 0 / .28); }
+.sandbox-heading { display:flex; align-items:center; gap:12px; padding-bottom:17px; margin-bottom:15px; border-bottom:1px solid var(--color-border-soft); }
+.sandbox-emblem { display:grid; place-items:center; width:38px; height:38px; flex-shrink:0; border:1px solid var(--color-border); border-radius:11px; color:var(--color-primary); background:var(--color-accent); font-size:24px; }
+.sandbox-title-group { flex:1; min-width:0; }
+.sandbox-title-group h2 { margin:0; font-size:21px; font-weight:550; letter-spacing:-.5px; }
+.sandbox-title-group p { margin:5px 0 0; color:var(--color-muted-fg); font-size:10px; line-height:1.8; }
+#sandbox-close { background:transparent; border:1px solid var(--color-border); border-radius:8px; padding:7px 10px; font-size:11px; }
+.sandbox-overview { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; }
+.sandbox-state { border:1px solid var(--color-border); border-radius:20px; padding:4px 8px; color:var(--color-muted-fg); font-size:9px; white-space:nowrap; }
+.sandbox-state[data-state=running] { color:var(--color-success); }
+.sandbox-state[data-state=starting] { color:var(--color-primary); background:var(--color-accent); }
+.sandbox-state[data-state=error] { color:var(--color-destructive); }
+.sandbox-target { border:1px solid var(--color-border); border-radius:7px; padding:4px 7px; font-size:9px; color:var(--color-muted-fg); }
+.sandbox-target[data-selected=true] { color:var(--color-primary); background:var(--color-accent); }
+#sandbox-detail { flex:1; margin:0; color:var(--color-muted-fg); font-size:11px; line-height:1.8; }
+.sandbox-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.sandbox-actions button { border-radius:8px; min-height:34px; padding:8px 12px; font-size:10px; }
+#sandbox-start,#sandbox-create,#sandbox-send-text { border:1px solid transparent; color:var(--color-primary-fg); background:var(--color-primary); font-weight:550; }
+#sandbox-reset-confirm { border:1px solid var(--color-destructive); color:var(--color-destructive); background:var(--color-background); }
+#sandbox-error { margin:12px 0; color:var(--color-destructive); font-size:11px; line-height:1.8; overflow-wrap:anywhere; }
+#sandbox-error:empty { display:none; }
+.sandbox-setup { margin-top:17px; padding:17px; border:1px solid var(--color-border); border-radius:12px; background:var(--color-surface-subtle); }
+.sandbox-setup[hidden] { display:none; }
+.sandbox-setup h3 { margin:0 0 9px; font-size:13px; font-weight:550; }
+.sandbox-setup p { font-size:11px; color:var(--color-muted-fg); line-height:1.9; margin:0 0 12px; }
+.sandbox-setup .sandbox-iso { font-size:10px; overflow-wrap:anywhere; }
+.sandbox-baseline-note,.sandbox-frame-note,.sandbox-guidance { color:var(--color-muted-fg); font-size:10px; line-height:1.8; }
+.sandbox-baseline-note { margin:14px 0 17px; }
+.sandbox-reset-prompt { border:1px solid var(--color-border); border-radius:11px; background:var(--color-accent); padding:15px; margin:16px 0; }
+.sandbox-reset-prompt[hidden] { display:none; }
+.sandbox-reset-prompt p { margin:0 0 12px; font-size:11px; line-height:1.8; }
+.sandbox-screen { display:grid; place-items:center; overflow:hidden; min-height:230px; border:1px solid var(--color-border); border-radius:12px; background:var(--color-surface-subtle); }
+.sandbox-screen:focus-visible { outline:2px solid var(--color-ring); outline-offset:3px; }
+.sandbox-screen[aria-disabled=true] { cursor:default; }
+#sandbox-frame { display:block; width:100%; max-height:62vh; object-fit:contain; user-select:none; cursor:crosshair; }
+#sandbox-frame[hidden] { display:none; }
+#sandbox-screen-empty { display:grid; place-content:center; justify-items:center; gap:13px; margin:0; padding:30px 20px; font-size:12px; line-height:1.9; text-align:center; color:var(--color-muted-fg); }
+#sandbox-screen-empty::before { content:'▱'; color:var(--color-primary); font-size:38px; }
+#sandbox-screen-empty[hidden] { display:none; }
+.sandbox-frame-note { margin:10px 0 14px; }
+.sandbox-input-row { display:flex; align-items:stretch; gap:9px; }
+#sandbox-task-hint { margin:0 0 9px; font-size:10px; line-height:1.8; color:var(--color-muted-fg); }
+#sandbox-text { flex:1; min-width:0; height:40px; min-height:40px; border:1px solid var(--color-input); border-radius:9px; padding:9px 12px; background:var(--color-surface-subtle); color:var(--color-foreground); font:11px/1.8 var(--sans); }
+#sandbox-send-text { align-self:flex-end; min-height:35px; padding:9px 13px; border-radius:8px; white-space:nowrap; font-size:11px; }
+.sandbox-guidance { margin:13px 0 0; }
+@media (max-width:650px) {
+  #sandbox-backdrop { padding:11px; }
+  #sandbox-panel { padding:16px; max-height:calc(100vh - 22px); border-radius:16px; }
+  .sandbox-emblem { display:none; }
+  .sandbox-title-group h2 { font-size:19px; }
+  .sandbox-heading { align-items:flex-start; gap:9px; }
+  .sandbox-overview { gap:8px; }
+  .sandbox-setup { padding:13px; }
+  .sandbox-actions { gap:6px; }
+  .sandbox-actions button { padding:8px 10px; }
+  .sandbox-screen { min-height:170px; }
+  #sandbox-frame { max-height:55vh; }
+  .sandbox-input-row { flex-direction:column; }
+  #sandbox-send-text { align-self:flex-start; }
+}
+@media (max-width:380px) { #sandbox-toolbar-open { padding:6px 7px; } .sandbox-title-group p { font-size:9px; } }

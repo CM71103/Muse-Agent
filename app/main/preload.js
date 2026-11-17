@@ -5,6 +5,35 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('muse', {
+  learningStatus:()=>ipcRenderer.invoke('learning:status'),
+  learningSave:patch=>ipcRenderer.invoke('learning:save',patch),
+  learningRun:kind=>ipcRenderer.invoke('learning:run',kind),
+  learningPause:()=>ipcRenderer.invoke('learning:pause'),
+  learningStop:()=>ipcRenderer.invoke('learning:stop'),
+  learningResume:()=>ipcRenderer.invoke('learning:resume'),
+  learningDeleteLesson:id=>ipcRenderer.invoke('learning:delete',id),
+  learningActivity:()=>ipcRenderer.send('learning:activity'),
+  onLearningStatus:cb=>{const listener=(_e,status)=>cb(status);ipcRenderer.on('learning-status',listener);return ()=>ipcRenderer.removeListener('learning-status',listener);},
+  sandboxStatus:()=>ipcRenderer.invoke('sandbox:status'),
+  sandboxChooseISO:()=>ipcRenderer.invoke('sandbox:choose-iso'),
+  sandboxCreate:()=>ipcRenderer.invoke('sandbox:create'),
+  sandboxStart:()=>ipcRenderer.invoke('sandbox:start'),
+  sandboxStop:()=>ipcRenderer.invoke('sandbox:stop'),
+  sandboxReset:()=>ipcRenderer.invoke('sandbox:reset'),
+  sandboxCheckpoint:()=>ipcRenderer.invoke('sandbox:checkpoint'),
+  sandboxUseHost:()=>ipcRenderer.invoke('sandbox:host'),
+  sandboxFrame:()=>ipcRenderer.invoke('sandbox:frame'),
+  sandboxInput:args=>ipcRenderer.invoke('sandbox:input',args),
+  windowsList:()=>ipcRenderer.invoke('windows:list'),
+  windowsStatus:()=>ipcRenderer.invoke('windows:status'),
+  windowsSelect:id=>ipcRenderer.invoke('windows:select',id),
+  windowsRelease:()=>ipcRenderer.invoke('windows:release'),
+  boxStatus:()=>ipcRenderer.invoke('box:status'),
+  boxConnect:()=>ipcRenderer.invoke('box:connect'),
+  boxDisconnect:()=>ipcRenderer.invoke('box:disconnect'),
+  boxCancel:()=>ipcRenderer.invoke('box:cancel'),
+  boxOpenDesktop:()=>ipcRenderer.invoke('box:desktop'),
+  onBoxStatus:cb=>{const handler=(_event,status)=>cb(status);ipcRenderer.on('box-status',handler);return ()=>ipcRenderer.removeListener('box-status',handler);},
   send: (text) => ipcRenderer.invoke('agent:send', text),
   reset: () => ipcRenderer.invoke('agent:reset'),
   cancel: () => ipcRenderer.invoke('agent:cancel'),
@@ -38,6 +67,36 @@ contextBridge.exposeInMainWorld('muse', {
   memoryDeleted: () => ipcRenderer.invoke('memory:deleted'),
   memoryExport: () => ipcRenderer.invoke('memory:export'),
   memoryExtractNow: () => ipcRenderer.invoke('memory:extract-now'),
+  designStatus: () => ipcRenderer.invoke('design:status'),
+  designListFiles: () => ipcRenderer.invoke('design:files:list'),
+  designReadFile: (relativePath) => ipcRenderer.invoke('design:files:read', relativePath),
+  designRegistryList: (kind) => ipcRenderer.invoke('design:registry:list', kind),
+  designRegistryRead: (kind, id, file) => ipcRenderer.invoke('design:registry:read', { kind, id, file }),
+  designApplyTemplate: (id, force) => ipcRenderer.invoke('design:template:apply', { id, force }),
+  designUserRegistryDir: () => ipcRenderer.invoke('design:registry:user-dir'),
+  onDesignArtifact: (cb) => {
+    const h = (_e, payload) => cb(payload || {});
+    ipcRenderer.on('design-artifact', h);
+    return () => ipcRenderer.removeListener('design-artifact', h);
+  },
+  onProjectChange: (cb) => {
+    const h = () => cb();
+    ipcRenderer.on('project-changed', h);
+    return () => ipcRenderer.removeListener('project-changed', h);
+  },
+  designWorkspaceMode: open => ipcRenderer.invoke('design:workspace-mode', !!open),
+  designSave: (patch) => ipcRenderer.invoke('design:save', patch),
+  designCreateProject: (name, dir) => ipcRenderer.invoke('design:create-project', { name, dir }),
+  designChooseProject: () => ipcRenderer.invoke('design:choose-project'),
+  designOpenPreview: () => ipcRenderer.invoke('design:open-preview'),
+  designWebPreviewStart: (relativeDir) => ipcRenderer.invoke('design:web-preview:start', relativeDir),
+  designWebPreviewStop: () => ipcRenderer.invoke('design:web-preview:stop'),
+  designSiteOpenUrl: (url) => ipcRenderer.invoke('design:site:open-url', url),
+  designSiteChooseFolder: () => ipcRenderer.invoke('design:site:choose-folder'),
+  designSiteChooseHtml: () => ipcRenderer.invoke('design:site:choose-html'),
+  designSiteBounds: (rect) => ipcRenderer.invoke('design:site:bounds', rect),
+  designSiteClose: () => ipcRenderer.invoke('design:site:close'),
+  designSitePackage: (request) => ipcRenderer.invoke('design:site:package', request),
   onAgentEvent: (cb) => {
     const h = (_e, ev) => cb(ev);
     ipcRenderer.on('agent-event', h);

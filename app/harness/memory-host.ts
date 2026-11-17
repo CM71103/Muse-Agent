@@ -4,9 +4,11 @@ function hashText(text: string) {
   return 'sha256:' + require('node:crypto').createHash('sha256').update(text || '').digest('hex');
 }
 module.exports = {
-  async sendWithMemory(this: any, ctx: any, signal?: AbortSignal, tools: any = this.toolSchemas()) {
+  async sendWithMemory(this: any, ctx: any, signal?: AbortSignal, tools: any = this.toolSchemas(), streamEvents?: { onDelta?: (text: string) => void; onStreamReset?: () => void }) {
     const { Agent } = require('./agent');
     this.refreshPermissionMode();
+    const messages = structuredClone(this.history);
+    require('./tool-images.ts').appendToolImages(this, messages);
     if (ctx?.turn_id) {
       this.memory.commitPrepared(ctx); // Revalidate deleted/revoked records at every send.
       if (this.memorySection() !== this.memoryBlock(ctx)) {
@@ -14,14 +16,13 @@ module.exports = {
         throw new Error('Memory payload changed before send; retry turn to repack.');
       }
     }
-    const messages = structuredClone(this.history);
     const input = messages.reduce((n: number, message: any) => n + Agent.estimateTokens(message), 0)
       + Agent.estimateTokens({ content: JSON.stringify(tools) });
     if (input + (this.cfg.llm.max_tokens || 8192) + 256 > this.ctxBudget) {
       if (ctx?.turn_id) this.memory.failTurn(ctx.turn_id, 'unknown', 'request_budget_overflow');
       throw new Error('Request exceeds context limit; shorten conversation or raise context limit.');
     }
-    const result = await this.llm.chat(messages, tools, { signal });
+    const result = await this.llm.chat(messages, tools, { signal, ...streamEvents });
     if (ctx?.turn_id && !ctx._acknowledged) {
       this.memory.acknowledgeSent(ctx.turn_id, ctx.packed_ids,
         hashText(Agent.memorySectionOf(messages)), ctx.citation_map);

@@ -7,8 +7,12 @@ import { fileURLToPath } from 'node:url';
 // directory. REA can be Low-labelled; its EXEs then cannot create normal TEMP
 // files. Build user-facing releases in a normal per-user directory instead.
 export function releaseDirectory(env: NodeJS.ProcessEnv, version: string) {
-  if (!env.LOCALAPPDATA || !path.isAbsolute(env.LOCALAPPDATA)) throw Error('LOCALAPPDATA must identify an absolute Windows user directory');
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) throw Error('Invalid Windows release version');
+  if (env.MUSE_RELEASE_DIR) {
+    if (!path.isAbsolute(env.MUSE_RELEASE_DIR)) throw Error('MUSE_RELEASE_DIR must be an absolute Windows directory');
+    return path.resolve(env.MUSE_RELEASE_DIR);
+  }
+  if (!env.LOCALAPPDATA || !path.isAbsolute(env.LOCALAPPDATA)) throw Error('LOCALAPPDATA must identify an absolute Windows user directory');
   return path.join(env.LOCALAPPDATA, 'MuseAgent', 'releases', version);
 }
 

@@ -3,7 +3,8 @@ type Config = { llm: Record<string, any>; memory: Record<string, any> };
 function modelId(value: unknown): string {
   if (typeof value !== 'string') throw new Error('Model ID must be a string');
   const id = value.trim();
-  if (!id || id.length > 256 || /[\s\u0000-\u001f\u007f",#\[\]\\]/.test(id)) throw new Error('Model ID must be 1–256 characters without whitespace or config delimiters');
+  if (!id || id.length > 256 || /[\u0000-\u001f\u007f",#\\]/.test(id)) throw new Error('Model ID must be 1–256 characters without whitespace or unsupported delimiters');
+  if (/\s/.test(id)) throw new Error('Model ID must be 1–256 characters without whitespace or unsupported delimiters');
   return id;
 }
 

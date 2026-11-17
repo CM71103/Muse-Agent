@@ -1,0 +1,58 @@
+#windows-toolbar-open { display:flex; align-items:center; gap:6px; min-height:31px; border:1px solid var(--color-border-soft); border-radius:8px; padding:6px 9px; color:var(--color-muted-fg); background:var(--color-surface-subtle); font-size:10px; }
+#windows-toolbar-open::before { content:'▱'; color:var(--color-primary); font-size:13px; }
+#windows-toolbar-open[data-state=selected]::before { content:'●'; color:var(--color-success); font-size:7px; }
+#windows-toolbar-open:hover,#windows-toolbar-open[aria-expanded=true] { color:var(--color-primary); background:var(--color-accent); }
+#windows-desktop-backdrop { position:fixed; inset:0; z-index:101; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--color-scrim); backdrop-filter:blur(8px); }
+#windows-desktop-backdrop[hidden] { display:none; }
+#windows-desktop-panel { width:min(940px,100%); max-height:calc(100vh - 48px); overflow:auto; scrollbar-width:thin; border:1px solid var(--color-border); border-radius:20px; padding:24px; background:var(--color-background); color:var(--color-foreground); box-shadow:0 24px 80px rgb(0 0 0 / .28); }
+.windows-panel-heading { display:flex; align-items:center; gap:12px; border-bottom:1px solid var(--color-border-soft); padding-bottom:18px; margin-bottom:17px; }
+.windows-desktop-emblem { width:38px; height:38px; display:grid; place-items:center; flex-shrink:0; border:1px solid var(--color-border); border-radius:11px; background:var(--color-accent); color:var(--color-primary); font-size:23px; }
+.windows-panel-title { min-width:0; flex:1; }
+.windows-panel-title h2 { margin:0; font-size:21px; font-weight:550; letter-spacing:-.6px; }
+.windows-panel-title p { margin:5px 0 0; font-size:10px; color:var(--color-muted-fg); line-height:1.7; }
+#windows-panel-close { border:1px solid var(--color-border); border-radius:8px; padding:7px 10px; font-size:11px; background:transparent; }
+.windows-panel-summary { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+.windows-desktop-state { border:1px solid var(--color-border); border-radius:20px; padding:4px 8px; color:var(--color-muted-fg); font-size:9px; line-height:1.6; white-space:nowrap; }
+.windows-desktop-state[data-state=selected] { color:var(--color-success); }
+#windows-panel-detail { flex:1; margin:0; color:var(--color-muted-fg); font-size:11px; line-height:1.8; overflow-wrap:anywhere; }
+.windows-desktop-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.windows-desktop-actions button { font-size:11px; border-radius:9px; min-height:35px; padding:8px 12px; }
+#windows-panel-refresh { color:var(--color-primary-fg); background:var(--color-primary); border:1px solid transparent; }
+#windows-panel-release { background:transparent; color:var(--color-muted-fg); border:1px solid var(--color-border); }
+#windows-panel-release:hover:not(:disabled) { color:var(--color-destructive); border-color:var(--color-destructive); }
+#windows-panel-error { margin:13px 0; color:var(--color-destructive); font-size:11px; line-height:1.8; overflow-wrap:anywhere; }
+#windows-panel-error:empty { display:none; }
+.windows-desktop-guidance { margin:17px 0 21px; font-size:10px; line-height:1.8; color:var(--color-muted-fg); }
+.windows-desktop-columns { display:grid; grid-template-columns:minmax(190px,1fr) minmax(0,1.7fr); gap:18px; }
+.windows-desktop-columns h3,.windows-desktop-activity-title { margin:0 0 12px; font-size:12px; font-weight:550; }
+#windows-window-list { max-height:350px; overflow:auto; scrollbar-width:thin; border:1px solid var(--color-border); border-radius:12px; padding:6px; background:var(--color-surface-subtle); }
+.windows-window-choice { display:block; width:100%; border:1px solid transparent; border-radius:8px; background:transparent; padding:11px 10px; margin-bottom:3px; text-align:left; }
+.windows-window-choice:last-child { margin-bottom:0; }
+.windows-window-choice strong { display:block; font-size:11px; font-weight:550; line-height:1.7; overflow-wrap:anywhere; }
+.windows-window-choice small { display:block; margin-top:4px; font-size:9px; color:var(--color-muted-fg); }
+.windows-window-choice[aria-pressed=true] { border-color:var(--color-border); background:var(--color-accent); color:var(--color-primary); }
+.windows-window-choice[aria-pressed=true] strong::before { content:'✓'; margin-right:7px; }
+.windows-window-empty { font-size:11px; line-height:1.8; color:var(--color-muted-fg); padding:12px; margin:0; }
+.windows-desktop-preview { margin:0; overflow:hidden; background:var(--color-surface-subtle); border:1px solid var(--color-border); border-radius:12px; }
+#windows-preview-image { display:block; width:100%; max-height:310px; object-fit:contain; }
+#windows-preview-image[hidden] { display:none; }
+#windows-preview-empty { display:grid; place-content:center; justify-items:center; gap:14px; min-height:210px; margin:0; padding:25px; text-align:center; font-size:11px; line-height:1.9; color:var(--color-muted-fg); }
+#windows-preview-empty::before { content:'▱'; color:var(--color-primary); font-size:36px; }
+#windows-preview-empty[hidden] { display:none; }
+#windows-preview-caption { padding:11px 13px; border-top:1px solid var(--color-border-soft); font-size:9px; line-height:1.8; color:var(--color-muted-fg); }
+.windows-desktop-activity-title { margin-top:22px; }
+#windows-activity-list { list-style:none; padding:0; margin:0; max-height:140px; overflow:auto; scrollbar-width:thin; }
+#windows-activity-list:empty::before { content:'Desktop tool activity will appear here when Muse uses the selected window.'; color:var(--color-muted-fg); font-size:10px; line-height:1.8; }
+.windows-activity-entry { padding:8px 2px; border-bottom:1px solid var(--color-border-soft); font-size:10px; line-height:1.7; }
+.windows-activity-entry[data-state=failed],.windows-activity-entry[data-state=denied] { color:var(--color-destructive); }
+@media (max-width:650px) {
+  #windows-desktop-backdrop { padding:12px; }
+  #windows-desktop-panel { padding:17px; border-radius:16px; max-height:calc(100vh - 24px); }
+  .windows-panel-heading { gap:9px; }
+  .windows-desktop-emblem { display:none; }
+  .windows-panel-title h2 { font-size:19px; }
+  .windows-desktop-columns { grid-template-columns:minmax(0,1fr); gap:19px; }
+  #windows-window-list { max-height:200px; }
+  #windows-preview-empty { min-height:150px; }
+}
+@media (max-width:380px) { #windows-toolbar-open { padding:6px 7px; } .windows-panel-summary { gap:7px; } }

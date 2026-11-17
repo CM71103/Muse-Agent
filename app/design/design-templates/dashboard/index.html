@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[Dashboard title]</title>
+<style>
+  :root{--surface:#f6f5f2;--panel:#fff;--ink:#1b1a18;--muted:#6d675f;--hairline:#e3dfd8;
+    --accent:#155e63;--accent-soft:#e3efef;--danger:#a52a2a;--ok:#2f7a4d;
+    --sans:ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--surface);color:var(--ink);font:400 14px/1.45 var(--sans)}
+  header{display:flex;flex-wrap:wrap;gap:.75rem;align-items:end;padding:1rem 1.25rem;background:var(--panel);border-bottom:1px solid var(--hairline)}
+  header h1{margin:0 auto 0 0;font-size:17px;font-weight:600;letter-spacing:-.01em}
+  .field{display:flex;flex-direction:column;gap:.25rem;font-size:12px;color:var(--muted)}
+  .control{min-height:32px;padding:.35rem .55rem;border:1px solid var(--hairline);border-radius:8px;background:#fff;color:var(--ink);font:inherit}
+  button.control{cursor:pointer}
+  .control:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  main{padding:1.25rem;display:grid;gap:1rem}
+  .metrics{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr))}
+  .card{background:var(--panel);border:1px solid var(--hairline);border-radius:12px;padding:1rem 1.1rem}
+  .metric strong{display:block;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .metric>span{color:var(--muted);font-size:12px}
+  .metric em{font-style:normal;font-size:12px}
+  .up{color:var(--ok)}.down{color:var(--danger)}
+  .card h2{margin:0 0 .5rem;font-size:13px;font-weight:600}
+  .chart svg{width:100%;height:180px;overflow:visible}
+  .toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem}
+  .toolbar h2{margin:0;font-size:13px;font-weight:600}
+  .toolbar output{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+  .tablewrap{overflow:auto;border:1px solid var(--hairline);border-radius:12px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+  caption{text-align:left;padding:.75rem 1rem;color:var(--muted);font-size:12px}
+  th,td{padding:.6rem .85rem;border-bottom:1px solid var(--hairline);text-align:left;white-space:nowrap}
+  thead th{position:sticky;top:0;background:var(--panel);font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);z-index:1;padding:0}
+  thead th .sort{all:unset;display:block;padding:.6rem .85rem;cursor:pointer;color:inherit;font:inherit;letter-spacing:inherit;text-transform:inherit}
+  thead th .sort:hover{color:var(--accent)}
+  thead th[aria-sort=descending] .sort::after{content:" ↓"}
+  thead th[aria-sort=ascending] .sort::after{content:" ↑"}
+  td{border-top:1px solid var(--hairline)}
+  tbody tr:hover{background:#faf9f6}
+  .num{text-align:right}
+  .state{padding:2.5rem 1rem;text-align:center;color:var(--muted)}
+  .state h2{margin:.25rem 0;font-size:15px;color:var(--ink)}
+  .state--error{color:var(--danger)}
+  .pill{display:inline-block;padding:.1rem .5rem;border-radius:999px;font-size:11px;background:var(--accent-soft);color:var(--accent)}
+  .pill--warn{background:#fbf0dd;color:#8a5a09}
+  .pager{display:flex;gap:.5rem;align-items:center;justify-content:flex-end;padding:.65rem 1rem;border-top:1px solid var(--hairline);font-size:12px;color:var(--muted)}
+  [hidden]{display:none!important}
+  @media (max-width:40rem){header h1{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <h1>[Dashboard title]</h1>
+  <label class="field">Search<input id="search" class="control" type="search" placeholder="Account name"></label>
+  <label class="field">Status<select id="status" class="control">
+    <option value="">All</option><option>Active</option><option>Paused</option><option>Closed</option></select></label>
+  <label class="field">Range<select id="range" class="control">
+    <option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="120">Last 120 days</option></select></label>
+  <button id="reload" class="control" type="button">Reload</button>
+</header>
+
+<main>
+  <div class="metrics" id="metrics"></div>
+
+  <section class="card chart" aria-label="Revenue by account">
+    <h2>[Series name]</h2>
+    <div id="chart" role="img" aria-label="Revenue by account, bar chart"></div>
+  </section>
+
+  <section>
+    <div class="toolbar">
+      <h2>[Records]</h2>
+      <output id="count" aria-live="polite"></output>
+    </div>
+    <div class="tablewrap">
+      <table id="table">
+        <caption>[What this table contains and where it comes from]</caption>
+        <thead><tr id="head"></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div id="state" class="state" hidden></div>
+      <div class="pager" id="pager"></div>
+    </div>
+  </section>
+</main>
+
+<script src="dashboard.js"></script>
+</body>
+</html>

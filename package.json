@@ -1,15 +1,16 @@
 {
   "name": "muse-agent",
   "productName": "Muse Agent",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Personal AI agent - Electron shell + Node harness",
+  "author": "CM71103",
   "license": "MIT",
   "main": "app/main/index.js",
   "scripts": {
     "start": "bun run build:renderer && electron .",
     "build:renderer": "bun scripts/build-renderer.mts",
     "agent": "node app/harness/cli.js",
-    "test": "node --test app/harness/test/*.test.js app/harness/test/*.test.ts app/renderer/test/*.test.js scripts/test/*.test.mts",
+    "test": "node --test app/harness/test/*.test.js app/harness/test/*.test.ts app/renderer/test/*.test.js app/renderer/test/*.test.ts scripts/test/*.test.mts",
     "release:check": "node scripts/release-check.mts",
     "dist": "bun run build:renderer && node scripts/check-native.js && node scripts/build-windows.mts --win",
     "dist:portable": "bun run build:renderer && node scripts/check-native.js && node scripts/build-windows.mts --win portable",
@@ -22,6 +23,7 @@
     "node": ">=24"
   },
   "devDependencies": {
+    "@electron/fuses": "^1.8.0",
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0"
   },
@@ -36,7 +38,21 @@
       "build/icon.ico",
       "config.example.toml",
       "!app/harness/test/**",
-      "!app/renderer/test/**"
+      "!app/renderer/test/**",
+      "!node_modules/better-sqlite3/deps/**",
+      "!node_modules/better-sqlite3/src/**",
+      "!node_modules/better-sqlite3/build/**/obj/**",
+      "!node_modules/better-sqlite3/build/**/*.vcxproj*",
+      "!node_modules/better-sqlite3/build/**/*.tlog",
+      "!node_modules/better-sqlite3/prebuilds/darwin-*.node",
+      "!node_modules/better-sqlite3/prebuilds/linux-*.node",
+      "!node_modules/better-sqlite3/prebuilds/linuxmusl-*.node",
+      "!node_modules/better-sqlite3/prebuilds/win32-arm64.node",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.d.ts",
+      "!node_modules/**/*.d.cts",
+      "!node_modules/**/*.d.mts",
+      "!node_modules/@modelcontextprotocol/sdk/dist/esm/**"
     ],
     "extraResources": [
       {
@@ -52,6 +68,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
+      "artifactName": "Muse-Agent-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
@@ -63,11 +80,19 @@
       "artifactName": "MuseAgent-${version}-portable.exe"
     },
     "npmRebuild": true,
+    "electronFuses": {
+      "runAsNode": true,
+      "onlyLoadAppFromAsar": false,
+      "enableNodeCliInspectArguments": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableEmbeddedAsarIntegrityValidation": true
+    },
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*"
     ]
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@paper-design/shaders": "0.0.82",
     "better-sqlite3": "^13.0.3"
   }

@@ -18,15 +18,27 @@ let child: ReturnType<typeof spawn> | undefined;
 try {
   fs.writeFileSync(script, `
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+(async()=>{
 const dir=path.dirname(process.execPath),archive=path.join(dir,'resources/app.asar');
 assert.ok(process.versions.electron,'Probe must run in packaged Electron');
 const Database=require(path.join(archive,'node_modules/better-sqlite3'));
 const db=new Database(':memory:');assert.equal(db.prepare('SELECT 1 AS n').get().n,1);db.close();
 assert.ok(fs.existsSync(path.join(archive,'app/renderer/lib/model-picker.js')));
+if(fs.existsSync(path.join(archive,'app/harness/box-client.ts')))assert.equal(typeof require(path.join(archive,'app/harness/box-client.ts')).BoxClient,'function','Packaged Box SDK must load');
+if(fs.existsSync(path.join(archive,'app/main/windows-desktop.ts'))){
+ const desktop=require(path.join(archive,'app/main/windows-desktop.ts')).createWindowsDesktop();
+ assert.ok(Array.isArray((await desktop.list()).windows),'Packaged Windows helper must run from ASAR');desktop.release();
+}
+if(fs.existsSync(path.join(archive,'app/main/sandbox-vm.ts'))){
+ const vm=require(path.join(archive,'app/main/sandbox-vm.ts')).createSandboxVM({directory:path.join(__dirname,'isolated-sandbox-probe')});
+ assert.equal(vm.isSelected(),false);assert.equal(typeof vm.frame,'function');
+ assert.ok(fs.readFileSync(path.join(archive,'app/main/sandbox-input.ps1'),'utf8').includes('VirtualBox.VirtualBox'));
+}
 const expected=${JSON.stringify(expectedApp)};
 for(const [name,hash] of Object.entries(expected))assert.equal(require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(archive,name))).digest('hex'),hash,'Outdated packaged file: '+name);
 fs.writeFileSync(${JSON.stringify(receipt)},JSON.stringify({ok:true,electron:process.versions.electron,
  checkedFiles:Object.keys(expected).length}));
+})().catch(error=>{console.error(error);process.exitCode=1});
 `);
   const env = {...process.env,ELECTRON_RUN_AS_NODE:'1'};
   if (customTemp) {const dir=path.join(temp,'temp');fs.mkdirSync(dir);Object.assign(env,{TEMP:dir,TMP:dir});}

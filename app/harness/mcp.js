@@ -155,9 +155,15 @@ function mkMcpTools(mcpCfg) {
         name: `mcp__${client.name}__${t.name}`,
         description: `[MCP/${client.name}] ${t.description}`,
         parameters: t.inputSchema && t.inputSchema.type ? t.inputSchema : { type: 'object', properties: {} },
-        async run(args) {
+        async run(args, ctx = {}) {
           try {
-            const res = await client.call(t.name, args);
+            if (client.remote && ctx.agent && ctx.agent.tainted && !ctx.sentinel.egressAllowed('https://mcp.box.simular.ai/mcp', true)) {
+              return { ok: false, error: 'Box network access is blocked after a private-file read. Add mcp.box.simular.ai to sentinel.egress_allowlist to authorize it.' };
+            }
+            let res;
+            const controller = client.remote && ctx.agent ? ctx.agent._beginAbort() : null;
+            try { res = await client.call(t.name, args, controller ? { signal: controller.signal } : undefined); }
+            finally { if (controller) ctx.agent._endAbort(); }
             // MCP result: {content:[{type,text,...}], isError?}
             let text = '';
             if (res && Array.isArray(res.content)) {
@@ -169,11 +175,13 @@ function mkMcpTools(mcpCfg) {
               text = JSON.stringify(res);
             }
             const isError = !!(res && res.isError);
+            const images = require('./tool-images.ts').normalizeImages(res && res.content);
             return {
               ok: !isError,
               ...(isError ? { error: text.slice(0, 2000) || 'MCP tool reported an error' } : {}),
               ...(text ? { result: text.slice(0, RESULT_CAP) } : {}),
               truncated: text.length > RESULT_CAP,
+              ...(images.length ? { images } : {}),
             };
           } catch (e) {
             return { ok: false, error: `mcp ${client.name}/${t.name}: ${e && e.message || e}` };
@@ -189,9 +197,12 @@ function mkMcpTools(mcpCfg) {
 // Shared registry so main can start servers once at agent build time.
 const registry = {
   _clients: new Map(),
+  _external: new Map(),
   add(client) { this._clients.set(client.name, client); },
-  get(name) { return this._clients.get(name); },
-  clients() { return [...this._clients.values()]; },
+  get(name) { return this._external.get(name) || this._clients.get(name); },
+  addExternal(client) { if (this._clients.has(client.name)) throw new Error(`MCP server name already in use: ${client.name}`); this._external.set(client.name, client); },
+  removeExternal(name) { this._external.delete(name); },
+  clients() { return [...this._clients.values()].filter(c => !this._external.has(c.name)).concat([...this._external.values()]); },
   clear() { for (const c of this._clients.values()) { try { c.close(); } catch {} } this._clients.clear(); },
 };
 
@@ -206,6 +217,7 @@ async function startMcpServers(cfg, log = () => {}) {
   const names = mcp.servers.slice(0, SERVERS_CAP);
   const servers = (mcp.server || {});
   for (const name of names) {
+    if (registry._external.has(name)) { log(`mcp server "${name}" is reserved by a connected integration — skipped`); continue; }
     const scfg = servers[name];
     if (!scfg || !scfg.command) { log(`mcp server "${name}" missing [mcp.server.${name}] command — skipped`); continue; }
     const client = new McpStdioClient(name, scfg);

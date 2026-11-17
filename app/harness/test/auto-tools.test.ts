@@ -100,3 +100,18 @@ test('Auto instructions refresh in an existing conversation and after a live mod
   await agent.run('Check the active mode.');
   assert.equal(requests, 2);
 });
+
+test('existing chats receive fresh Windows or Ubuntu desktop instructions when their tool scope changes', t => {
+  const { agent, cfg } = setup(t);
+  agent.history = [{ role: 'system', content: systemPrompt(cfg, '', agent.cwdOverride) }];
+  agent.toolMap.set('windows_screenshot', {});
+  agent.refreshPermissionMode();
+  assert.match(agent.history[0].content, /DESKTOP CONTROL: The user selected a Windows application.*windows_screenshot/);
+  agent.toolMap.delete('windows_screenshot');
+  agent.toolMap.set('sandbox_screenshot', {});
+  agent.refreshPermissionMode();
+  assert.match(agent.history[0].content, /UBUNTU SANDBOX: The user selected the isolated Ubuntu guest.*never type the user's task as though it were a guest command.*sandbox_key/);
+  agent.toolMap.delete('sandbox_screenshot');
+  agent.refreshPermissionMode();
+  assert.doesNotMatch(agent.history[0].content, /(?:DESKTOP CONTROL|UBUNTU SANDBOX):/);
+});

@@ -52,8 +52,16 @@ class Sentinel {
     this.timeoutMs = (this.agentCfg.approval_timeout_s || 3600) * 1000;
     this.denyRules = this.cfg.deny_rules || [];
     // Central policy. Tool registry `alwaysAsk` is advisory; this is the law.
-    this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell']);
+    this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell', 'windows_click', 'windows_type', 'windows_key', 'windows_scroll', 'sandbox_click', 'sandbox_type', 'sandbox_key', 'sandbox_scroll']);
     this.readTools = new Set(['read_file', 'list_dir']);
+    // Design Studio tools: reads of the shared design registry, and writes that
+    // can only land inside the selected project folder (.od metadata, template
+    // scaffolding, artifact manifest). Registered with the sentinel so an
+    // unlisted tool still fails closed.
+    const designTools = require('./design-tools.ts');
+    for (const name of designTools.DESIGN_READ_NAMES) this.readTools.add(name);
+    for (const name of designTools.DESIGN_WRITE_NAMES) this.sideEffectTools.add(name);
+    this.projectWriteTools = new Set(['write_file', ...designTools.DESIGN_WRITE_NAMES]);
     // Legacy always_ask_tools values are accepted in config but do not override Auto.
     // Modes live on the sentinel so a running agent picks up a switch
     // immediately (host calls setMode). Config value is the boot default.
@@ -153,11 +161,17 @@ class Sentinel {
     const sideEffect = this.sideEffectTools.has(request.tool);
     const isMcp = this.mcpSideEffects && typeof request.tool === 'string' && request.tool.startsWith('mcp__');
     const isSpawn = request.tool === 'spawn_agent';
-    if (!isRead && !sideEffect && !isMcp && !isSpawn) {
+    const isDesktopRead = request.tool === 'windows_screenshot' || request.tool === 'sandbox_screenshot';
+    if (!isRead && !sideEffect && !isMcp && !isSpawn && !isDesktopRead) {
       return { decision: 'deny', reason: `unknown tool "${request.tool}" (fail closed)` };
     }
     if (this.mode === 'auto') {
       return { decision: 'allow', reason: 'auto mode: tools are authorized without approval prompts' };
+    }
+    if (isDesktopRead) {
+      return this.mode === 'plan'
+        ? { decision: 'allow', reason: 'observe the window explicitly selected by the user' }
+        : { decision: 'ask', reason: 'share a screenshot of the selected window with the model' };
     }
     // Other modes retain project-scoped file approvals.
     if (this.readTools.has(request.tool)) {
@@ -176,8 +190,8 @@ class Sentinel {
       return { decision: 'deny', reason: `plan mode is read-only: "${request.tool}" is blocked (switch out of plan mode to act)` };
     }
     if (this.mode === 'accept_edits') {
-      // Accept-edits: file writes inside granted scope auto-approve.
-      if (request.tool === 'write_file' && this.inGrantedScope(request.resolvedPath)) {
+      // Accept-edits: project-scoped writes auto-approve inside granted scope.
+      if (this.projectWriteTools.has(request.tool) && this.inGrantedScope(request.resolvedPath)) {
         return { decision: 'allow', reason: 'accept-edits mode: write inside granted scope' };
       }
       return { decision: 'ask', reason };

@@ -11,6 +11,7 @@ const approvalBox = $('approval');
 const composer = $('composer');
 
 let busy = false;
+let turnErrorsDisplayed = new Set();
 let currentApproval = null;
 let settingsOpen = false;
 let loadingSession = false;
@@ -26,9 +27,16 @@ let projectHomeVisible = false;
 let showArchivedProjects = false;
 let projectEditorId = null;
 let transcriptMessages = [];
+let designUI = null;
 const prefs = { compact: false, tools: true, enter: true };
 let dialogReturnFocus = null;
-function reportError(e) { addSysNote(String(e && e.message || e), true); }
+function userFacingAgentError(error) {
+  const text = String(error || 'Unknown error');
+  if (/LLM HTTP 429/i.test(text)) return 'The selected model provider reached its request limit (HTTP 429). Wait briefly or switch models, then try again.';
+  if (/LENGTH_NO_OUTPUT|used its entire \d+-token response limit|returned no text after using its \d+-token response limit/i.test(text)) return 'The model used its response limit without returning an answer. Try a non-reasoning model or increase llm.max_tokens in config.toml if your provider supports it.';
+  return text;
+}
+function reportError(e) { addSysNote(userFacingAgentError(String(e && e.message || e)), true); }
 function guarded(fn) { return (...args) => Promise.resolve().then(() => fn(...args)).catch(reportError); }
 /* Entrance reveal for new transcript children. WAAPI when available, class
    fallback otherwise; skipped under prefers-reduced-motion and in test DOMs. */
@@ -44,7 +52,7 @@ function reveal(el, fromY) {
   else el.classList.add('reveal-in');
   return el;
 }
-function resetTranscript() { subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null; renderEmpty(); }
+function resetTranscript() { showThinking(false); clearStreamingMessage(); subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; renderEmpty(); }
 function renderEmpty() {
   if (projectHomeVisible && activeProjectId) { renderProjectHome(); return; }
   if (transcript.children.length) return;
@@ -308,6 +316,28 @@ function addMsg(role, text) {
   scrollDown();
 }
 
+let streamingMessageEl = null;
+let streamingMessageBody = null;
+function clearStreamingMessage() {
+  streamingMessageEl?.remove();
+  streamingMessageEl = null;
+  streamingMessageBody = null;
+}
+function appendStreamingText(text) {
+  if (!text) return;
+  clearEmpty();
+  if (!streamingMessageEl) {
+    streamingMessageEl = document.createElement('div');
+    streamingMessageEl.className = 'msg assistant streaming-draft';
+    const who = document.createElement('div'); who.className = 'who'; who.textContent = 'Muse';
+    streamingMessageBody = document.createElement('div'); streamingMessageBody.className = 'abody';
+    streamingMessageEl.append(who, streamingMessageBody);
+    transcript.append(streamingMessageEl);
+  }
+  streamingMessageBody.textContent += text;
+  scrollDown();
+}
+
 /* ---------- markdown rendering (offline, DOM-built, injection-safe) ----------
    Everything is document.createElement/textContent — no innerHTML with
    message-derived strings, so model output can never inject markup.
@@ -373,6 +403,18 @@ function mdCode(container, code) {
   }
 }
 
+async function copyTextToClipboard(text) {
+  const value = String(text || '');
+  // Try the Clipboard API first; if it is unavailable or throws (common in Electron file:// renderers), fall back to execCommand.
+  if (navigator.clipboard) {
+    try { await navigator.clipboard.writeText(value); return true; } catch {}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = value; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
+  document.body.append(ta); ta.select(); ta.setSelectionRange(0, value.length);
+  const ok = document.execCommand('copy'); ta.remove();
+  return ok;
+}
 function addCopyAll(body, rawText) {
   // small "copy" affordance under assistant replies — copies the raw markdown
   const bar = document.createElement('div');
@@ -381,8 +423,8 @@ function addCopyAll(body, rawText) {
   btn.className = 'cb-copy';
   btn.textContent = 'copy all';
   btn.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(String(rawText || body.textContent || '')); btn.textContent = 'copied'; }
-    catch { btn.textContent = 'failed'; }
+    const ok = await copyTextToClipboard(String(rawText || body.textContent || ''));
+    btn.textContent = ok ? 'copied' : 'failed';
     btn.classList.add('ok');
     setTimeout(() => { btn.textContent = 'copy all'; btn.classList.remove && btn.classList.remove('ok'); }, 1400);
   });
@@ -525,6 +567,8 @@ function addSysNote(text, warn, cls) {
   clearEmpty();
   const div = document.createElement('div');
   div.className = 'sysnote' + (warn ? ' warn' : '') + (cls ? ' ' + cls : '');
+  div.setAttribute('role', warn ? 'alert' : 'status');
+  if (!warn) div.setAttribute('aria-live', 'polite');
   div.textContent = text;
   transcript.append(div);
   reveal(div, 6);
@@ -532,29 +576,45 @@ function addSysNote(text, warn, cls) {
 }
 
 let thinkingEl = null;
+let thinkingStatusEl = null;
+let thinkingTimer = null;
+let thinkingStartedAt = 0;
+function setThinkingStatus(text) {
+  if (!thinkingEl || !thinkingStatusEl) return;
+  thinkingStatusEl.textContent = text;
+  thinkingEl.setAttribute('aria-label', text);
+}
 function showThinking(on) {
   if (on && !thinkingEl) {
     thinkingEl = document.createElement('div');
     thinkingEl.className = 'thinking';
-    const label = document.createElement('span');
-    label.className = 'thinking-label';
-    label.textContent = 'LLM';
-    // Two-layer shimmer: a masked gradient sweeps the text (wensity
-    // text-shimmer port); falls back to plain label when motion is reduced.
-    const shimmer = document.createElement('span');
-    shimmer.className = 'shimmer-text';
-    shimmer.setAttribute('data-text', 'LLM');
-    shimmer.textContent = 'LLM';
+    thinkingEl.setAttribute('role', 'status');
+    thinkingEl.setAttribute('aria-live', 'polite');
+    thinkingStatusEl = document.createElement('span');
+    thinkingStatusEl.className = 'thinking-label';
+    thinkingStatusEl.textContent = 'Thinking…';
     const bar = document.createElement('span');
     bar.className = 'bar';
     bar.append(document.createElement('i'), document.createElement('i'), document.createElement('i'), document.createElement('i'));
-    thinkingEl.append(label, shimmer, bar);
+    const elapsed = document.createElement('span');
+    elapsed.className = 'thinking-elapsed';
+    elapsed.setAttribute('aria-hidden', 'true');
+    thinkingEl.append(thinkingStatusEl, elapsed, bar);
     transcript.append(thinkingEl);
     reveal(thinkingEl, 8);
+    thinkingStartedAt = Date.now();
+    thinkingTimer = setInterval(() => {
+      if (!thinkingEl) return;
+      const seconds = Math.floor((Date.now() - thinkingStartedAt) / 1000);
+      elapsed.textContent = seconds >= 8 ? `Still working · ${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` : '';
+    }, 1000);
     scrollDown();
-  } else if (!on && thinkingEl) {
-    thinkingEl.remove();
+  } else if (!on) {
+    if (thinkingTimer !== null) clearInterval(thinkingTimer);
+    thinkingTimer = null;
+    if (thinkingEl) thinkingEl.remove();
     thinkingEl = null;
+    thinkingStatusEl = null;
   }
 }
 
@@ -566,20 +626,34 @@ const subagentUI = window.MuseSubagents?.create({ transcript, clearEmpty,
 });
 
 function handleAgentEvent(ev) {
+  boxUI?.event(ev);
+  sandboxUI?.event?.(ev);
+  if (ev.name?.startsWith('mcp__box__')) for (const image of ev.result?.images || []) boxUI?.handleImage(image);
   if (loadingSession && ev.type.startsWith('restored_')) { restoredEvents.push(ev); return; }
+  designUI?.agentEvent(ev);
   if (ev.subagent || ev.type === 'subagent_start' || ev.type === 'subagent_done') {
     subagentUI?.handle(ev);
     return;
   }
   switch (ev.type) {
+    case 'delta':
+      setThinkingStatus('Writing response…');
+      appendStreamingText(ev.text);
+      break;
+    case 'stream_reset':
+      clearStreamingMessage();
+      break;
     case 'message':
+      clearStreamingMessage();
       if (ev.text && ev.text.trim()) addMsg('assistant', ev.text);
       break;
     case 'tool_call':
+      setThinkingStatus(`Using ${String(ev.name || 'a tool').replace(/^mcp__[^_]+__/, '').replaceAll('_', ' ')}…`);
       if (ev.name !== 'spawn_agent') addToolRow({ id: ev.id, name: ev.name, args: ev.args });
       wbCounters.tools++; wbUpdateDetails(); wbEvent('tool: ' + ev.name, 'tool');
       break;
     case 'tool_result':
+      setThinkingStatus('Thinking…');
       if (ev.name === 'spawn_agent' && !ev.denied) {
         if (ev.result && !ev.result.ok && !ev.result.subagentId) addSysNote(ev.result.error || 'Subagent could not start.', true);
         break;
@@ -589,23 +663,31 @@ function handleAgentEvent(ev) {
       break;
     case 'info':
       if (/compaction/.test(ev.text)) addSysNote(ev.text, false, 'mem');
+      else if (/^sentinel: private data read/.test(ev.text || '')) addSysNote('A private file was read. Network access is limited to approved hosts for this conversation.', false, 'sentinel');
       else addSysNote(ev.text, ev.text.startsWith('sentinel'));
       break;
     case 'error':
       // Errors do NOT clear busy: the owning send promise decides the terminal
       // state. Memory hiccups arrive as info (main remaps them); this is for
       // real errors mid-run, which the turn will also report as error→done.
+      const error = String(ev.text || '');
+      clearStreamingMessage();
       wbEvent('error: ' + ev.text, 'err');
-      addSysNote(`error: ${ev.text}`, true);
+      if (!turnErrorsDisplayed.has(error)) {
+        turnErrorsDisplayed.add(error);
+        addSysNote(userFacingAgentError(error), true);
+      }
       break;
     case 'question':
       break;   // handled by onQuestion listener
     case 'question_resolved':
+      if(ev.cancelled && currentQuestion?.id===ev.id){currentQuestion=null;$('question').classList.remove('active');composer.style.display='flex';}
       break;   // handled by onQuestion listener
     case 'cancelled':
       addSysNote('cancelling current task…');
       break;
     case 'done':
+      clearStreamingMessage();
       showThinking(false);
       setBusy(false);
       refreshSessions();
@@ -730,15 +812,21 @@ function setBusy(b) {
   busy = b;
   sendBtn.disabled = b || loadingSession || switchingModel;
   modelUI?.busyChanged();
+  boxUI?.busyChanged();
+  sandboxUI?.busyChanged();
+  learningUI?.busyChanged();
+  designUI?.busyChanged();
+  designUI?.setBusy(b);
   cancelBtn.style.display = b ? 'inline-block' : 'none';
   input.disabled = b || loadingSession;
   $('btn-new').disabled = b || loadingSession;
   if (!b) { input.focus(); autosize(); }
 }
 
-async function submit() {
-  const text = input.value.trim();
-  if (!text || busy || loadingSession || currentApproval || switchingModel) return;
+async function submit(textOverride) {
+  const text = typeof textOverride === 'string' ? textOverride.trim() : input.value.trim();
+  if (!text || busy || loadingSession || currentApproval || switchingModel) return false;
+  turnErrorsDisplayed = new Set();
   input.value = '';
   autosize();
   addMsg('user', text);
@@ -748,7 +836,13 @@ async function submit() {
   refreshStatus();
   try {
     const res = await window.muse.send(text);
-    if (!res || !res.ok) addSysNote(`agent error: ${res && res.error || 'No response'}`, true);
+    if (!res || !res.ok) {
+      const error = String(res && res.error || 'No response');
+      if (!turnErrorsDisplayed.has(error)) {
+        turnErrorsDisplayed.add(error);
+        addSysNote(userFacingAgentError(error), true);
+      }
+    }
     else if (res.cancelled) addSysNote('task cancelled — partial progress kept');
   } catch (e) { reportError(e); }
   finally {
@@ -756,6 +850,7 @@ async function submit() {
     $('crumb').textContent = activeSessionId ? crumbTitle : t('crumb.new', 'New session');
     refreshStatus(); refreshSessions();
   }
+  return true;
 }
 
 sendBtn.addEventListener('click', submit);
@@ -788,7 +883,7 @@ function renderSessions() {
     const li = document.createElement('div'); li.className = 'sess' + (s.id === activeSessionId ? ' active' : '');
     const t = document.createElement('button'); t.className = 't'; t.textContent = s.title || 'Untitled'; t.title = t.textContent;
     if (s.id === activeSessionId) t.setAttribute('aria-current', 'true');
-    t.addEventListener('click', () => loadSession(s));
+    t.addEventListener('click', () => { closeMobileHistory(); loadSession(s); });
     const m = document.createElement('span'); m.className = 'm'; m.textContent = String(s.turns || 0);
     const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', `Delete ${s.title || 'Untitled'}`);
     x.addEventListener('click', guarded(async () => {
@@ -811,7 +906,7 @@ async function loadSession(s) {
   try {
     const res = await window.muse.loadSession(s.id);
     if (!res || !res.ok) throw new Error(res && res.error || 'Session could not be loaded');
-    projectHomeVisible = false; subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; thinkingEl = null;
+    projectHomeVisible = false; showThinking(false); subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = [];
     const events = restoredEvents; loadingSession = false;
     events.forEach(handleAgentEvent); renderEmpty();
     activeSessionId = s.id; crumbTitle = res.title || 'Session'; $('crumb').textContent = crumbTitle; wbCounters = { msgs: 0, tools: 0 }; wbUpdateDetails(); wbEvent('session loaded: ' + crumbTitle); await refreshProject(); renderSessions();
@@ -831,7 +926,7 @@ async function newSession() {
   } catch (e) { reportError(e); }
   finally { loadingSession = false; setBusy(false); }
 }
-$('btn-new').addEventListener('click', newSession);
+$('btn-new').addEventListener('click', () => { closeMobileHistory(); newSession(); });
 $('session-search').addEventListener('input', renderSessions);
 $('session-filter').addEventListener('change', renderSessions);
 window.muse.onSessionReset(() => { if (!loadingSession && !busy && !currentApproval) { activeSessionId = null; resetTranscript(); } });
@@ -907,6 +1002,15 @@ $('mode-toggle').addEventListener('click', guarded(async () => {
 
 const backdrop = $('backdrop');
 const settingsUI = window.MuseSettings?.create({ visibleModels: () => modelUI?.draftModels() || [] });
+const boxUI = window.MuseBox.create({busy:()=>busy||loadingSession||!!currentApproval});
+const sandboxUI = window.MuseSandbox?.create({api:window.muse,busy:()=>busy||loadingSession||!!currentApproval});
+const learningUI = window.MuseLearning?.create({api:window.muse,busy:()=>busy||loadingSession||!!currentApproval});
+designUI = window.MuseDesign?.create({api:window.muse,busy:()=>busy||loadingSession||!!currentApproval,submitBrief:text=>{if(!text?.trim()||busy||loadingSession||currentApproval||switchingModel)return false;void submit(text);return true;}});
+let lastLearningActivity=0;
+for(const eventName of ['pointerdown','keydown'])window.addEventListener(eventName,()=>{
+  if(Date.now()-lastLearningActivity>750){lastLearningActivity=Date.now();window.muse.learningActivity?.();}
+},{capture:true,passive:true});
+if (window.muse.boxStatus) boxUI.refresh();
 const modelUI = window.MuseModelPicker.create({
   changed: () => settingsUI?.changed(),
   busy: () => busy || loadingSession || !!currentApproval,
@@ -1536,7 +1640,7 @@ async function refreshWorkbenchMemory() {
   } catch { $('wb-mem').textContent = '—'; }
 }
 /* ---------- appearance (session-only) ---------- */
-const THEMES = ['light', 'dark'];
+const THEMES = ['light', 'dark', 'krishna'];
 let currentTheme = document.body.dataset?.theme || 'light';
 function setTheme(name) {
   if (!THEMES.includes(name)) name = 'light';
@@ -1563,6 +1667,17 @@ function exportTranscript() {
   const a = document.createElement('a'); a.href = url; a.download = 'muse-transcript.md'; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 $('btn-workspace').addEventListener('click', () => input.focus());
+function closeMobileHistory() {
+  document.body.classList.remove('mobile-history-open');
+  $('btn-history').setAttribute('aria-expanded', 'false');
+}
+$('btn-history').addEventListener('click', () => {
+  const open = document.body.classList.toggle('mobile-history-open');
+  $('btn-history').setAttribute('aria-expanded', String(open));
+  if (open) $('session-search').focus();
+});
+$('history-backdrop').addEventListener('click', closeMobileHistory);
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('mobile-history-open')) { closeMobileHistory(); $('btn-history').focus(); } });
 $('btn-focus').addEventListener('click', toggleFocus);
 $('btn-export').addEventListener('click', exportTranscript);
 
@@ -1584,6 +1699,7 @@ async function refreshProject() {
     renderSessions();
   } catch { /* project surface optional */ }
 }
+window.muse.onProjectChange?.(() => { void refreshProject(); });
 async function pickProject() {
   if (busy || loadingSession || currentApproval) { addSysNote('Finish the current task before changing the project.', true); return; }
   const res = await window.muse.browseProject();
@@ -1657,7 +1773,7 @@ async function openProject(id, fresh = false) {
   if (!res || !res.ok) throw Error(res && res.error || 'Could not open project');
   projectHomeVisible=false;await refreshProject();await refreshSessions();
   if(fresh){await newSession();return;}
-  activeSessionId=null;transcriptMessages=[];thinkingEl=null;projectHomeVisible=true;
+  activeSessionId=null;transcriptMessages=[];showThinking(false);projectHomeVisible=true;
   $('crumb').textContent=res.name||'Project';renderProjectHome();
 }
 function editProject(id){
@@ -1708,7 +1824,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {

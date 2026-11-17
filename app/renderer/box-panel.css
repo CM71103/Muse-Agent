@@ -1,0 +1,61 @@
+/* Native Muse surfaces for the Box connector; the remote desktop opens externally. */
+.box-settings-card { padding:18px; margin:16px 0 24px; border:1px solid var(--color-border); border-radius:15px; background:var(--color-surface-subtle); }
+.box-card-heading { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.box-emblem { width:36px; height:36px; flex-shrink:0; display:grid; place-items:center; border-radius:11px; border:1px solid var(--color-border); background:var(--color-accent); color:var(--color-primary); font:22px var(--sans); }
+.box-card-title { flex:1; min-width:0; }
+.box-card-title h4 { font-size:13px; font-weight:550; margin:0; }
+.box-card-title small { display:block; font-size:10px; color:var(--color-muted-fg); margin-top:5px; }
+.box-state { flex-shrink:0; border:1px solid var(--color-border); border-radius:20px; padding:4px 8px; font-size:9px; line-height:1.5; color:var(--color-muted-fg); }
+.box-state[data-state=connected] { color:var(--color-success); }
+.box-state[data-state=authorizing],.box-state[data-state=connecting],.box-state[data-state=auth_required] { color:var(--color-primary); background:var(--color-accent); }
+.box-state[data-state=error] { color:var(--color-destructive); }
+#box-settings-detail,#box-panel-detail { color:var(--color-muted-fg); font-size:11px; line-height:1.8; margin:0 0 15px; }
+.box-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.box-actions button { min-height:35px; font-size:11px; padding:8px 12px; border-radius:9px; }
+#box-settings-connect,#box-panel-connect { color:var(--color-primary-fg); background:var(--color-primary); border:1px solid transparent; font-weight:550; }
+.box-card-note { font-size:10px; line-height:1.8; color:var(--color-muted-fg); margin:13px 0 0; }
+.composer-model-control { flex-direction:row; flex-wrap:wrap; align-items:center; gap:6px; }
+#box-toolbar-open { display:flex; align-items:center; gap:6px; min-height:31px; font-size:10px; padding:6px 9px; border-radius:8px; border:1px solid var(--color-border-soft); background:var(--color-surface-subtle); color:var(--color-muted-fg); }
+#box-toolbar-open::before { content:'◇'; font-size:13px; color:var(--color-primary); }
+#box-toolbar-open[data-state=connected]::before { content:'●'; font-size:7px; color:var(--color-success); }
+#box-toolbar-open:hover,#box-toolbar-open[aria-expanded=true] { color:var(--color-primary); background:var(--color-accent); }
+#box-backdrop { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--color-scrim); backdrop-filter:blur(8px); }
+#box-backdrop[hidden] { display:none; }
+#box-panel { width:min(840px,100%); max-height:calc(100vh - 48px); overflow:auto; scrollbar-width:thin; background:var(--color-background); color:var(--color-foreground); border:1px solid var(--color-border); border-radius:20px; box-shadow:0 24px 80px rgb(0 0 0 / .28); padding:24px; }
+.box-panel-heading { display:flex; align-items:center; gap:12px; padding-bottom:19px; border-bottom:1px solid var(--color-border-soft); margin-bottom:18px; }
+.box-panel-heading h2 { margin:0; font-size:21px; font-weight:550; letter-spacing:-.6px; }
+.box-panel-heading p { margin:5px 0 0; font-size:10px; color:var(--color-muted-fg); }
+#box-panel-close { margin-left:auto; padding:6px 10px; font-size:11px; border:1px solid var(--color-border); border-radius:8px; background:transparent; }
+.box-panel-overview { display:flex; align-items:flex-start; justify-content:space-between; gap:15px; }
+.box-panel-overview #box-panel-detail { flex:1; }
+#box-panel-error { margin:12px 0; color:var(--color-destructive); font-size:11px; line-height:1.8; overflow-wrap:anywhere; }
+#box-panel-error:empty { display:none; }
+.box-preview { margin:22px 0 0; border:1px solid var(--color-border); border-radius:14px; overflow:hidden; background:var(--color-surface-subtle); }
+#box-preview-image { display:block; width:100%; max-height:380px; object-fit:contain; }
+#box-preview-image[hidden] { display:none; }
+#box-preview-empty { min-height:180px; margin:0; padding:38px 24px; display:grid; align-content:center; justify-items:center; gap:12px; color:var(--color-muted-fg); font-size:12px; line-height:1.8; text-align:center; }
+#box-preview-empty::before { content:'▱'; color:var(--color-primary); font-size:36px; }
+#box-preview-empty[hidden] { display:none; }
+#box-preview-caption { border-top:1px solid var(--color-border-soft); padding:11px 15px; color:var(--color-muted-fg); font-size:10px; line-height:1.7; }
+.box-activity-heading { margin:22px 0 10px; font-size:12px; font-weight:550; }
+#box-activity-list { list-style:none; padding:0; margin:0; max-height:180px; overflow:auto; scrollbar-width:thin; border:1px solid var(--color-border); border-radius:11px; }
+#box-activity-list:empty { border:0; }
+#box-activity-list:empty::before { content:'Box tool activity will appear here during a task.'; display:block; color:var(--color-muted-fg); font-size:11px; line-height:1.8; }
+.box-activity-entry { font-size:11px; line-height:1.7; padding:10px 13px; border-bottom:1px solid var(--color-border-soft); overflow-wrap:anywhere; }
+.box-activity-entry:last-child { border-bottom:0; }
+.box-activity-entry[data-state=denied],.box-activity-entry[data-state=failed] { color:var(--color-destructive); }
+@media (max-width:600px) {
+  #box-backdrop { padding:12px; }
+  #box-panel { padding:17px; max-height:calc(100vh - 24px); border-radius:16px; }
+  .box-card-heading { flex-wrap:wrap; }
+  .box-card-title { min-width:120px; }
+  .box-panel-heading .box-emblem { display:none; }
+  .box-panel-heading h2 { font-size:19px; }
+  .box-panel-overview { flex-direction:column; gap:8px; }
+  .box-panel-overview #box-panel-detail { margin-bottom:5px; }
+  #box-preview-empty { min-height:145px; padding:25px 16px; font-size:11px; }
+}
+@media (max-width:380px) {
+  #box-toolbar-open { padding:6px 7px; }
+  .composer-model-control #chat-model-label { max-width:90px; }
+}

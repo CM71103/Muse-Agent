@@ -13,12 +13,16 @@ fs.writeFileSync(path.join(temp, 'preload.cjs'), `
 const {contextBridge}=require('electron');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let current={base_url:'https://api.example.com/v1',model:'muse-preview',visible_models:['muse-preview']};
+let boxState={state:'disconnected',tools:0},boxListener=()=>{};
 const api={getConfig:async()=>({llm:{...current},sentinel:{mode:'auto'},memory:{enabled:false}}),
 getProjectScope:async()=>({ok:true,project:null}),listProjects:async()=>[],listSessions:async()=>[],memoryStatus:async()=>({enabled:false}),
 getSettings:async()=>({...current,embed_key_set:true,has_key:true}),
 saveSettings:async patch=>{await pause(650);current={...current,...patch};return {ok:true,model:patch.model}},
 selectModel:async model=>{if(!current.visible_models.includes(model))return {ok:false,error:'Not selected'};current.model=model;return {ok:true,...current}},
-fetchModels:async()=>{await pause(300);return {ok:true,models:['muse-preview','muse-reasoning']}},listMcp:async()=>[]};
+fetchModels:async()=>{await pause(300);return {ok:true,models:['muse-preview','muse-reasoning']}},mcpList:async()=>[],
+boxStatus:async()=>boxState,onBoxStatus:cb=>{boxListener=cb;return()=>{}},
+boxConnect:async()=>{boxState={state:'authorizing',tools:0};boxListener(boxState);await pause(350);boxState={state:'connected',tools:3};boxListener(boxState);return {ok:true,...boxState}},
+boxDisconnect:async()=>{boxState={state:'disconnected',tools:0};boxListener(boxState);return {ok:true}},boxOpenDesktop:async()=>({ok:true}),boxCancel:async()=>({ok:true})};
 for(const name of ['onAgentEvent','onApprovalRequest','onApprovalResolved','onApprovalExpired','onSessionReset','onQuestion'])api[name]=()=>()=>{};
 contextBridge.exposeInMainWorld('muse',api);
 `);
@@ -61,6 +65,15 @@ app.whenReady().then(async()=>{try{
   await js('openSettings()');await pause(100);
   await js("document.getElementById('tab-workspace').click()");await shot('workspace');
   assert.equal(await js("document.getElementById('btn-save').hidden"),true,'Workspace applies immediately');
+  await js("document.getElementById('tab-mcp').click()");await shot('box-settings');
+  await js("document.getElementById('box-settings-connect').click()");await pause(450);
+  await js("closeSettings();document.getElementById('box-toolbar-open').click()");await shot('box-connected');
+  assert.equal(await js("document.getElementById('box-panel-status').textContent"),'Connected');
+  assert.equal(await js("document.getElementById('box-panel-open').disabled"),false);
+  await js("handleAgentEvent({type:'tool_call',id:'box-example',name:'mcp__box__shell',args:{command:'example task'}});setTheme('light')");await shot('box-light');
+  win.setContentSize(375,700);await pause(150);await shot('box-narrow');
+  assert.equal(await js("document.getElementById('box-panel').getBoundingClientRect().right<=innerWidth"),true);
+  await js("document.getElementById('box-panel-close').click();setTheme('dark');openSettings()");win.setContentSize(1280,820);await pause(150);
   await js("document.getElementById('tab-connection').click();document.getElementById('connection-advanced').open=true;document.getElementById('f-embed-key').scrollIntoView({block:'center'})");await shot('advanced');
   assert.equal(await js("document.getElementById('embed-key-state').textContent"),'Key saved');
   assert.ok(await js("document.getElementById('f-embed-key').placeholder.includes('saved key')"));

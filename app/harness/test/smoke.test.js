@@ -31,6 +31,25 @@ function startMockLlm() {
     req.on('end', () => {
       const resp = script.shift();
       if (!resp) { res.writeHead(500); res.end('script exhausted'); return; }
+      let request;
+      try { request = JSON.parse(body); } catch { request = {}; }
+      if (request.stream) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        const frame = data => res.write(`data: ${JSON.stringify(data)}\n\n`);
+        const content = String(resp.content || '');
+        for (let i = 0; i < content.length; i += 5) frame({ choices: [{ delta: { content: content.slice(i, i + 5) } }] });
+        for (const [index, call] of (resp.tool_calls || []).entries()) {
+          frame({ choices: [{ delta: { tool_calls: [{ index, id: call.id, type: call.type, function: { name: call.function.name } }] } }] });
+          const args = String(call.function.arguments || '');
+          const midpoint = Math.ceil(args.length / 2);
+          frame({ choices: [{ delta: { tool_calls: [{ index, function: { arguments: args.slice(0, midpoint) } }] } }] });
+          frame({ choices: [{ delta: { tool_calls: [{ index, function: { arguments: args.slice(midpoint) } }] } }] });
+        }
+        frame({ choices: [{ delta: {}, finish_reason: resp.tool_calls ? 'tool_calls' : 'stop' }] });
+        frame({ choices: [], usage: { total_tokens: 1 } });
+        res.end('data: [DONE]\n\n');
+        return;
+      }
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({
         choices: [{ message: resp, finish_reason: resp.tool_calls ? 'tool_calls' : 'stop' }],
@@ -224,4 +243,73 @@ test('llm client: missing key error points at env var', async () => {
   c.cfg.api_key = '';
   c.base = 'https://api.example.com/v1'; // non-local host: key required
   await assert.rejects(() => c.chat([mkMsg('user', 'hi')], []), /No API key.*MUSE_LLM_API_KEY/);
+});
+
+test('llm client escalates the response budget until a reasoning model returns text', async () => {
+  const { LlmClient } = require('../llm');
+  const requests = [];
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      requests.push(JSON.parse(body));
+      res.writeHead(200, { 'content-type': 'application/json' });
+      const content = requests.length < 4 ? '' : 'Answer after more reasoning budget.';
+      res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content }, finish_reason: content ? 'stop' : 'length' }] }));
+    });
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const client = new LlmClient(cfg({ llm: { base_url: `http://127.0.0.1:${server.address().port}/v1`, max_tokens: 128, retry_attempts: 4 } }));
+    const result = await client.chat([mkMsg('user', 'hello')], []);
+    assert.equal(result.message.content, 'Answer after more reasoning budget.');
+    assert.deepEqual(requests.map(request => request.max_tokens), [128, 256, 512, 1024]);
+  } finally {
+    server.close();
+    server.closeAllConnections?.();
+  }
+});
+
+test('llm client streams visible text and reconstructs fragmented tool calls', async () => {
+  const { LlmClient } = require('../llm');
+  const client = new LlmClient(cfg({ llm: { retry_attempts: 1 } }));
+  const toolCall = call('stream-call', 'read_file', { path: 'src/main.dart' });
+  script = [{ role: 'assistant', content: 'Flutter is ready.', tool_calls: [toolCall] }];
+  const deltas = [];
+  const result = await client.chat([mkMsg('user', 'Run the Flutter app')], [toolCall.function], { onDelta: text => deltas.push(text) });
+  assert.equal(deltas.join(''), 'Flutter is ready.');
+  assert.equal(result.message.content, 'Flutter is ready.');
+  assert.deepEqual(result.message.tool_calls, [toolCall]);
+  assert.equal(result.usage.total_tokens, 1);
+});
+
+test('llm client falls back cleanly when a compatible provider rejects streaming', async () => {
+  const { LlmClient } = require('../llm');
+  const requests = [];
+  const fallbackServer = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      requests.push(JSON.parse(body));
+      if (requests.length === 1) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'streaming is not supported' } }));
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'Fallback answer.' }, finish_reason: 'stop' }] }));
+    });
+  });
+  await new Promise(resolve => fallbackServer.listen(0, '127.0.0.1', resolve));
+  try {
+    const client = new LlmClient(cfg({ llm: { base_url: `http://127.0.0.1:${fallbackServer.address().port}/v1`, retry_attempts: 1 } }));
+    const resets = [];
+    const result = await client.chat([mkMsg('user', 'hi')], [], { onDelta: () => assert.fail('non-stream fallback should not emit deltas'), onStreamReset: () => resets.push(true) });
+    assert.equal(result.message.content, 'Fallback answer.');
+    assert.deepEqual(requests.map(request => !!request.stream), [true, false]);
+    assert.equal(resets.length, 1);
+  } finally {
+    fallbackServer.close();
+    fallbackServer.closeAllConnections?.();
+  }
 });

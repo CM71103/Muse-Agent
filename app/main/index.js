@@ -28,11 +28,17 @@ process.on('unhandledRejection', (e) => {
 // app/main/index.js - Electron main. Thin shell, nanoMuse-style:
 // window + native menus minimal, agent runs in-process (renderer drives it over preload).
 
-const { app, BrowserWindow, Menu, dialog, shell, safeStorage, Tray, nativeImage, Notification } = require('electron');
+const { app, BrowserWindow, WebContentsView, Menu, dialog, shell, safeStorage, Tray, nativeImage, Notification, powerMonitor, protocol, net, session } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('node:url');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'muse-preview', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: 'muse-site', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+]);
 
 const { loadConfig, configDir, userConfigFile } = require('../harness/config');
 const { Agent } = require('../harness/agent');
@@ -46,7 +52,22 @@ let pendingApprovals = new Map(); // id -> {resolve, request}
 let pendingQuestions = new Map(); // id -> {resolve, q}
 let currentProjectDir = null;
 let currentProjectId = null;
+let designSiteView = null;
+let designSiteRoot = null;
+let designSiteUrl = null;
+let designSiteEntry = null;
+let designWorkspaceOpen = false;
 const projectStore = require('../harness/projects');
+const webPreviewModule = require('./web-preview-service.js');
+const webPreviewService = webPreviewModule.createWebPreviewService();
+
+function stopPreviewForProjectChange(nextDir) {
+  const preview = webPreviewService.status();
+  if (preview.running && path.resolve(preview.projectDir || '') !== path.resolve(nextDir || '')) {
+    return webPreviewService.stop().catch(error => console.error('web preview stop failed:', error.message));
+  }
+  return Promise.resolve();
+}
 
 function ensureConfigFile() {
   const file = userConfigFile();
@@ -119,7 +140,76 @@ function createWindow() {
     return { action: 'deny' };
   });
   mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, cb) => cb(false));
+  mainWindow.on('close', (event) => {
+    if (!quitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
   mainWindow.on('closed', () => { mainWindow = null; });
+}
+
+function hideDesignSiteView() {
+  if (designSiteView && !designSiteView.webContents.isDestroyed()) designSiteView.setVisible(false);
+}
+
+async function handleLocalSiteRequest(request) {
+  try {
+    const url = new URL(request.url);
+    if (url.hostname !== 'local' || !designSiteRoot) return new Response('Local site unavailable', { status: 404 });
+    const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+    if (!relative || relative.includes('\\') || relative.includes(':') || relative.includes(String.fromCharCode(0)) || relative.split('/').some(part => !part || part === '.' || part === '..')) return new Response('Invalid site path', { status: 400 });
+    const root = fs.realpathSync(designSiteRoot);
+    const target = fs.realpathSync(path.resolve(root, relative));
+    if (!target.startsWith(root + path.sep) || !fs.statSync(target).isFile()) return new Response('Site file not found', { status: 404 });
+    return net.fetch(pathToFileURL(target).href, { cache: 'no-store' });
+  } catch (error) {
+    appendBootLog(`local site preview failed: ${String(error && error.stack || error)}`);
+    return new Response('Local site file could not be loaded.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+}
+
+async function showDesignSiteView(url, localRoot) {
+  if (!mainWindow) throw Error('Muse window is unavailable.');
+  let target = String(url || '').trim();
+  if (localRoot) {
+    const selected = fs.realpathSync(localRoot);
+    const selectedStat = fs.statSync(selected);
+    const root = selectedStat.isDirectory() ? selected : path.dirname(selected);
+    const entry = selectedStat.isDirectory() ? (fs.existsSync(path.join(root, 'index.html')) ? 'index.html' : '') : path.basename(selected);
+    if (!selectedStat.isDirectory() && !/\.html?$/i.test(entry)) throw Error('Choose an HTML file or a folder containing index.html.');
+    if (!entry) throw Error('The selected folder needs an index.html file.');
+    designSiteRoot = root;
+    designSiteEntry = entry;
+    designSiteUrl = null;
+    target = `muse-site://local/${entry}`;
+  } else {
+    let parsed;
+    try { parsed = new URL(target); } catch { throw Error('Enter a valid website address, including https://.'); }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw Error('Only http:// and https:// website addresses are supported.');
+    designSiteRoot = null;
+    designSiteEntry = null;
+    designSiteUrl = parsed.href;
+    target = parsed.href;
+  }
+  if (!designSiteView || designSiteView.webContents.isDestroyed()) {
+    designSiteView = new WebContentsView({ webPreferences: { partition: 'muse-design-site', contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true } });
+    designSiteView.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
+      if (/^https?:\/\//i.test(popupUrl)) shell.openExternal(popupUrl);
+      return { action: 'deny' };
+    });
+    designSiteView.webContents.on('will-navigate', (event, navigationUrl) => {
+      const scheme = (() => { try { return new URL(navigationUrl).protocol; } catch { return ''; } })();
+      if (scheme !== 'http:' && scheme !== 'https:' && scheme !== 'muse-site:') event.preventDefault();
+    });
+    designSiteView.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+    designSiteView.webContents.session.webRequest.onBeforeRequest({ urls: ['file://*/*'] }, (_details, callback) => callback({ cancel: true }));
+    mainWindow.contentView.addChildView(designSiteView);
+  }
+  designSiteUrl = target;
+  await designSiteView.webContents.loadURL(target);
+  designSiteView.setVisible(false);
+  return { ok: true, url: target, local: !!localRoot };
 }
 
 // IPC caller check: only our own top-level renderer frame may invoke handlers.
@@ -184,6 +274,7 @@ function secureConfig() {
 // ---- tray + desktop notifications (Antigravity pattern) ----
 let tray = null;
 let trayBusy = false;         // last known busy state pushed to tray
+let quitting = false;         // true only when tray Quit is chosen
 
 function windowUnfocused() {
   return !mainWindow || mainWindow.isDestroyed() || !mainWindow.isVisible() || mainWindow.isMinimized() || !mainWindow.isFocused();
@@ -234,7 +325,7 @@ function updateTray() {
     { label: 'New session', enabled: !agentBusy, click: () => { if (agentBusy) return; agent && agent.reset(); send('session-reset', {}); } },
     { label: 'Cancel current turn', enabled: agentBusy, click: () => { if (agent && agentBusy) agent.requestCancel(); } },
     { type: 'separator' },
-    { label: 'Quit', click: () => { try { app.quit(); } catch {} } },
+    { label: 'Quit', click: () => { quitting = true; try { mainWindow && mainWindow.close(); app.quit(); } catch {} } },
   ]));
   tray.setToolTip(label);
 }
@@ -287,6 +378,15 @@ async function mkAgent(opts = {}) {
       // Desktop notifications (Antigravity pattern): surface approval requests
       // and turn completion when the window is unfocused/minimized.
       if (ev && ev.type === 'done') notify('Muse finished', 'Turn complete.');
+      // Text-artifact execution profile: a runtime that answers inline instead
+      // of writing files still lands its deliverable in the workspace.
+      if (ev && ev.type === 'message' && typeof ev.text === 'string' && ev.text.includes('<artifact')
+        && design.isDesignProject(currentProjectDir) && !ev.subagent) {
+        try {
+          const captured = design.captureArtifacts(currentProjectDir, ev.text);
+          if (captured.written.length) send('design-artifact', { written: captured.written, artifact: captured.artifact });
+        } catch (error) { console.error('artifact capture failed:', error && error.message); }
+      }
       send('agent-event', ev);
     },
   });
@@ -426,9 +526,28 @@ async function startBridgeIfConfigured() {
 }
 
 app.whenReady().then(async () => {
+  protocol.handle('muse-site', handleLocalSiteRequest);
+  session.fromPartition('muse-design-site').protocol.handle('muse-site', handleLocalSiteRequest);
+  protocol.handle('muse-preview', async (request) => {
+    try {
+      const url = new URL(request.url);
+      if (url.hostname !== 'artifact' || !currentProjectDir) return new Response('Preview unavailable', { status: 404 });
+      const relative = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+      if (!relative || relative.includes('\\') || relative.includes(':') || relative.includes(String.fromCharCode(0)) || relative.split('/').some(part => !part || part === '.' || part === '..')) return new Response('Invalid preview path', { status: 400 });
+      const root = fs.realpathSync(currentProjectDir);
+      const target = fs.realpathSync(path.resolve(root, relative));
+      if (!target.startsWith(root + path.sep) || !fs.statSync(target).isFile()) return new Response('Preview file not found', { status: 404 });
+      return net.fetch(pathToFileURL(target).href, { cache: 'no-store' });
+    } catch (error) {
+      appendBootLog(`design preview failed: ${String(error && error.stack || error)}`);
+      return new Response('Preview file could not be loaded.', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    }
+  });
   ensureConfigFile();
   Menu.setApplicationMenu(menu);
   createWindow();
+  learningService.start();
+  boxService.restore().catch(()=>{});
   buildTray();
   startBridgeIfConfigured();
   startUpdateChecks();
@@ -460,12 +579,17 @@ let shutdownDrain = null;
 let shutdownReady = false;
 app.on('before-quit', event => {
   if (shutdownReady) return;
+  boxService.close();
+  windowsService.release();
   if (bridge) { try { bridge.close(); } catch {} }
   if (shutdownDrain) { event.preventDefault(); return; }
   // Start the buffered session extraction before close takes its drain
   // snapshot; endSessionExtract registers it synchronously before awaiting.
   if (agent && agent.memory) agent.endSessionExtract().catch(error => console.error('memory shutdown extraction failed:', error.message));
-  const result = agent && agent.memory ? agent.memory.close() : null;
+  const memoryDrain = agent && agent.memory ? agent.memory.close() : null;
+  agent?.requestCancel();
+  const result = Promise.allSettled([memoryDrain,learningService.close(),webPreviewService.close(),sandboxService.status().then(status=>
+    ['running','paused'].includes(status.state)?sandboxService.stop():null)]);
   if (result && typeof result.then === 'function') {
     event.preventDefault();
     setBusyState(true);
@@ -474,15 +598,57 @@ app.on('before-quit', event => {
   }
 });
 
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => {
+  // Keep running in the tray so background learning continues.
+});
 
 // ---- ipc surface (registered in preload) ----
 const { ipcMain } = require('electron');
+let sandboxService = null;
+const windowsService = require('./windows-service.ts').createWindowsService({
+  ipcMain, requireTrusted,
+  busy:()=>agentBusy||pendingApprovals.size>0||pendingQuestions.size>0,
+  useHost:()=>sandboxService?.useHost?.(),
+});
+function refreshBoxTools() {
+  if (!agent || agentBusy) return;
+  agent.tools = require('../harness/tools').buildTools(agent.cfg,{mcp:agent.cfg.mcp}).tools;
+  agent.toolMap = new Map(agent.tools.map(tool => [tool.name,tool]));
+  agent.hasViking = agent.tools.some(tool=>tool.name.startsWith('mcp__viking__'));
+}
+sandboxService = require('./sandbox-service.ts').createSandboxService({
+  ipcMain, requireTrusted, directory:path.join(configDir(),'sandbox'),
+  busy:()=>agentBusy||pendingApprovals.size>0||pendingQuestions.size>0,
+  refreshTools:refreshBoxTools, cancelAgent:()=>{
+    agent?.requestCancel();
+    for(const [id,pending] of pendingApprovals){pendingApprovals.delete(id);pending.resolve(false);send('approval-resolved',{id,decision:'deny',reason:'sandbox_stopped'});}
+    for(const [id,pending] of pendingQuestions){pendingQuestions.delete(id);pending.resolve({cancelled:true});send('agent-event',{type:'question_resolved',id,cancelled:true});}
+  },
+  chooseISO:async()=>{const result=await dialog.showOpenDialog(mainWindow,{title:'Choose Ubuntu installation ISO',properties:['openFile'],filters:[{name:'Ubuntu ISO image',extensions:['iso']}]});return result.canceled?null:result.filePaths[0];},
+});
+const boxService = require('./box-service.ts').createBoxService({
+  ipcMain, requireTrusted,
+  vault:()=>require('../harness/credentials').vault(safeStorage,configDir()),
+  enabled:()=>!!loadConfig().box?.enabled,
+  setEnabled:enabled=>{const cfg=secureConfig();cfg.box={...(cfg.box||{}),enabled};require('../harness/configWrite').writeSections(cfg,cfg._configFile||ensureConfigFile());},
+  busy:()=>agentBusy||pendingApprovals.size>0||pendingQuestions.size>0,
+  refreshTools:refreshBoxTools,
+  emit:status=>send('box-status',status),
+  openExternal:url=>shell.openExternal(url),
+});
+const learningService = require('../learning/service.ts').createLearningService({
+  ipcMain,requireTrusted,directory:path.join(configDir(),'learning'),sandboxDirectory:path.join(configDir(),'sandbox'),memoryDirectory:path.join(configDir(),'memory'),
+  getConfig:secureConfig,getAgent:()=>agent,getScope:()=>currentProjectId?'project:'+currentProjectId:'personal',getProjectId:()=>currentProjectId,
+  sessions:sessionStore,sandbox:sandboxService,busy:()=>agentBusy||pendingApprovals.size>0||pendingQuestions.size>0,
+  systemIdleSeconds:()=>app.isReady()?powerMonitor.getSystemIdleTime():0,emit:status=>send('learning-status',status),
+});
 
 ipcMain.handle('agent:send', async (e, text) => {
   requireTrusted(e);
+  learningService.touch();
   if (agentBusy) return {ok:false,error:'Agent busy; wait for current turn.'};
   if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
+  await learningService.flush().catch(()=>{});
   const raw = String(text || '').slice(0, 100000);
   try {
     // /good /bad — grade the most recent graded-eligible turn (R-49 obligation 6)
@@ -512,6 +678,7 @@ ipcMain.handle('agent:send', async (e, text) => {
       send('agent-event', { type: 'info', text: note });
       return { ok: true, text: note, turns: 0 };
     }
+    refreshBoxTools();
     setBusyState(true);
     const project = currentProjectId ? projectStore.get(currentProjectId) : null;
     const projectInstructions = project && project.instructions ? `User project instructions (do not override tool approval or safety rules):\n${project.instructions}` : '';
@@ -579,10 +746,12 @@ ipcMain.handle('question:respond', async (e, { id, answer, cancelled }) => {
 function activateProject(id) {
   const p = id ? projectStore.get(id) : null;
   if (id && !p) throw Error('Project not found');
+  stopPreviewForProjectChange(p ? p.folder : null);
   if (agent) agent.persist();
   currentProjectId = p ? p.id : null;
   currentProjectDir = p ? p.folder : null;
   if (agent) { agent.reset(); agent.projectId = currentProjectId; agent.setProjectScope(currentProjectDir); }
+  send('project-changed');
   return { ok: true, project: currentProjectDir, projectId: currentProjectId, name: p ? p.name : null };
 }
 ipcMain.handle('projects:list', async e => { requireTrusted(e); return projectStore.list(); });
@@ -614,9 +783,11 @@ ipcMain.handle('project:browse', async (e) => {
   if (agentBusy) return { ok: false, error: 'Agent busy' };
   if (res.canceled || !res.filePaths.length) return { ok: false, error: 'cancelled' };
   const p = path.resolve(res.filePaths[0]);
+  stopPreviewForProjectChange(p);
   currentProjectDir = p;
   if (currentProjectId) projectStore.setFolder(currentProjectId,p);
   if (agent) agent.setProjectScope(p);
+  send('project-changed');
   return { ok: true, project: p };
 });
 
@@ -624,18 +795,22 @@ ipcMain.handle('project:set', async (e, dir) => {
   requireTrusted(e);
   if (agentBusy) return { ok: false, error: 'Agent busy' };
   if (dir == null || dir === '') {
+    stopPreviewForProjectChange(null);
     currentProjectDir = null;
     if (currentProjectId) projectStore.setFolder(currentProjectId,null);
     if (agent) agent.setProjectScope(null);
+    send('project-changed');
     return { ok: true, project: null };
   }
   const p = path.resolve(String(dir));
   let st;
   try { st = await fs.promises.stat(p); } catch { return { ok: false, error: 'folder not found' }; }
   if (!st.isDirectory()) return { ok: false, error: 'not a folder' };
+  stopPreviewForProjectChange(p);
   currentProjectDir = p;
   if (currentProjectId) projectStore.setFolder(currentProjectId,p);
   if (agent) agent.setProjectScope(p);
+  send('project-changed');
   return { ok: true, project: p };
 });
 
@@ -1071,4 +1246,253 @@ ipcMain.handle('memory:extract-now', async (e) => {
   if (agentBusy || !agent || !agent.memory) return { ok: false, error: 'memory disabled or agent busy' };
   try { return { ok: true, ...(await agent.endSessionExtract()) }; }
   catch (e) { return { ok: false, error: String(e && e.message || e) }; }
+});
+
+const design = require('../harness/design.ts');
+async function getDesignStatus(projectDir) {
+  let running = webPreviewService.status();
+  if (running.running && (!projectDir || path.resolve(running.projectDir || '') !== path.resolve(projectDir))) {
+    await webPreviewService.stop();
+    running = webPreviewService.status();
+  }
+  if (running.projectDir && (!projectDir || path.resolve(running.projectDir) !== path.resolve(projectDir))) {
+    running = { running: false, status: 'stopped', projectDir: null, url: null, script: null, packageManager: null, command: null, logs: '', error: null, startedAt: null };
+  }
+  const detectedWebsite = webPreviewService.inspect(projectDir);
+  const website = webPreviewModule.mergePreviewStatus(detectedWebsite, running);
+  const status = design.designStatus(projectDir);
+  const preview = website.running && website.url
+    ? { url: website.url, version: String(website.startedAt || Date.now()), title: path.basename(projectDir), entry: '' }
+    : designPreviewInfo(projectDir, status.artifact);
+  return { ok: true, ...status, preview, webPreview: website, projectBaseDir: projectDir || path.join(app.getPath('documents'), 'Muse Designs') };
+}
+function designPreviewInfo(projectDir, artifact) {
+  if (!projectDir || !artifact || typeof artifact.entry !== 'string' || /[\\]|\.\.|^\/|:|\0/.test(artifact.entry)) return null;
+  try {
+    const root = path.resolve(projectDir);
+    const target = path.resolve(root, artifact.entry);
+    if (!target.startsWith(root + path.sep)) return null;
+    const stat = fs.statSync(target);
+    if (!stat.isFile()) return null;
+    const previewPath = artifact.entry.split('/').map(encodeURIComponent).join('/');
+    return { url: `muse-preview://artifact/${previewPath}`, fileUrl: pathToFileURL(target).href, version: `${root}-${design.projectRevision(root)}`, title: artifact.title || artifact.entry, entry: artifact.entry };
+  } catch { return null; }
+}
+ipcMain.handle('design:status', async (e) => {
+  requireTrusted(e);
+  try { return await getDesignStatus(currentProjectDir); }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:files:list', (e) => {
+  requireTrusted(e);
+  try { return { ok: true, ...design.listProjectFiles(currentProjectDir) }; }
+  catch (err) { return { ok: false, error: String(err && err.message || err), files: [] }; }
+});
+ipcMain.handle('design:files:read', (e, relativePath) => {
+  requireTrusted(e);
+  try { return { ok: true, ...design.readProjectFile(currentProjectDir, relativePath) }; }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:registry:list', (e, kind) => {
+  requireTrusted(e);
+  try { return { ok: true, kind, entries: design.listRegistry(currentProjectDir, String(kind || '')) }; }
+  catch (err) { return { ok: false, error: String(err && err.message || err), entries: [] }; }
+});
+ipcMain.handle('design:registry:read', (e, request) => {
+  requireTrusted(e);
+  const args = request && typeof request === 'object' ? request : {};
+  try { return { ok: true, ...design.readRegistryFile(currentProjectDir, String(args.kind || ''), String(args.id || ''), args.file ? String(args.file) : '') }; }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:template:apply', (e, { id, force }) => {
+  requireTrusted(e);
+  if (agentBusy) return { ok: false, error: 'Agent busy' };
+  if (!currentProjectDir) return { ok: false, error: 'Choose a design project first.' };
+  try {
+    const result = design.applyTemplate(currentProjectDir, String(id || ''), { force: !!force });
+    send('project-changed');
+    return { ok: true, ...result };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:registry:user-dir', (e) => {
+  requireTrusted(e);
+  try { return { ok: true, dir: design.ensureUserDesignRoot() }; }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:workspace-mode', async (e, open) => {
+  requireTrusted(e);
+  if (!mainWindow) return { ok: false, error: 'Muse window is unavailable.' };
+  try {
+    designWorkspaceOpen = !!open;
+    if (designSiteView) designSiteView.setVisible(designWorkspaceOpen);
+    return { ok: true, maximized: mainWindow.isMaximized() };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:save', async (e, patch) => {
+  requireTrusted(e);
+  if (!currentProjectDir || !patch || typeof patch !== 'object') return { ok: false, error: 'No design project selected.' };
+  try {
+    design.saveDesignProject(currentProjectDir, patch);
+    // Keep a live session honest about the design knowledge it just changed.
+    if (agent) agent.replaceDesignContext(design.designContext(currentProjectDir)?.text || '');
+    return { ok: true };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:choose-project', async (e) => {
+  requireTrusted(e);
+  if (agentBusy) return { ok: false, error: 'Agent busy' };
+  const choice = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose an existing design folder',
+    defaultPath: currentProjectDir || path.join(app.getPath('documents'), 'Muse Designs'),
+    properties: ['openDirectory'],
+  });
+  if (agentBusy) return { ok: false, error: 'Agent busy' };
+  if (choice.canceled || !choice.filePaths[0]) return { ok: true, canceled: true };
+  try {
+    const root = path.resolve(choice.filePaths[0]);
+    await stopPreviewForProjectChange(root);
+    design.ensureDesignProject(root);
+    currentProjectDir = root;
+    if (currentProjectId) projectStore.setFolder(currentProjectId, root);
+    if (agent) { agent.setProjectScope(root); agent.replaceDesignContext(design.designContext(root)?.text || ''); }
+    send('project-changed');
+    return await getDesignStatus(root);
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:create-project', async (e, { name, dir }) => {
+  requireTrusted(e);
+  if (agentBusy) return { ok: false, error: 'Agent busy' };
+  try {
+    const projectName = String(name || '').trim();
+    const folderName = projectName.replace(/[^\w-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+    if (!projectName || !folderName) throw Error('Enter a valid project name.');
+    const baseDir = currentProjectDir || path.join(app.getPath('documents'), 'Muse Designs');
+    const root = dir && path.isAbsolute(dir) ? path.resolve(dir) : path.join(baseDir, folderName);
+    if ([path.join(root, '.od', 'project.json'), path.join(root, 'DESIGN.md'), path.join(root, 'SKILL.md')].some(file => fs.existsSync(file))) throw Error('Design files already exist at that location. Choose a different name.');
+    await stopPreviewForProjectChange(root);
+    design.createDesignProject(root, name);
+    currentProjectDir = root;
+    if (currentProjectId) projectStore.setFolder(currentProjectId, root);
+    if (agent) { agent.setProjectScope(root); agent.replaceDesignContext(design.designContext(root)?.text || ''); }
+    send('project-changed');
+    return { ok: true, root };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:open-preview', async (e) => {
+  requireTrusted(e);
+  if (!currentProjectDir) return { ok: false, error: 'No project selected.' };
+  try {
+    const website = webPreviewService.status();
+    if (website.running && path.resolve(website.projectDir || '') === path.resolve(currentProjectDir)) {
+      await shell.openExternal(website.url);
+      return { ok: true };
+    }
+    const status = design.designStatus(currentProjectDir);
+    const preview = designPreviewInfo(currentProjectDir, status.artifact);
+    if (!preview) return { ok: false, error: 'No valid artifact entry is ready to preview.' };
+    await shell.openExternal(preview.fileUrl);
+    return { ok: true };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:web-preview:start', async (e, relativeDir) => {
+  requireTrusted(e);
+  if (!currentProjectDir) return { ok: false, error: 'Choose a project folder first.' };
+  if (agentBusy) return { ok: false, error: 'Wait for the current task to finish before starting the website.' };
+  const detected = webPreviewService.inspect(currentProjectDir);
+  const selectedApp = (detected.apps || []).find(app => app.relativeDir === (relativeDir || detected.relativeDir));
+  if (!detected.available || !selectedApp) return { ok: false, error: detected.reason || 'No runnable web script was found.' };
+  const confirmation = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title: 'Run this project website?',
+    message: `Muse will run “${selectedApp.command || `${selectedApp.packageManager} run ${selectedApp.script}`}” from ${selectedApp.relativeDir === '.' ? 'the selected project folder' : selectedApp.relativeDir}.`,
+    detail: `${currentProjectDir}\n\nProject scripts run with your account and can access files and the network. Muse supplies local HOST and PORT settings where the framework supports them. Continue only if you trust this folder.`,
+    buttons: ['Cancel', 'Run preview'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  if (confirmation.response !== 1) return { ok: true, canceled: true };
+  try {
+    const result = await webPreviewService.start(currentProjectDir, selectedApp.relativeDir);
+    if (!result.ok) return { ...result, webPreview: webPreviewService.status() };
+    return await getDesignStatus(currentProjectDir);
+  } catch (err) { return { ok: false, error: String(err && err.message || err), webPreview: webPreviewService.status() }; }
+});
+ipcMain.handle('design:web-preview:stop', async (e) => {
+  requireTrusted(e);
+  try {
+    await webPreviewService.stop();
+    return await getDesignStatus(currentProjectDir);
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:site:open-url', async (e, rawUrl) => {
+  requireTrusted(e);
+  try { return await showDesignSiteView(rawUrl, null); }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:site:choose-folder', async (e) => {
+  requireTrusted(e);
+  const choice = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose a static website folder',
+    defaultPath: currentProjectDir || app.getPath('documents'),
+    properties: ['openDirectory'],
+  });
+  if (choice.canceled || !choice.filePaths[0]) return { ok: true, canceled: true };
+  try { return await showDesignSiteView('', choice.filePaths[0]); }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:site:choose-html', async (e) => {
+  requireTrusted(e);
+  const choice = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose an HTML website file',
+    defaultPath: currentProjectDir || app.getPath('documents'),
+    properties: ['openFile'],
+    filters: [{ name: 'Website files', extensions: ['html', 'htm'] }],
+  });
+  if (choice.canceled || !choice.filePaths[0]) return { ok: true, canceled: true };
+  try { return await showDesignSiteView('', choice.filePaths[0]); }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('design:site:bounds', (e, rect) => {
+  requireTrusted(e);
+  if (!designSiteView || !designWorkspaceOpen || !rect || typeof rect !== 'object') return { ok: true, hidden: true };
+  const { x, y, width, height } = rect;
+  if (![x, y, width, height].every(Number.isFinite) || width < 1 || height < 1) { hideDesignSiteView(); return { ok: true, hidden: true }; }
+  designSiteView.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) });
+  designSiteView.setVisible(true);
+  return { ok: true };
+});
+ipcMain.handle('design:site:close', (e) => {
+  requireTrusted(e);
+  hideDesignSiteView();
+  designSiteUrl = null;
+  designSiteRoot = null;
+  designSiteEntry = null;
+  try {
+    if (designSiteView && mainWindow) mainWindow.contentView.removeChildView(designSiteView);
+    if (designSiteView && !designSiteView.webContents.isDestroyed()) designSiteView.webContents.close();
+  } catch {}
+  designSiteView = null;
+  return { ok: true };
+});
+ipcMain.handle('design:site:package', async (e, request = {}) => {
+  requireTrusted(e);
+  try {
+    const name = String(request?.name || '').trim();
+    let source = null;
+    if (request?.local === true && designSiteRoot) source = { type: 'local', root: designSiteRoot, entry: designSiteEntry || 'index.html' };
+    else if (typeof request?.url === 'string' && request.url.trim()) source = { type: 'remote', url: request.url.trim() };
+    else if (designSiteRoot) source = { type: 'local', root: designSiteRoot, entry: designSiteEntry || 'index.html' };
+    else if (designSiteUrl) source = { type: 'remote', url: designSiteUrl };
+    else if (currentProjectDir) {
+      const artifact = design.designStatus(currentProjectDir).artifact;
+      if (artifact?.entry) source = { type: 'local', root: currentProjectDir, entry: artifact.entry };
+    }
+    if (!source) throw Error('Enter a website URL, choose a local site folder, or select a project with an HTML artifact first.');
+    let outputRoot = path.join(path.dirname(process.execPath), 'WebApps');
+    try { await fs.promises.mkdir(outputRoot, { recursive: true }); await fs.promises.access(outputRoot, fs.constants.W_OK); }
+    catch { outputRoot = path.join(app.getPath('documents'), 'Muse Apps'); }
+    const { createSiteApp } = require('./site-app-packager.js');
+    return await createSiteApp({ name, outputRoot, runtimeExe: process.execPath, source });
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
 });

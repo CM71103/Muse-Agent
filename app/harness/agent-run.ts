@@ -1,9 +1,14 @@
 async function run(this: any, userText: string | null, opts: any = {}) {
   const { Agent, systemPrompt } = require('./agent');
+  const { designContext } = require('./design.ts');
   this._cancelRequested = false;
   this.lastMemoryTurnId = null;
-  if (!this.history.length) this.history.push({ role: 'system', content:
-    systemPrompt(this.cfg, opts.systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking) });
+  if (!this.history.length) {
+    const design = this.cwdOverride ? designContext(this.cwdOverride) : null;
+    const systemExtra = [opts.systemExtra || '', design?.text || ''].filter(Boolean).join('\n\n');
+    this.history.push({ role: 'system', content:
+      systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking) });
+  }
   if (userText !== null) this.history.push({ role: 'user', content: userText });
   this._title ||= require('./session').titleFromHistory(this.history);
   this._runEventId = require('node:crypto').randomUUID();
@@ -43,7 +48,10 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     restoreMemory();
     const controller = this._beginAbort();
     try {
-      const response = await this.sendWithMemory(memoryContext, controller.signal, tools);
+      const response = await this.sendWithMemory(memoryContext, controller.signal, tools, {
+        onDelta: (text: string) => this.events({ type: 'delta', text }),
+        onStreamReset: () => this.events({ type: 'stream_reset' }),
+      });
       if (!response.usage) missingUsage = true;
       else for (const [key, value] of Object.entries(response.usage)) {
         if (typeof value === 'number' && Number.isFinite(value)) usage[key] = (usage[key] || 0) + value;

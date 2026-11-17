@@ -118,9 +118,11 @@ export function main(args: string[]) {
   assert.equal(digest(require('@electron/asar').getRawHeader(archive).headerString), expected.value,
     'Packaged executable and ASAR integrity disagree');
   const smoke = `require('node:assert/strict').ok(process.versions.electron, 'Must run inside Electron'); const D=require(${JSON.stringify(path.join(unpacked, 'resources/app.asar/node_modules/better-sqlite3'))}); const db=new D(':memory:'); require('node:assert/strict').equal(db.prepare('SELECT 1 AS n').get().n,1); db.close(); const Agent=require(${JSON.stringify(path.join(unpacked, 'resources/app.asar/app/harness/agent.js'))}).Agent; require('node:assert/strict').equal(typeof Agent.prototype.run,'function'); require('node:assert/strict').equal(typeof Agent.prototype.ingestUserTurn,'function'); console.log('PASS: packaged Electron SQLite');`;
-  const smokeOutput = run('Packaged Electron SQLite smoke check', exe, ['-e', smoke],
+  const boxSmoke = ` const Box=require(${JSON.stringify(path.join(unpacked,'resources/app.asar/app/harness/box-client.ts'))}).BoxClient; require('node:assert/strict').equal(typeof Box,'function'); console.log('PASS: packaged Box SDK');`;
+  const smokeOutput = run('Packaged Electron SQLite and Box SDK smoke check', exe, ['-e', smoke + boxSmoke],
     { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, 30000, true);
   assert.ok(smokeOutput.includes('PASS: packaged Electron SQLite'), 'Packaged SQLite probe did not execute');
+  assert.ok(smokeOutput.includes('PASS: packaged Box SDK'), 'Packaged Box SDK did not load');
   const git = (args: string[]) => {
     const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true });
     assert.equal(result.status, 0, 'Cannot record release Git provenance');

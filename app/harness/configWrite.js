@@ -79,6 +79,7 @@ function writeSections(cfg, file) {
   doc.log = { level: cfg.log.level };
   // MCP: whole-section replace from the merged config (mcp.server.<name> nests).
   if (cfg.mcp) doc.mcp = JSON.parse(JSON.stringify(cfg.mcp));
+  if (cfg.box) doc.box = { enabled:!!cfg.box.enabled };
   fs.writeFileSync(file, serializeToml(doc));
 }
 

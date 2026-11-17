@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"><title>Muse Studio</title><style>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self' file: muse-preview: http://127.0.0.1:*;"><title>Muse Studio</title><style>
 /* ============================================================================
    Muse Studio — design system (Terax port: frame/pane model, grayscale-first)
    §8 tokens · §9 interaction protocol · vanilla CSS, no build step.
@@ -294,6 +294,7 @@ input:hover,textarea:hover{background-color:var(--color-secondary)}
 
 /* History sidebar */
 .history{width:var(--sidebar-w,300px);flex-shrink:0;min-height:0;display:flex;flex-direction:column;background:var(--color-surface-sidebar);border-right:1px solid var(--color-border-soft);padding:18px 20px 16px}
+#btn-history{display:none}
 .brand{display:flex;align-items:baseline;gap:8px;margin-bottom:18px}
 .brand strong{font-size:16px;letter-spacing:-0.4px}
 .brand small{color:var(--color-muted-fg);font-size:11px}
@@ -470,10 +471,8 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .sysnote.warn{color:var(--color-destructive)}
 .sysnote.mem{color:var(--color-primary)}
 .thinking{display:flex;align-items:center;gap:12px;padding:4px 0}
-/* wensity text-shimmer port: masked gradient sweeps over a dim base label */
-.thinking .shimmer-text{position:relative;font-weight:600;letter-spacing:.4px;color:color-mix(in srgb,var(--color-foreground) 32%,transparent)}
-.thinking .shimmer-text::after{content:attr(data-text);position:absolute;inset:0;background:linear-gradient(100deg,transparent 20%,var(--color-primary) 50%,transparent 80%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:shimmer-sweep 2.1s linear infinite}
-@keyframes shimmer-sweep{from{background-position:120% 0}to{background-position:-120% 0}}
+.thinking .thinking-label{font-weight:600;color:var(--color-foreground)}
+.thinking .thinking-elapsed{font-size:11px;color:var(--color-muted-fg)}
 /* Aurora-wave bar: same 4-<i> contract, smoother stagger, glow cap */
 .thinking .bar{display:inline-flex;gap:3.5px;align-items:flex-end;height:16px}
 .thinking .bar i{width:3.5px;border-radius:3px;background:var(--color-primary);box-shadow:0 0 6px color-mix(in srgb,var(--color-primary) 45%,transparent);animation:eq 1.25s cubic-bezier(.45,0,.55,1) infinite;transform-origin:bottom}
@@ -572,6 +571,7 @@ footer{padding:18px 26px 22px}
 .swatch span{width:14px;height:14px;border-radius:50%;border:1px solid var(--color-border);display:inline-block}
 .sw-terax-light span{background:linear-gradient(135deg,#ffffff,#f3f3f3)}
 .sw-terax-dark span{background:linear-gradient(135deg,#1d1d1d,#141414)}
+.sw-krishna span{background:linear-gradient(135deg,#10223f 0 42%,#55d1b4 43% 67%,#efc46d 68%)}
 .swatch[aria-checked="true"]{background:var(--color-accent);border-color:var(--color-primary);color:var(--color-accent-fg);font-weight:600}
 .shortcut{display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--color-border-soft)}
 kbd{background:var(--color-surface-subtle);padding:2px 7px;border:1px solid var(--color-border);border-radius:4px;font-size:11px;font-family:var(--mono)}
@@ -750,7 +750,19 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
 @media(max-width:1100px){#workbench{display:none}body{--sidebar-w:240px}.navbar .right .tag{display:none}}
 @media(max-width:860px){.nav-links{display:none}}
 @media(max-width:760px){body{padding:8px;gap:8px;--sidebar-w:180px}.history{display:flex;padding:13px 10px}.brand small{font-size:10px}.brand-mark{width:28px;height:28px}.navbar{padding:0 8px}.navbar .crumb{font-size:14px;max-width:130px}.navbar .right button{padding:6px}.navbar .tag{display:none}#transcript{padding:23px 18px}.starters{grid-template-columns:1fr}.starter{min-height:75px}.composer-meta{display:none}footer{padding:10px}.history,main{border-radius:var(--radius-lg)}.navbar-panel{border-radius:var(--radius-lg)}}
-@media(max-width:530px){.history{display:none}#empty{padding-top:3vh}.starters{gap:7px}.starter{min-height:66px}}
+@media(max-width:530px){
+  .history{display:none}
+  body.mobile-history-open .history{display:flex;position:fixed;inset:8px auto 8px 8px;width:min(330px,calc(100vw - 32px));z-index:50;padding:16px;box-shadow:var(--shadow-floating);border:1px solid var(--color-border)}
+  #history-backdrop{display:none;position:fixed;inset:0;z-index:49;background:color-mix(in srgb,var(--color-background) 68%,transparent)}
+  body.mobile-history-open #history-backdrop{display:block}
+  #btn-history{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;width:36px;height:36px;padding:0;font-size:18px}
+  .navbar-side.left{flex:0 1 auto;gap:7px}
+  .navbar .crumb{max-width:min(40vw,170px)}
+  .navbar-side.right{min-width:0;flex:1}
+  .navbar .right{gap:2px}
+  .navbar .right button{font-size:11px;padding:6px 7px;white-space:nowrap}
+  #empty{padding-top:3vh}.starters{gap:7px}.starter{min-height:66px}
+}
 
 
 /* Project workspaces: clear hierarchy — section headings, breathing room
@@ -833,7 +845,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   #splash .s-fx{ display:none; }
   #splash .s-logo{ opacity:1; }
 }
-</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"></head><body data-theme="dark">
+</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"></head><body data-theme="dark">
 
 <div id="bg-shader" aria-hidden="true"></div>
 
@@ -867,7 +879,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   </div>
 </div>
 
-<aside class="history" aria-label="Session history">
+<aside class="history" id="history" aria-label="Sessions and projects">
   <div class="brand"><div class="brand-mark" aria-hidden="true">✳</div><div><strong>Muse</strong><small>Personal workspace</small></div></div>
   <div class="sidebar-primary">
   <button id="btn-new" class="btn-primary" data-i18n="sidebar.newSession">＋ New session</button>
@@ -906,11 +918,13 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
     <div class="pips-labels"><i data-i18n="pips.model">Model</i><i data-i18n="pips.safety">Safety</i><i data-i18n="pips.memory">Memory</i></div>
   </div>
 </aside>
+<div id="history-backdrop" aria-hidden="true"></div>
 <div class="pane-handle" id="sidebar-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"></div>
 
 <main>
   <nav class="navbar" aria-label="Primary">
     <div class="navbar-side left">
+      <button id="btn-history" type="button" aria-label="Open sessions and projects" aria-controls="history" aria-expanded="false" title="Sessions and projects">☰</button>
       <span class="crumb" id="crumb" data-i18n="crumb.new">New session</span>
     </div>
     <div class="nav-links" role="toolbar" aria-label="Views">
@@ -947,7 +961,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
     <div id="composer">
       <div class="inputwrap">
         <textarea id="input" aria-label="Task for Muse" rows="2" data-i18n-placeholder="composer.placeholder" placeholder="What would you like to work on?"></textarea>
-        <div class="composer-model-control"><button type="button" id="chat-model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-menu-chat" disabled><span aria-hidden="true">✧</span><span id="chat-model-label">Choose model</span><span aria-hidden="true">⌄</span></button><span id="chat-model-status" role="status"></span></div>
+        <div class="composer-model-control"><button type="button" id="chat-model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-menu-chat" disabled><span aria-hidden="true">✧</span><span id="chat-model-label">Choose model</span><span aria-hidden="true">⌄</span></button><button id="box-toolbar-open" type="button" aria-haspopup="dialog" aria-controls="box-panel" aria-expanded="false">Box</button><span id="chat-model-status" role="status"></span></div>
         <button id="btn-cancel-turn" aria-label="Stop the current task" style="display:none" data-i18n="composer.stop">Stop</button>
         <button id="send" data-i18n="composer.send">Send</button>
       </div>
@@ -1122,6 +1136,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
             <div id="theme-picker" role="radiogroup" aria-label="Appearance">
               <button type="button" role="radio" aria-checked="false" data-theme-pick="light" class="swatch sw-terax-light"><span aria-hidden="true"></span>Light</button>
               <button type="button" role="radio" aria-checked="true" data-theme-pick="dark" class="swatch sw-terax-dark"><span aria-hidden="true"></span>Dark</button>
+              <button type="button" role="radio" aria-checked="false" data-theme-pick="krishna" class="swatch sw-krishna"><span aria-hidden="true"></span>Krishna</button>
             </div>
             <label class="pref"><input type="checkbox" id="pref-shader" checked><span>Ambient shader glow (background + emblem heat)</span></label>
             <div class="pref" style="flex-direction:column;gap:8px">
@@ -1134,6 +1149,11 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
           <label class="pref"><input type="checkbox" id="pref-enter" checked><span data-i18n="settings.enterToSend">Enter to send</span></label>
         </section>
         <section id="panel-mcp" role="tabpanel" aria-labelledby="tab-mcp" hidden>
+          <section class="box-settings-card" aria-label="Box cloud desktop">
+            <div class="box-card-heading"><span class="box-emblem" aria-hidden="true">▱</span><div class="box-card-title"><h4>Box by Simular</h4><small>A cloud desktop for Muse</small></div><span id="box-settings-status" class="box-state" role="status">Disconnected</span></div>
+            <p id="box-settings-detail">Connect your Simular account to give Muse a cloud Linux desktop.</p>
+            <div class="box-actions"><button id="box-settings-connect" type="button">Connect Box</button><button id="box-settings-disconnect" type="button" hidden>Disconnect</button><button id="box-settings-open" type="button" disabled>Open desktop ↗</button></div>
+          </section>
           <h3>MCP servers</h3>
           <p class="sub" style="margin-top:0">Give Muse more tools through MCP servers. Tool permissions follow your selected mode. Changes reconnect servers immediately.</p>
           <div id="mcp-list" style="display:flex;flex-direction:column;gap:8px;margin:10px 0"></div>
@@ -1216,10 +1236,27 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   <div id="model-results-chat" class="model-picker-results"></div>
   <p id="chat-model-error" role="alert"></p><button type="button" id="model-manage" class="model-picker-footer">Manage models in Settings ↗</button>
 </section>
+<div id="box-backdrop" hidden>
+  <section id="box-panel" role="dialog" aria-modal="true" aria-labelledby="box-title">
+    <div class="box-panel-heading"><span class="box-emblem" aria-hidden="true">▱</span><div><span class="settings-eyebrow">MUSE CONNECTED WORKSPACE</span><h2 id="box-title">Box cloud desktop</h2></div><button id="box-panel-close" type="button" aria-label="Close Box panel">×</button></div>
+    <div class="box-panel-overview"><span id="box-panel-status" class="box-state" role="status">Disconnected</span><p id="box-panel-detail">Connect your Simular account to start.</p></div>
+    <div class="box-actions"><button id="box-panel-connect" type="button">Connect Box</button><button id="box-panel-disconnect" type="button" hidden>Disconnect</button><button id="box-panel-cancel" type="button" hidden>Cancel sign-in</button><button id="box-panel-open" type="button" disabled>Open desktop ↗</button><button id="box-panel-refresh" type="button">Refresh status</button></div>
+    <p id="box-panel-error" role="alert"></p>
+    <figure class="box-preview"><img id="box-preview-image" hidden alt="Latest Box desktop screenshot"><p id="box-preview-empty">Your latest desktop screenshot will appear here when a Box tool returns one.</p><figcaption id="box-preview-caption">Open desktop shows the live view in your browser. Screenshot interpretation needs a vision-capable model.</figcaption></figure>
+    <h3 class="box-activity-heading">Desktop activity</h3><ul id="box-activity-list" role="log" aria-label="Box activity"></ul>
+  </section>
+</div>
 <script src="lib/i18n.js"></script>
 <script src="lib/dot-orbit.js"></script>
 <script src="lib/subagent-cards.js"></script>
 <script src="lib/settings-panel.js"></script>
 <script src="lib/activity-cards.js"></script>
 <script src="lib/model-picker.js"></script>
+<script src="lib/box-panel.js"></script>
+<link rel="stylesheet" href="sandbox-panel.css">
+<script src="lib/sandbox-panel.js"></script>
+<link rel="stylesheet" href="learning-panel.css">
+<script src="lib/learning-panel.js"></script>
+<link rel="stylesheet" href="design-panel.css">
+<script src="lib/design-panel.js"></script>
 <script src="renderer.js"></script></body></html>

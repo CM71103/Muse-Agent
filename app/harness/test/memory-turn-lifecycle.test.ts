@@ -130,7 +130,7 @@ test('completed IPC answers persist capture without waiting on a held embedding 
   assert.ok(body);
   const context: any = {
     agent, agentBusy: false, requireTrusted: () => {}, currentProjectId: null,
-    send: () => {}, setBusyState: (busy: boolean) => { context.agentBusy = busy; },
+    send: () => {}, refreshBoxTools: () => {}, learningService:{touch:()=>{},flush:async()=>{}}, setBusyState: (busy: boolean) => { context.agentBusy = busy; },
   };
   const handler = require('node:vm').runInNewContext(`(async(e,text)=>{${body[1]}})`, context);
   const nextTick = Symbol('IPC still waiting');
