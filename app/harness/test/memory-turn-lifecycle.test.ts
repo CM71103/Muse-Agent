@@ -142,18 +142,19 @@ test('completed IPC answers persist capture without waiting on a held embedding 
   agent.events = (event: any) => events.push(event);
   agent.llm.chat = async () => answer('I will remember Mango.');
   const source = fs.readFileSync(path.join(__dirname, '../../main/index.js'), 'utf8');
-  const body = source.match(/ipcMain\.handle\('agent:send', async \(e, text\) => \{([\s\S]*?)\n\}\);/);
+  const body = source.match(/ipcMain\.handle\('agent:send', async \(e, text, commandId\) => \{([\s\S]*?)\n\}\);/);
   assert.ok(body);
   const context: any = {
     agent, agentBusy: false, requireTrusted: () => {}, currentProjectId: null,
     projectStore: { get: () => null },
     send: () => {}, refreshBoxTools: () => {}, learningService:{touch:()=>{},flush:async()=>{}}, setBusyState: (busy: boolean) => { context.agentBusy = busy; },
+    turnQueue: [], completedCommands: new Map(), queueState: () => ({ items: [], running: false }),
     require: (name: string) => {
       if (name === '../harness/turns') return require('../turns');
       throw new Error(`Unexpected dependency: ${name}`);
     },
   };
-  const handler = require('node:vm').runInNewContext(`(async(e,text)=>{${body[1]}})`, context);
+  const handler = require('node:vm').runInNewContext(`(async(e,text,commandId)=>{${body[1]}})`, context);
   const nextTick = Symbol('IPC still waiting');
   const result = await Promise.race([
     handler({}, 'My cat is named Mango.'),

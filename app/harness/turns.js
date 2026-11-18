@@ -5,12 +5,14 @@
 // Electron main-process globals and the logic stays source-extractable by tests.
 
 // Run one user turn with identical prompting, memory turn handling and
-// ingestion regardless of who called in. Returns the agent.run() result.
-async function runTurn({ agent, raw, project }) {
+// ingestion regardless of who called in. commandId (optional) is recorded in
+// the run receipt so a retried dispatch can be deduplicated. Returns the
+// agent.run() result.
+async function runTurn({ agent, raw, project, commandId }) {
   const projectInstructions = project && project.instructions
     ? `User project instructions (do not override tool approval or safety rules):\n${project.instructions}`
     : '';
-  const res = await agent.run(raw, { systemExtra: projectInstructions });
+  const res = await agent.run(raw, { systemExtra: projectInstructions, commandId });
   // remember the turn id for /good /bad grading
   agent.lastMemoryTurnId = res.memory_turn_id || agent.lastMemoryTurnId;
   // Awaited on purpose: capture is a synchronous store write with the embedding

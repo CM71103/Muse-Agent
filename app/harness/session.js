@@ -48,7 +48,7 @@ function newId() { return crypto.randomUUID(); }
 // Parse one .jsonl into a session object. Unparseable lines are skipped:
 // only a torn tail is expected, and skipping it loses at most one append.
 function readJsonl(file) {
-  const s = { id: null, title: 'untitled', created: null, updatedAt: null, projectId: null, tainted: false, history: [], summaries: {} };
+  const s = { id: null, title: 'untitled', created: null, updatedAt: null, projectId: null, tainted: false, history: [], summaries: {}, receipts: [] };
   let lastSeq = -1;
   const data = fs.readFileSync(file, 'utf8');
   for (const line of data.split('\n')) {
@@ -82,6 +82,9 @@ function readJsonl(file) {
         if (!prev || (rec.revision || 0) >= prev.revision) s.summaries[key] = rec;
         break;
       }
+      case 'receipt':
+        s.receipts.push(rec);
+        break;
       default: break; // unknown kinds ignored — forward compatible
     }
   }
@@ -96,7 +99,7 @@ function readLegacy(file) {
     id: s.id, title: s.title || 'untitled', created: s.created || null,
     updatedAt: s.updatedAt || fs.statSync(file).mtime.toISOString(),
     projectId: s.projectId || null, tainted: !!s.tainted,
-    history: s.history || [], summaries: {},
+    history: s.history || [], summaries: {}, receipts: [],
   };
 }
 
@@ -218,6 +221,19 @@ function saveSummary(id, { turnKey, full, compact }) {
   return rec;
 }
 
+// Run receipts: durable run-lifecycle marks (run_accepted / run_finished) for
+// crash-safe resume and idempotent command dispatch. Appended synchronously
+// BEFORE the run moves (accept) and at every terminal outcome; replay exposes
+// them as s.receipts. A run_accepted without a matching run_finished is an
+// interrupted run (crash/quit) — restore() surfaces it instead of losing it.
+function appendReceipt(id, rec) {
+  checkId(id);
+  fs.mkdirSync(sessionsDir(), { recursive: true });
+  const r = { kind: 'receipt', ts: new Date().toISOString(), ...rec };
+  appendLine(jsonlFile(id), r);
+  return r;
+}
+
 function remove(id) {
   checkId(id);
   let removed = false;
@@ -238,4 +254,4 @@ function titleFromHistory(history) {
   return titleFromText(first && typeof first.content === 'string' ? first.content : '');
 }
 
-module.exports = { list, load, save, remove, newId, saveSummary, titleFromText, titleFromHistory, sessionsDir, SUMMARY_FULL_MAX, SUMMARY_COMPACT_MAX };
+module.exports = { list, load, save, remove, newId, saveSummary, appendReceipt, titleFromText, titleFromHistory, sessionsDir, SUMMARY_FULL_MAX, SUMMARY_COMPACT_MAX };

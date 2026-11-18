@@ -34,7 +34,10 @@ contextBridge.exposeInMainWorld('muse', {
   boxCancel:()=>ipcRenderer.invoke('box:cancel'),
   boxOpenDesktop:()=>ipcRenderer.invoke('box:desktop'),
   onBoxStatus:cb=>{const handler=(_event,status)=>cb(status);ipcRenderer.on('box-status',handler);return ()=>ipcRenderer.removeListener('box-status',handler);},
-  send: (text) => ipcRenderer.invoke('agent:send', text),
+  send: (text, commandId) => ipcRenderer.invoke('agent:send', text, commandId),
+  queueCancel: (commandId) => ipcRenderer.invoke('queue:cancel', commandId),
+  queueMove: (commandId, dir) => ipcRenderer.invoke('queue:move', commandId, dir),
+  queueSteer: (commandId) => ipcRenderer.invoke('queue:steer', commandId),
   reset: () => ipcRenderer.invoke('agent:reset'),
   cancel: () => ipcRenderer.invoke('agent:cancel'),
   setProjectScope: (dir) => ipcRenderer.invoke('project:set', dir),
@@ -104,6 +107,11 @@ contextBridge.exposeInMainWorld('muse', {
     const h = (_e, ev) => cb(ev);
     ipcRenderer.on('agent-event', h);
     return () => ipcRenderer.removeListener('agent-event', h);
+  },
+  onQueueUpdate: (cb) => {
+    const h = (_e, state) => cb(state);
+    ipcRenderer.on('queue-update', h);
+    return () => ipcRenderer.removeListener('queue-update', h);
   },
   onApprovalRequest: (cb) => {
     const h = (_e, req) => cb(req);

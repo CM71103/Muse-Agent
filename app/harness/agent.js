@@ -348,6 +348,12 @@ class Agent {
     this.sessionCreated = s.created;
     this.history = (s.history || []).filter(m => !m || m.name !== 'synthetic');   // loop scaffolding never re-enters the model's context
     this.tainted = !!s.tainted;
+    // Crash-safe resume: a run_accepted receipt with no run_finished means the
+    // process died (or was killed) mid-run. Keep the runId so the host can
+    // offer the user a continuation instead of losing the work silently.
+    const finished = new Set((s.receipts || []).filter(r => r.status === 'run_finished').map(r => r.runId));
+    const dangling = (s.receipts || []).filter(r => r.status === 'run_accepted' && !finished.has(r.runId));
+    this.interruptedRun = dangling.length ? dangling[dangling.length - 1] : null;
     await this.compactHistory(true);   // old sessions may predate caps / exceed budget
     return s;
   }

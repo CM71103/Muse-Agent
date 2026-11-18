@@ -12,6 +12,14 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   if (userText !== null) this.history.push({ role: 'user', content: userText });
   this._title ||= require('./session').titleFromHistory(this.history);
   this._runEventId = require('node:crypto').randomUUID();
+  // Durable run receipts: accept is written before the run moves, every
+  // terminal outcome closes it. A dangling accept (crash/quit mid-run) is
+  // detected on restore so interrupted work is surfaced, never silently lost.
+  const session = require('./session');
+  const receipt = (status: string, extra: any = {}) => {
+    try { session.appendReceipt(this.sessionId, { runId: this._runEventId, commandId: opts.commandId || null, status, ...extra }); } catch { /* receipts never break a run */ }
+  };
+  receipt('run_accepted');
   this.stripMemory();
   let memoryContext: any = null;
   const memBudget = () => ({
@@ -121,9 +129,10 @@ async function run(this: any, userText: string | null, opts: any = {}) {
         await finishMemory(response.finish_reason === 'stop' ? null : 'partial_response');
         this.history.push({ role: 'assistant', content: finalText });
         this.persist();
+        receipt('run_finished', { outcome: 'complete', turns: turn + 1 });
         this.events({ type: 'message', text: finalText });
-        this.events({ type: 'done', reason: 'complete' });
-        return { text: finalText, turns: turn + 1, memory_turn_id: memoryContext?.turn_id };
+        this.events({ type: 'done', reason: 'complete', usage, tokensMissing: missingUsage, runId: this._runEventId });
+        return { text: finalText, turns: turn + 1, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
       }
       this.history.push({ role: 'assistant', content: message.content || null, tool_calls: message.tool_calls });
       if (message.content) this.events({ type: 'message', text: message.content });
@@ -137,17 +146,23 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     finalText = response.message.content || '(no reply)';
     await finishMemory('turn_limit');
     this.history.push({ role: 'assistant', content: finalText });
+    this.persist();
+    receipt('run_finished', { outcome: 'max_turns', turns: this.maxTurns });
     this.events({ type: 'message', text: finalText });
-    this.events({ type: 'done', reason: 'max_turns' });
-    return { text: finalText, turns: this.maxTurns, memory_turn_id: memoryContext?.turn_id };
+    this.events({ type: 'done', reason: 'max_turns', usage, tokensMissing: missingUsage, runId: this._runEventId });
+    return { text: finalText, turns: this.maxTurns, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
   } catch (error) {
     const cancelled = this._cancelRequested || (error as Error).name === 'AbortError';
     if (memoryContext?.turn_id) this.memory.failTurn(memoryContext.turn_id, 'unknown',
       cancelled ? 'user_cancelled' : 'provider_or_transport_failure');
     if (cancelled) {
-      this.events({ type: 'done', reason: 'cancelled' });
-      return { text: finalText || '(cancelled)', turns: 0, cancelled: true, memory_turn_id: memoryContext?.turn_id };
+      this.persist();   // partial progress is context worth keeping
+      receipt('run_finished', { outcome: 'cancelled' });
+      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, runId: this._runEventId });
+      return { text: finalText || '(cancelled)', turns: 0, cancelled: true, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
     }
+    this.persist();   // a failed run still leaves resumable context behind
+    receipt('run_finished', { outcome: 'error', error: String((error as Error).message || error).slice(0, 200) });
     throw error;
   } finally { this.stripMemory(); }
 }

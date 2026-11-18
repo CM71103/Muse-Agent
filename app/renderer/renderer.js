@@ -692,10 +692,24 @@ function handleAgentEvent(ev) {
     case 'cancelled':
       addSysNote('cancelling current task…');
       break;
+    case 'queue_started':
+      // a queued message began running — same visual contract as a fresh send
+      turnErrorsDisplayed = new Set();
+      setBusy(true);
+      showThinking(true);
+      $('crumb').textContent = t('crumb.working', 'WORKING…'); wbSetStatus(t('wb.working', 'Working…'));
+      break;
     case 'done':
       clearStreamingMessage();
       showThinking(false);
       setBusy(false);
+      if (ev.usage) {
+        if (ev.tokensMissing) sessionUsage.approximate = true;
+        for (const k of ['prompt_tokens', 'completion_tokens', 'total_tokens']) {
+          if (typeof ev.usage[k] === 'number') sessionUsage[k] = (sessionUsage[k] || 0) + ev.usage[k];
+        }
+        wbUpdateDetails();
+      }
       refreshSessions();
       break;
     case 'restored_user': addMsg('user', ev.text); break;
@@ -829,19 +843,32 @@ function setBusy(b) {
   if (!b) { input.focus(); autosize(); }
 }
 
+function newCommandId() {
+  try { return crypto.randomUUID(); } catch { return 'cmd-' + Date.now() + '-' + Math.floor(Math.random() * 1e6); }
+}
 async function submit(textOverride) {
   const text = typeof textOverride === 'string' ? textOverride.trim() : input.value.trim();
-  if (!text || busy || loadingSession || currentApproval || switchingModel) return false;
+  if (!text || loadingSession || currentApproval || switchingModel) return false;
   turnErrorsDisplayed = new Set();
   input.value = '';
   autosize();
   addMsg('user', text);
+  const commandId = newCommandId();
+  if (busy) {
+    // Queue behind the active run: the queue chip shows the position and
+    // offers reorder / run-now (steer) / cancel; the drain loop runs it next.
+    try {
+      const res = await window.muse.send(text, commandId);
+      if (res && !res.ok && !res.queued) addSysNote(userFacingAgentError(res.error), true);
+    } catch (e) { reportError(e); }
+    return true;
+  }
   setBusy(true);
   showThinking(true);
   $('crumb').textContent = t('crumb.working', 'WORKING…'); wbSetStatus(t('wb.working', 'Working…'));
   refreshStatus();
   try {
-    const res = await window.muse.send(text);
+    const res = await window.muse.send(text, commandId);
     if (!res || !res.ok) {
       const error = String(res && res.error || 'No response');
       if (!turnErrorsDisplayed.has(error)) {
@@ -860,6 +887,48 @@ async function submit(textOverride) {
 }
 
 sendBtn.addEventListener('click', submit);
+
+/* ---------- turn queue chips (queue_after_active) ---------- */
+const queueChips = new Map();   // commandId -> {el, pos}
+function makeQueueChip(commandId, text) {
+  const el = document.createElement('div');
+  el.className = 'sysnote queue-chip';
+  const label = document.createElement('span');
+  label.className = 'q-label';
+  label.textContent = `queued: ${String(text || '').slice(0, 60)}`;
+  const pos = document.createElement('span');
+  pos.className = 'q-pos';
+  const mkBtn = (title, fn) => {
+    const b = document.createElement('button');
+    b.className = 'q-btn'; b.textContent = title; b.title = title;
+    b.addEventListener('click', fn);
+    return b;
+  };
+  el.append(label, pos,
+    mkBtn('↑', () => window.muse.queueMove(commandId, 'up')),
+    mkBtn('↓', () => window.muse.queueMove(commandId, 'down')),
+    mkBtn('run now', () => window.muse.queueSteer(commandId)),
+    mkBtn('×', () => window.muse.queueCancel(commandId)));
+  return { el, pos };
+}
+function renderQueueChips(items) {
+  const keep = new Set(items.map(i => i.commandId));
+  for (const [id, c] of [...queueChips]) {
+    if (!keep.has(id)) { c.el.remove(); queueChips.delete(id); }
+  }
+  for (const it of items) {
+    let c = queueChips.get(it.commandId);
+    if (!c) {
+      c = makeQueueChip(it.commandId, it.text);
+      queueChips.set(it.commandId, c);
+      transcript.append(c.el);
+      reveal(c.el, 8);
+      scrollDown();
+    }
+    c.pos.textContent = `#${it.position}`;
+  }
+}
+window.muse.onQueueUpdate?.((state) => renderQueueChips((state && state.items) || []));
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && (prefs.enter || e.ctrlKey || e.metaKey)) {
     e.preventDefault();
@@ -915,7 +984,7 @@ async function loadSession(s) {
     projectHomeVisible = false; showThinking(false); subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = [];
     const events = restoredEvents; loadingSession = false;
     events.forEach(handleAgentEvent); renderEmpty();
-    activeSessionId = s.id; crumbTitle = res.title || 'Session'; $('crumb').textContent = crumbTitle; wbCounters = { msgs: 0, tools: 0 }; wbUpdateDetails(); wbEvent('session loaded: ' + crumbTitle); await refreshProject(); renderSessions();
+    activeSessionId = s.id; crumbTitle = res.title || 'Session'; $('crumb').textContent = crumbTitle; wbCounters = { msgs: 0, tools: 0 }; sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, approximate: false }; wbUpdateDetails(); wbEvent('session loaded: ' + crumbTitle); await refreshProject(); renderSessions();
   } catch (e) { reportError(e); }
   finally { loadingSession = false; restoredEvents = []; setBusy(false); }
 }
@@ -926,7 +995,7 @@ async function newSession() {
     const res = await window.muse.reset();
     if (!res || !res.ok) throw new Error(res && res.error || 'Session reset failed');
     activeSessionId = null; crumbTitle = 'New session';
-    wbCounters = { msgs: 0, tools: 0 }; wbUpdateDetails(); wbEvent('new session');
+    wbCounters = { msgs: 0, tools: 0 }; sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, approximate: false }; wbUpdateDetails(); wbEvent('new session');
     input.value = ''; resetTranscript(); $('crumb').textContent = crumbTitle;
     await refreshProject(); await refreshSessions();
   } catch (e) { reportError(e); }
@@ -1440,6 +1509,14 @@ function toggleFocus() { const on = document.body.classList.toggle('focus-mode')
 /* ---------- workbench (right panel) ---------- */
 const wbLogEl = $('wb-log');
 let wbCounters = { msgs: 0, tools: 0 };
+// Token accounting surfaced from real provider usage (done events carry the
+// per-run totals the LLM reported). 'approximate' when some calls went
+// unreported — never present an estimate as exact.
+let sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, approximate: false };
+function fmtTok(n) {
+  if (!n) return '0';
+  return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
+}
 function wbEvent(text, kind) {
   if (!wbLogEl) return;
   const item = document.createElement('div');
@@ -1453,6 +1530,9 @@ function wbSetStatus(text) { $('wb-status').textContent = text; }
 function wbUpdateDetails() {
   $('wb-msgs').textContent = String(wbCounters.msgs);
   $('wb-tools').textContent = String(wbCounters.tools);
+  $('wb-tokens').textContent = sessionUsage.total_tokens
+    ? (sessionUsage.approximate ? '≈' : '') + fmtTok(sessionUsage.prompt_tokens) + ' in · ' + fmtTok(sessionUsage.completion_tokens) + ' out'
+    : '—';
   $('wb-session').textContent = activeSessionId ? (crumbTitle || t('wb.savedSession', 'Saved session')) : t('wb.new', 'New');
 }
 for (const name of ['activity', 'memory', 'details']) {

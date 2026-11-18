@@ -48,6 +48,19 @@ let mainWindow = null;
 let agent = null;
 let memoryError = null;
 let agentBusy = false;
+// Turn queue (queue_after_active semantics): messages sent while a run is
+// active wait here and drain in order after it settles. 'steer' promotes an
+// item and cancels the active run so the promoted message runs next.
+const turnQueue = [];                 // {commandId, text, project}
+// Idempotent dispatch: commandId -> recorded result. A retried/resent command
+// is acknowledged from the receipt instead of executing twice.
+const completedCommands = new Map();
+function queueState() {
+  return {
+    items: turnQueue.map((q, i) => ({ commandId: q.commandId, position: i + 1, text: q.text.slice(0, 120) })),
+    running: agentBusy,
+  };
+}
 let pendingApprovals = new Map(); // id -> {resolve, request}
 let pendingQuestions = new Map(); // id -> {resolve, q}
 let currentProjectDir = null;
@@ -635,16 +648,24 @@ const learningService = require('../learning/service.ts').createLearningService(
   systemIdleSeconds:()=>app.isReady()?powerMonitor.getSystemIdleTime():0,emit:status=>send('learning-status',status),
 });
 
-ipcMain.handle('agent:send', async (e, text) => {
+ipcMain.handle('agent:send', async (e, text, commandId) => {
   requireTrusted(e);
   learningService.touch();
-  if (agentBusy) return {ok:false,error:'Agent busy; wait for current turn.'};
+  const raw = String(text || '').slice(0, 100000);
+  const cmdId = commandId ? String(commandId) : '';
+  // Idempotent dispatch: a commandId that already ran (this process, or a
+  // previous one via its receipt) is acknowledged — never executed twice.
+  if (cmdId && completedCommands.has(cmdId)) return { ...completedCommands.get(cmdId), deduped: true };
+  if (cmdId && turnQueue.some(q => q.commandId === cmdId)) {
+    return { ok: true, queued: true, position: turnQueue.findIndex(q => q.commandId === cmdId) + 1 };
+  }
   if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
   await learningService.flush().catch(()=>{});
-  const raw = String(text || '').slice(0, 100000);
+  let ownsRun = false;   // only the invocation executing turns may clear the busy flag
   try {
     // /good /bad — grade the most recent graded-eligible turn (R-49 obligation 6)
     const gradeMatch = /^(\/good|\/bad)\s*$/i.exec(raw.trim());
+    if (gradeMatch && agentBusy) return {ok:false,error:'Agent busy; wait for current turn.'};
     if (gradeMatch && agent.lastMemoryTurnId) {
       const r = /^\/good$/i.test(gradeMatch[1]) ? 1 : 0;
       const res = agent.memory
@@ -663,6 +684,7 @@ ipcMain.handle('agent:send', async (e, text) => {
     }
     // /compact — force context compaction now (summarize old turns via LLM)
     if (/^\/compact\s*$/i.test(raw.trim())) {
+      if (agentBusy) return {ok:false,error:'Agent busy; wait for current turn.'};
       const compacted = await agent.compactHistory(true);
       const note = compacted
         ? `context compacted (${agent.estimateHistoryTokens()} tokens in context now)`
@@ -671,13 +693,41 @@ ipcMain.handle('agent:send', async (e, text) => {
       return { ok: true, text: note, turns: 0 };
     }
     refreshBoxTools();
-    setBusyState(true);
-    const res = await require('../harness/turns').runTurn({ agent, raw, project: currentProjectId ? projectStore.get(currentProjectId) : null });
-    return { ok: true, text: res.text, turns: res.turns };
-  } catch (e) {
-    send('agent-event', { type: 'error', text: String(e && e.message || e) });
-    return { ok: false, error: String(e && e.message || e) };
-  } finally { setBusyState(false); }
+    // Queue behind the active run instead of rejecting (queue_after_active);
+    // the loop below is the drain — it keeps running queued messages in order
+    // until the queue is empty. The IPC returns with the first turn's result;
+    // later turns stream through the same agent-event channel as always.
+    if (agentBusy) {
+      turnQueue.push({ commandId: cmdId, text: raw, project: currentProjectId ? projectStore.get(currentProjectId) : null });
+      send('queue-update', queueState());
+      return { ok: true, queued: true, position: turnQueue.length };
+    }
+    ownsRun = true;
+    let result = null;
+    for (let first = true; ; first = false) {
+      const item = first
+        ? { commandId: cmdId, text: raw, project: currentProjectId ? projectStore.get(currentProjectId) : null }
+        : turnQueue.shift();
+      if (!item) break;
+      if (!first) {
+        send('agent-event', { type: 'queue_started', commandId: item.commandId });
+        send('queue-update', queueState());
+      }
+      setBusyState(true);
+      try {
+        const res = await require('../harness/turns').runTurn({ agent, raw: item.text, project: item.project, commandId: item.commandId });
+        if (item.commandId) {
+          completedCommands.set(item.commandId, { ok: true, text: res.text, turns: res.turns });
+          if (completedCommands.size > 100) completedCommands.delete(completedCommands.keys().next().value);
+        }
+        if (first) result = { ok: true, text: res.text, turns: res.turns, usage: res.usage || null };
+      } catch (err) {
+        send('agent-event', { type: 'error', text: String(err && err.message || err) });
+        if (first) result = { ok: false, error: String(err && err.message || err) };
+      }
+    }
+    return result;
+  } finally { if (ownsRun) setBusyState(false); }
 });
 
 ipcMain.handle('agent:reset', async (e) => {
@@ -699,6 +749,38 @@ ipcMain.handle('agent:reset', async (e) => {
 ipcMain.handle('agent:cancel', async (e) => {
   requireTrusted(e);
   if (agent && agentBusy) agent.requestCancel();
+  return { ok: true };
+});
+
+// --- turn queue management (see turnQueue above) ---
+ipcMain.handle('queue:cancel', (e, commandId) => {
+  requireTrusted(e);
+  const i = turnQueue.findIndex(q => q.commandId === String(commandId || ''));
+  if (i < 0) return { ok: false, error: 'not queued' };
+  turnQueue.splice(i, 1);
+  send('queue-update', queueState());
+  return { ok: true };
+});
+ipcMain.handle('queue:move', (e, commandId, dir) => {
+  requireTrusted(e);
+  const i = turnQueue.findIndex(q => q.commandId === String(commandId || ''));
+  const j = i + (dir === 'up' ? -1 : 1);
+  if (i < 0 || j < 0 || j >= turnQueue.length) return { ok: false, error: 'cannot move' };
+  const [item] = turnQueue.splice(i, 1);
+  turnQueue.splice(j, 0, item);
+  send('queue-update', queueState());
+  return { ok: true };
+});
+// promote-to-steer: put the item at the head and interrupt the active run so
+// the promoted message runs next (the drain loop picks it as the run unwinds).
+ipcMain.handle('queue:steer', (e, commandId) => {
+  requireTrusted(e);
+  const i = turnQueue.findIndex(q => q.commandId === String(commandId || ''));
+  if (i < 0) return { ok: false, error: 'not queued' };
+  const [item] = turnQueue.splice(i, 1);
+  turnQueue.unshift(item);
+  if (agentBusy && agent) agent.requestCancel();
+  send('queue-update', queueState());
   return { ok: true };
 });
 
@@ -931,6 +1013,21 @@ ipcMain.handle('sessions:load', async (e, id) => {
     currentProjectDir = project ? project.folder : null;
     agent.setProjectScope(currentProjectDir);
     const s = await agent.restore(String(id));
+    // Cross-restart idempotency: commandIds that finished in this session's
+    // receipts must never re-execute on a resend.
+    for (const r of s.receipts || []) {
+      if (r.status === 'run_finished' && r.commandId && !completedCommands.has(r.commandId)) {
+        completedCommands.set(r.commandId, { ok: true, turns: 0, text: '(completed before restart)' });
+      }
+    }
+    // Crash-safe resume: a run_accepted with no run_finished means the app
+    // died mid-run. The context is intact — surface it instead of losing it.
+    if (agent.interruptedRun) {
+      send('agent-event', {
+        type: 'info',
+        text: `previous run was interrupted (crash or quit) — its context is preserved; resend the task to continue`,
+      });
+    }
     // replay the restored transcript into the renderer
     for (const m of s.history || []) {
       if (m.role === 'user') send('agent-event', { type: 'restored_user', text: m.content });
