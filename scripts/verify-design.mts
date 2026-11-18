@@ -74,6 +74,7 @@ const api={
  designWebPreviewStart:async()=>({...fixture,canceled:true}),designWebPreviewStop:async()=>({...fixture}),
  designSiteOpenUrl:async()=>({ok:true,url:base}),designSiteChooseFolder:async()=>({canceled:true}),designSiteChooseHtml:async()=>({canceled:true}),
  designSiteBounds:async()=>({ok:true}),designSiteClose:async()=>({ok:true}),designSitePackage:async()=>({ok:true,name:'Demo',exePath:'C:/demo/Demo.exe'}),
+ designCapture:async()=>({ok:true,path:'fixture-shot.png'}),
  onDesignArtifact:()=>()=>{},onProjectChange:()=>()=>{},
  getConfig:async()=>({llm:{base_url:'https://api.example.com/v1',model:'muse-preview',visible_models:['muse-preview']},sentinel:{mode:'auto'},memory:{enabled:false}}),
  getProjectScope:async()=>({ok:true,project:null}),listProjects:async()=>[],listSessions:async()=>[],memoryStatus:async()=>({enabled:false}),
@@ -127,6 +128,16 @@ app.whenReady().then(async()=>{try{
  assert.equal(await js("document.getElementById('design-mode-code').getAttribute('aria-pressed')"),'true');
  await js("document.getElementById('design-mode-preview').click()");await pause(250);
  assert.equal(await js("document.querySelector('.design-source-view').hidden"),true,'preview mode restores the frame');
+ // file tabs: artifact tab + code tab, switching restores the right view
+ assert.equal(await js("document.querySelectorAll('.design-canvas-tabs .design-tab').length"),2,'preview + code tabs');
+ assert.equal(await js("(document.querySelector('.design-tab.is-active')||{textContent:''}).textContent.includes('index.html')"),true,'code tab is active');
+ await js("document.querySelector('.design-tab').click()");await pause(250);await shot('tabs');
+ assert.equal(await js("document.getElementById('design-preview-frame').hidden"),false,'preview tab restores the frame');
+ // floating tool rail: fit + screenshot
+ await js("document.getElementById('design-rail-fit').click()");await pause(150);
+ assert.equal(await js("document.getElementById('design-zoom').value"),'fit','rail fit syncs the zoom control');
+ await js("document.getElementById('design-rail-screenshot').click()");await pause(250);
+ assert.equal(await js("document.getElementById('design-error').textContent"),'','screenshot should succeed silently');
  // dark theme sanity + narrow window
  await js("setTheme('dark')");await shot('preview-dark');
  win.setContentSize(900,700);await pause(250);await shot('narrow');

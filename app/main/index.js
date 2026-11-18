@@ -1441,6 +1441,28 @@ ipcMain.handle('design:site:bounds', (e, rect) => {
   designSiteView.setVisible(true);
   return { ok: true };
 });
+// Capture the canvas as a PNG the user saves anywhere: the artboard region of
+// the main window, or the live site view's own contents when one is overlaid.
+ipcMain.handle('design:capture', async (e, rect) => {
+  requireTrusted(e);
+  try {
+    const fs = require('fs');
+    let image = null;
+    if (designSiteView && rect && rect.site) image = await designSiteView.webContents.capturePage();
+    else if (mainWindow && rect && Number(rect.width) > 0 && Number(rect.height) > 0) {
+      image = await mainWindow.webContents.capturePage({ x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) });
+    }
+    if (!image || image.isEmpty()) return { ok: false, error: 'Nothing to capture on the canvas.' };
+    const stamp = new Date().toISOString().slice(0, 19).replaceAll(':', '-');
+    const choice = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save canvas screenshot', defaultPath: `muse-canvas-${stamp}.png`,
+      filters: [{ name: 'PNG image', extensions: ['png'] }],
+    });
+    if (choice.canceled || !choice.filePath) return { ok: false, canceled: true };
+    fs.writeFileSync(choice.filePath, image.toPNG());
+    return { ok: true, path: choice.filePath };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
 ipcMain.handle('design:site:close', (e) => {
   requireTrusted(e);
   hideDesignSiteView();

@@ -5,15 +5,17 @@
 .activity-card .tr-head { gap:10px; }
 .activity-icon { width:33px; height:33px; display:grid; place-items:center; flex-shrink:0; font:18px var(--mono); border:1px solid var(--color-border); background:var(--color-accent); color:var(--color-primary); border-radius:10px; }
 .activity-title { display:flex; flex-direction:column; gap:4px; min-width:0; flex:1; }
-.activity-card .tname { font:550 12px var(--sans); }
+.activity-card .tname { font:600 12.5px var(--sans); }
 .activity-tool-name { font:10px var(--sans); color:var(--color-muted-fg); overflow-wrap:anywhere; }
 .activity-card .tr-dot { width:6px; height:6px; }
-.activity-state { font:10px var(--sans); color:var(--color-muted-fg); white-space:nowrap; }
+.activity-state { font:600 9px var(--sans); color:var(--color-muted-fg); white-space:nowrap; padding:3px 9px; border-radius:999px; background:var(--color-surface-subtle); border:1px solid var(--color-border-soft); }
+.activity-card[data-state=running] .activity-state { color:var(--color-primary); background:color-mix(in srgb,var(--color-primary) 10%,transparent); border-color:color-mix(in srgb,var(--color-primary) 26%,transparent); }
+.activity-card[data-state=restored] .activity-state { color:var(--color-muted-fg); }
 .activity-card .tr-dur { margin-left:3px; font-size:10px; color:var(--color-muted-fg); }
 .activity-chevron { color:var(--color-muted-fg); font-size:15px; margin-left:4px; transition:transform .15s; }
 .activity-card > details[open] > summary .activity-chevron { transform:rotate(180deg); }
-.activity-card[data-state=completed] .activity-state { color:var(--color-success); }
-.activity-card[data-state=failed] .activity-state,.activity-card[data-state=denied] .activity-state { color:var(--color-destructive); }
+.activity-card[data-state=completed] .activity-state { color:var(--color-success); background:color-mix(in srgb,var(--color-success) 11%,transparent); border-color:color-mix(in srgb,var(--color-success) 26%,transparent); }
+.activity-card[data-state=failed] .activity-state,.activity-card[data-state=denied] .activity-state { color:var(--color-destructive); background:color-mix(in srgb,var(--color-destructive) 10%,transparent); border-color:color-mix(in srgb,var(--color-destructive) 28%,transparent); }
 .activity-card[data-state=failed],.activity-card[data-state=denied] { border-color:color-mix(in srgb,var(--color-destructive) 40%,var(--color-border)); }
 .activity-section { border-top:1px solid var(--color-border-soft); }
 .activity-section-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 18px 5px; font-size:9px; letter-spacing:1px; text-transform:uppercase; color:var(--color-muted-fg); }
@@ -29,7 +31,7 @@
 .activity-waiting { padding:13px 18px; margin:0; border-top:1px solid var(--color-border-soft); font-size:11px; line-height:1.7; color:var(--color-muted-fg); }
 .activity-expand { padding:7px 10px; margin:0 18px 14px; font-size:10px; border-radius:7px; }
 .activity-card.denied > .tr-head { padding:15px 18px; }
-.activity-card.denied .activity-state { margin-left:auto; border:1px solid var(--color-border); padding:4px 8px; border-radius:15px; }
+.activity-card.denied .activity-state { margin-left:auto; }
 .activity-denial { margin:0; border-top:1px solid var(--color-border-soft); padding:14px 18px; font-size:12px; line-height:1.7; color:var(--color-muted-fg); overflow-wrap:anywhere; }
 #approval,#question { max-width:800px; max-height:min(62vh,510px); overflow-y:auto; scrollbar-width:thin; background:var(--color-background); border:1px solid var(--color-border); border-radius:16px; padding:19px; box-shadow:0 10px 32px rgb(0 0 0 / .12); }
 .permission-heading { display:flex; align-items:center; gap:12px; margin-bottom:13px; }

@@ -95,6 +95,7 @@ contextBridge.exposeInMainWorld('muse', {
   designSiteChooseFolder: () => ipcRenderer.invoke('design:site:choose-folder'),
   designSiteChooseHtml: () => ipcRenderer.invoke('design:site:choose-html'),
   designSiteBounds: (rect) => ipcRenderer.invoke('design:site:bounds', rect),
+  designCapture: (rect) => ipcRenderer.invoke('design:capture', rect),
   designSiteClose: () => ipcRenderer.invoke('design:site:close'),
   designSitePackage: (request) => ipcRenderer.invoke('design:site:package', request),
   onAgentEvent: (cb) => {
