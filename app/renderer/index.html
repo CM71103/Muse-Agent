@@ -472,12 +472,13 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .sysnote{align-self:center;max-width:92%;text-align:center;font-size:11px;color:var(--color-muted-fg);background:var(--color-surface-subtle);border:1px solid var(--color-border-soft);border-radius:999px;padding:5px 13px;margin:0 auto;line-height:1.6}
 .sysnote.warn{color:var(--color-destructive);border-color:color-mix(in srgb,var(--color-destructive) 32%,transparent);background:color-mix(in srgb,var(--color-destructive) 8%,transparent)}
 .sysnote.mem{color:var(--color-muted-fg)}
-/* Queued-turn chips: live queue items with reorder / steer / cancel controls */
-.queue-chip{display:flex;align-items:center;gap:8px;background:var(--color-surface);border-color:var(--color-border)}
-.queue-chip .q-label{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.queue-chip .q-pos{font-variant-numeric:tabular-nums;color:var(--color-muted-fg)}
-.queue-chip .q-btn{border:1px solid var(--color-border-soft);background:transparent;color:var(--color-muted-fg);border-radius:7px;padding:1px 8px;font-size:10.5px;cursor:pointer;transition:background .16s var(--ease-soft),color .16s var(--ease-soft)}
-.queue-chip .q-btn:hover{background:var(--color-secondary);color:var(--color-foreground)}
+/* Action chips: live queue items and undo affordances (label + small controls) */
+.action-chip{display:flex;align-items:center;gap:8px;background:var(--color-surface);border-color:var(--color-border)}
+.action-chip .q-label{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.action-chip .q-pos{font-variant-numeric:tabular-nums;color:var(--color-muted-fg)}
+.action-chip .q-btn{border:1px solid var(--color-border-soft);background:transparent;color:var(--color-muted-fg);border-radius:7px;padding:1px 8px;font-size:10.5px;cursor:pointer;transition:background .16s var(--ease-soft),color .16s var(--ease-soft)}
+.action-chip .q-btn:hover{background:var(--color-secondary);color:var(--color-foreground)}
+.action-chip .q-btn:disabled{opacity:.5;cursor:default}
 .thinking{font-size:12.5px;color:var(--color-muted-fg)}
 .thinking{display:flex;align-items:center;gap:12px;padding:4px 0}
 .thinking .thinking-label{font-weight:600;color:var(--color-foreground)}

@@ -1,4 +1,36 @@
 'use strict';
+// llm.js — OpenAI-compatible chat transport + the canonical message boundary.
+// Provider-specific message shapes (GLM reasoning_content, DeepSeek quirks,
+// missing finish_reason…) stop HERE: chat() returns a canonical envelope
+// ({text, toolCalls, reasoning}) next to the raw wire message so the agent
+// loop never has to know which provider it is talking to.
+
+function toCanonicalMessage(wire) {
+  const w = wire || {};
+  return {
+    role: 'assistant',
+    text: typeof w.content === 'string' ? w.content : '',
+    toolCalls: (Array.isArray(w.tool_calls) ? w.tool_calls : []).map(c => ({
+      id: c.id,
+      name: c.function && c.function.name,
+      arguments: c.function && typeof c.function.arguments === 'string'
+        ? c.function.arguments
+        : JSON.stringify((c.function && c.function.arguments) || {}),
+    })),
+    reasoning: typeof (w.reasoning_content || w.reasoning) === 'string' ? (w.reasoning_content || w.reasoning) : '',
+    refusal: typeof w.refusal === 'string' ? w.refusal : '',
+  };
+}
+
+// History stores wire shape (that is what goes back on the next request);
+// building it from canonical keeps the conversion in exactly one place.
+function toWireAssistant(canon) {
+  const msg = { role: 'assistant', content: canon.text || null };
+  if (canon.toolCalls && canon.toolCalls.length) {
+    msg.tool_calls = canon.toolCalls.map(c => ({ id: c.id, type: 'function', function: { name: c.name, arguments: c.arguments } }));
+  }
+  return msg;
+}
 // llm.js - OpenAI-compatible chat client. Works with DeepSeek, OpenAI, OpenRouter,
 // vLLM, LM Studio, Ollama (they all expose /v1/chat/completions).
 // One dependency: Node 18+ global fetch. No SDK.
@@ -135,7 +167,8 @@ class LlmClient {
         throw err;
       }
       return {
-        message: choice.message,          // {role:'assistant', content, tool_calls?}
+        message: choice.message,          // raw wire shape (history / compat)
+        canonical: toCanonicalMessage(choice.message),
         finish_reason: choice.finish_reason,
         usage: data.usage || null,
       };
@@ -218,4 +251,4 @@ class LlmClient {
   }
 }
 
-module.exports = { LlmClient };
+module.exports = { LlmClient, toCanonicalMessage, toWireAssistant };

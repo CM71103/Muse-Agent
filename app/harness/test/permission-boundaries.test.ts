@@ -31,7 +31,7 @@ function config(mode = 'ask') {
 
 async function call(agent: any, name: string, args: object) {
   return JSON.parse(await agent.executeToolCall({
-    id: 'boundary', function: { name, arguments: JSON.stringify(args) },
+    id: 'boundary', name, arguments: JSON.stringify(args),   // canonical tool call shape
   }));
 }
 

@@ -20,6 +20,16 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     try { session.appendReceipt(this.sessionId, { runId: this._runEventId, commandId: opts.commandId || null, status, ...extra }); } catch { /* receipts never break a run */ }
   };
   receipt('run_accepted');
+  // File-change checkpoint (undo): write_file pre-images collected via
+  // ctx.checkpoint land here; finalize pins post-run hashes for safe undo.
+  const checkpoint = require('./checkpoint').begin(this._runEventId, this.sessionId);
+  this._runCheckpoint = checkpoint;
+  const ckpt = () => {
+    try {
+      const entries = checkpoint.finalize();
+      return entries.length ? { runId: this._runEventId, files: entries.map((e: any) => e.path) } : undefined;
+    } catch { return undefined; }
+  };
   this.stripMemory();
   let memoryContext: any = null;
   const memBudget = () => ({
@@ -98,10 +108,10 @@ async function run(this: any, userText: string | null, opts: any = {}) {
       this.lastMemoryTurnId = memoryContext.turn_id;
     }
   };
-  const clean = (message: any) => {
-    for (const key of ['reasoning_content', 'reasoning', 'matched_stop', 'refusal']) delete message[key];
-    return message;
-  };
+  // Canonical envelope: provider-specific shapes stop at llm.js — the loop
+  // consumes {text, toolCalls, reasoning} regardless of provider quirks.
+  const { toWireAssistant, toCanonicalMessage } = require('./llm');
+  const canonOf = (response: any) => response.canonical || toCanonicalMessage(response.message || {});
   try {
     for (let turn = 0; turn < this.maxTurns; turn++) {
       if (this._cancelRequested) throw Object.assign(new Error('User cancelled'), { name: 'AbortError' });
@@ -109,9 +119,9 @@ async function run(this: any, userText: string | null, opts: any = {}) {
       restoreMemory();
       await this.compactHistory();
       let response = await send();
-      const message = clean(response.message);
-      if (!message.tool_calls?.length) {
-        finalText = message.content || '';
+      const canon = canonOf(response);
+      if (!canon.toolCalls.length) {
+        finalText = canon.text;
         let continuations = 0;
         while (response.finish_reason === 'length' && continuations < 5) {
           continuations++;
@@ -121,36 +131,38 @@ async function run(this: any, userText: string | null, opts: any = {}) {
           this.history.push({ role: 'user', name: 'synthetic', content: 'Continue exactly where you stopped. Do not repeat any part of your previous output, do not restate the task, just continue the code/text seamlessly from the exact cut point.' });
           this.events({ type: 'info', text: `output hit the token limit — continuing (${continuations}/5)` });
           response = await send();
-          const next = clean(response.message);
-          if (!next.content) break;
-          finalText += (finalText.endsWith('\n') ? '' : '\n') + next.content;
+          const next = canonOf(response);
+          if (!next.text) break;
+          finalText += (finalText.endsWith('\n') ? '' : '\n') + next.text;
         }
         if (this._cancelRequested) throw Object.assign(new Error('User cancelled'), { name: 'AbortError' });
         await finishMemory(response.finish_reason === 'stop' ? null : 'partial_response');
         this.history.push({ role: 'assistant', content: finalText });
         this.persist();
         receipt('run_finished', { outcome: 'complete', turns: turn + 1 });
+        const ckComplete = ckpt();
         this.events({ type: 'message', text: finalText });
-        this.events({ type: 'done', reason: 'complete', usage, tokensMissing: missingUsage, runId: this._runEventId });
-        return { text: finalText, turns: turn + 1, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
+        this.events({ type: 'done', reason: 'complete', usage, tokensMissing: missingUsage, runId: this._runEventId, checkpoint: ckComplete });
+        return { text: finalText, turns: turn + 1, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage, checkpoint: ckComplete };
       }
-      this.history.push({ role: 'assistant', content: message.content || null, tool_calls: message.tool_calls });
-      if (message.content) this.events({ type: 'message', text: message.content });
-      for (const call of message.tool_calls) {
+      this.history.push(toWireAssistant(canon));
+      if (canon.text) this.events({ type: 'message', text: canon.text });
+      for (const call of canon.toolCalls) {
         const content = await this.executeToolCall(call);
         this.history.push({ role: 'tool', tool_call_id: call.id, content });
       }
     }
     this.history.push({ role: 'user', name: 'synthetic', content: 'Turn limit reached. Please summarize progress so far and stop.' });
     const response = await send(null);
-    finalText = response.message.content || '(no reply)';
+    finalText = canonOf(response).text || '(no reply)';
     await finishMemory('turn_limit');
     this.history.push({ role: 'assistant', content: finalText });
     this.persist();
     receipt('run_finished', { outcome: 'max_turns', turns: this.maxTurns });
+    const ckMax = ckpt();
     this.events({ type: 'message', text: finalText });
-    this.events({ type: 'done', reason: 'max_turns', usage, tokensMissing: missingUsage, runId: this._runEventId });
-    return { text: finalText, turns: this.maxTurns, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
+    this.events({ type: 'done', reason: 'max_turns', usage, tokensMissing: missingUsage, runId: this._runEventId, checkpoint: ckMax });
+    return { text: finalText, turns: this.maxTurns, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage, checkpoint: ckMax };
   } catch (error) {
     const cancelled = this._cancelRequested || (error as Error).name === 'AbortError';
     if (memoryContext?.turn_id) this.memory.failTurn(memoryContext.turn_id, 'unknown',
@@ -158,11 +170,12 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     if (cancelled) {
       this.persist();   // partial progress is context worth keeping
       receipt('run_finished', { outcome: 'cancelled' });
-      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, runId: this._runEventId });
+      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, runId: this._runEventId, checkpoint: ckpt() });
       return { text: finalText || '(cancelled)', turns: 0, cancelled: true, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
     }
     this.persist();   // a failed run still leaves resumable context behind
     receipt('run_finished', { outcome: 'error', error: String((error as Error).message || error).slice(0, 200) });
+    ckpt();   // partial writes on a failed run stay undoable on disk
     throw error;
   } finally { this.stripMemory(); }
 }

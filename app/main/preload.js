@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('muse', {
   queueCancel: (commandId) => ipcRenderer.invoke('queue:cancel', commandId),
   queueMove: (commandId, dir) => ipcRenderer.invoke('queue:move', commandId, dir),
   queueSteer: (commandId) => ipcRenderer.invoke('queue:steer', commandId),
+  checkpointUndo: (runId) => ipcRenderer.invoke('checkpoint:undo', runId),
   reset: () => ipcRenderer.invoke('agent:reset'),
   cancel: () => ipcRenderer.invoke('agent:cancel'),
   setProjectScope: (dir) => ipcRenderer.invoke('project:set', dir),

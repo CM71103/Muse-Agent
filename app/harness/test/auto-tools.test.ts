@@ -26,7 +26,7 @@ function setup(t: TestContext) {
   return { agent, cfg, directory, project, outside };
 }
 const call = async (agent: any, name: string, args: object) => JSON.parse(await agent.executeToolCall({
-  id: name, function: { name, arguments: JSON.stringify(args) },
+  id: name, name, arguments: JSON.stringify(args),   // canonical tool call shape
 }));
 
 test('Auto executes file tools outside the selected project without invoking approvals', async t => {

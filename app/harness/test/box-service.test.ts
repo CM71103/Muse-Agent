@@ -41,7 +41,7 @@ test('registered Box tools are available without stdio servers and respect Ask, 
  const run=(mode:string,deny_rules:string[]=[])=>{
   const a=new Agent(deepMerge(DEFAULTS,{sentinel:{mode,deny_rules}}),{approver:async()=>false});
   assert.ok(a.toolMap.has('mcp__box__shell'));
-  return a.executeToolCall({id:'box-test',function:{name:'mcp__box__shell',arguments:'{}'}});
+  return a.executeToolCall({id:'box-test',name:'mcp__box__shell',arguments:'{}'});
  };
  await run('ask');assert.equal(calls,0);assert.match(await run('auto'),/fixture result/);assert.equal(calls,1);
  await run('auto',['*mcp__box__shell*']);assert.equal(calls,1);

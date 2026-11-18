@@ -101,6 +101,8 @@ function mkFsTools() {
     },
     async run(args, ctx) {
       const p = path.resolve(ctx.cwd, args.path);
+      // checkpoint pre-image BEFORE the write so the run can be undone
+      if (ctx.checkpoint) await ctx.checkpoint.recordFile(p);
       await fsp.mkdir(path.dirname(p), { recursive: true });
       await fsp.writeFile(p, args.content, 'utf8');
       return { ok: true, path: p, bytes: Buffer.byteLength(args.content) };

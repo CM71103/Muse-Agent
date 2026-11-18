@@ -710,6 +710,7 @@ function handleAgentEvent(ev) {
         }
         wbUpdateDetails();
       }
+      if (ev.checkpoint && ev.checkpoint.files && ev.checkpoint.files.length) addUndoChip(ev.checkpoint);
       refreshSessions();
       break;
     case 'restored_user': addMsg('user', ev.text); break;
@@ -892,7 +893,7 @@ sendBtn.addEventListener('click', submit);
 const queueChips = new Map();   // commandId -> {el, pos}
 function makeQueueChip(commandId, text) {
   const el = document.createElement('div');
-  el.className = 'sysnote queue-chip';
+  el.className = 'sysnote action-chip';
   const label = document.createElement('span');
   label.className = 'q-label';
   label.textContent = `queued: ${String(text || '').slice(0, 60)}`;
@@ -929,6 +930,36 @@ function renderQueueChips(items) {
   }
 }
 window.muse.onQueueUpdate?.((state) => renderQueueChips((state && state.items) || []));
+
+/* ---------- run checkpoint undo chip ---------- */
+function addUndoChip(checkpoint) {
+  const el = document.createElement('div');
+  el.className = 'sysnote action-chip';
+  const label = document.createElement('span');
+  label.className = 'q-label';
+  const n = checkpoint.files.length;
+  label.textContent = `${n} file${n === 1 ? '' : 's'} changed — can be undone (file edits only)`;
+  const btn = document.createElement('button');
+  btn.className = 'q-btn';
+  btn.textContent = 'undo';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const res = await window.muse.checkpointUndo(checkpoint.runId);
+      if (res && res.ok) {
+        label.textContent = `undo: ${res.restored.length} restored${res.skipped.length ? `, ${res.skipped.length} left as is (changed since)` : ''}`;
+        btn.remove();
+      } else {
+        label.textContent = `undo failed: ${String(res && res.error || 'unknown error')}`;
+        btn.disabled = false;
+      }
+    } catch (e) { btn.disabled = false; reportError(e); }
+  });
+  el.append(label, btn);
+  transcript.append(el);
+  reveal(el, 8);
+  scrollDown();
+}
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && (prefs.enter || e.ctrlKey || e.metaKey)) {
     e.preventDefault();

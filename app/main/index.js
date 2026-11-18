@@ -784,6 +784,20 @@ ipcMain.handle('queue:steer', (e, commandId) => {
   return { ok: true };
 });
 
+// Undo a run's file changes (checkpoint.js restore-safety rules apply: only
+// files untouched since the run are restored; the rest are reported).
+ipcMain.handle('checkpoint:undo', async (e, runId) => {
+  requireTrusted(e);
+  try {
+    const result = require('../harness/checkpoint').undo(String(runId || ''));
+    if (result.ok) {
+      const n = result.restored.length, s = result.skipped.length;
+      send('agent-event', { type: 'info', text: `undo: ${n} file${n === 1 ? '' : 's'} restored${s ? `, ${s} skipped (changed since the run)` : ''}` });
+    }
+    return result;
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+
 ipcMain.handle('approval:respond', async (e, { id, approved }) => {
   requireTrusted(e);
   const p = pendingApprovals.get(String(id || ''));

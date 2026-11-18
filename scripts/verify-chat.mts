@@ -79,6 +79,12 @@ app.whenReady().then(async()=>{try{
  win.setContentSize(420,780);await pause(250);await shot('narrow');
  win.setContentSize(1280,860);await pause(250);
  await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");
+ // queue + undo chips (top-level renderer functions) must render with controls
+ await js("renderQueueChips([{commandId:'q1',position:1,text:'refactor the parser and update the tests'},{commandId:'q2',position:2,text:'repackage the build'}])");
+ await js("addUndoChip({runId:'run-fixture',files:['app/main/index.js','app/renderer/renderer.js']})");
+ await pause(300);await shot('chips');
+ await js("renderQueueChips([])");
+ await js("document.querySelectorAll('.action-chip').forEach(n=>n.remove())");
  await js("setTheme('krishna')");await pause(500);await shot('theme-krishna');
  await js("setTheme('light')");await pause(500);await shot('theme-light');
  await js("setTheme('dark')");await pause(500);await shot('theme-dark');

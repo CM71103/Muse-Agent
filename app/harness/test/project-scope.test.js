@@ -13,7 +13,7 @@ test('selected root drives prompt, relative reads, default listing and survives 
   const a=new Agent(structuredClone(DEFAULTS),{approver:async()=>{throw Error('unexpected approval for granted project');}});
   a.setProjectScope(root);
   assert.ok(systemPrompt(a.cfg,'',a.cwdOverride).includes(`Working directory: ${root}.`));
-  const call=(name,args)=>a.executeToolCall({id:'p1',function:{name,arguments:JSON.stringify(args)}}).then(JSON.parse);
+  const call=(name,args)=>a.executeToolCall({id:'p1',name,arguments:JSON.stringify(args)}).then(JSON.parse);
   const listing=await call('list_dir',{});assert.equal(listing.path,root);assert.ok(listing.entries.some(x=>x.name==='selected.txt'));
   const read=await call('read_file',{path:'selected.txt'});assert.equal(read.content,'SELECTED PROJECT');
   a.history.push({role:'user',content:'old project chat'});const old=a.sessionId;

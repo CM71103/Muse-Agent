@@ -392,12 +392,13 @@ class Agent {
 
   // Execute one tool call after sentinel gating. Returns tool message content string.
   async executeToolCall(call) {
-    const name = call.function.name;
+    // call is canonical: {id, name, arguments} (wire shapes stop at llm.js)
+    const name = call.name;
     if (require('./sandbox-tools.ts').sandboxSelected() && !name.startsWith('sandbox_')) {
       return JSON.stringify({ ok: false, error: 'Host tools are disabled while the Ubuntu sandbox is selected.' });
     }
     let args = {};
-    try { args = JSON.parse(call.function.arguments || '{}'); }
+    try { args = JSON.parse(call.arguments || '{}'); }
     catch { return JSON.stringify({ ok: false, error: 'invalid JSON arguments' }); }
 
     const tool = this.toolMap.get(name);
@@ -456,6 +457,7 @@ class Agent {
       signal: this._toolAbort.signal,
       onPrivateRead: (p) => this.markTainted(p),
       agent: this,            // subagent tool needs the parent handle
+      checkpoint: this._runCheckpoint || null,   // per-run file pre-images for undo
     };
     try {
       const result = await tool.run(resolvedPath ? { ...args, path: resolvedPath } : args, ctx);
