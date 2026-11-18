@@ -273,9 +273,12 @@ function buildHeroEmblem() {
 
 /* ---------- transcript rendering ---------- */
 
-function scrollDown() {
+function scrollDown(force = false) {
   const main = $('mainlog');
-  main.scrollTop = main.scrollHeight;
+  // Auto-follow only when the user is near the bottom; if they scrolled up
+  // to read, never yank them back mid-stream.
+  const nearBottom = main.scrollHeight - main.scrollTop - main.clientHeight < 140;
+  if (force || nearBottom) main.scrollTop = main.scrollHeight;
 }
 
 function clearEmpty() {
@@ -313,7 +316,7 @@ function addMsg(role, text) {
   div.append(who, body);
   transcript.append(div);
   reveal(div, role === 'user' ? 10 : 16);
-  scrollDown();
+  scrollDown(role === 'user');   // the user's own message always jumps to bottom
 }
 
 let streamingMessageEl = null;

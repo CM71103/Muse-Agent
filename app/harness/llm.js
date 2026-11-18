@@ -59,6 +59,7 @@ class LlmClient {
           throw new Error(`The model returned no text after using its ${body.max_tokens}-token response limit. ` +
             `Try a non-reasoning model or increase llm.max_tokens if your provider supports it (model: ${this.cfg.model}).`);
         }
+        if (e.code === 'STREAM_TRUNCATED' && e.partial && attempt === maxAttempts - 1) return e.partial;
         const retryable = e.transient === true || /HTTP 5\d\d/.test(e.message) || /network|fetch failed|timeout|aborted|socket/i.test(e.message);
         if (!retryable) throw e;
         opts.onStreamReset?.();
@@ -120,6 +121,17 @@ class LlmClient {
           : `LLM returned empty response (finish_reason: ${choice.finish_reason})`);
         err.code = 'EMPTY_RESPONSE';
         if (early) err.transient = true;
+        throw err;
+      }
+      // A streamed reply that ends without the provider's closing chunk is a
+      // truncated transmission even when some text arrived (usually cut
+      // mid-word). Transient → chat() retries; chat() keeps the partial only
+      // after the last attempt so nothing is lost to permanently quiet relays.
+      if (!choice.finish_reason && opts.onDelta) {
+        const err = new Error(`The model stream was cut off mid-reply (model: ${this.cfg.model}) — ${String(msg.content || '').length} chars received.`);
+        err.code = 'STREAM_TRUNCATED';
+        err.transient = true;
+        err.partial = { message: msg, usage: data.usage || { total_tokens: 0 }, truncated: true };
         throw err;
       }
       return {
