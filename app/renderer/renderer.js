@@ -564,7 +564,10 @@ function addToolRow(event) { activityUI.add(event); }
 function addDeniedRow(name, reason) { activityUI.denied(name, reason); }
 
 function addSysNote(text, warn, cls) {
-  clearEmpty();
+  // System notes never displace the empty-state hero: while the transcript
+  // holds only notes (no conversation, no tool cards), the hero stays and the
+  // notes stack as centered chips beneath it.
+  if (transcript.querySelector('.msg, .activity-card, .thinking')) clearEmpty();
   const div = document.createElement('div');
   div.className = 'sysnote' + (warn ? ' warn' : '') + (cls ? ' ' + cls : '');
   div.setAttribute('role', warn ? 'alert' : 'status');

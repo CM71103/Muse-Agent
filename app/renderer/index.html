@@ -435,8 +435,10 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .md blockquote{border-left:3px solid var(--color-border);margin-left:0;padding-left:16px;color:var(--color-muted-fg)}
 .codeblock{background:var(--color-code-bg);color:var(--color-code-fg);border-radius:var(--radius);overflow:hidden;margin:16px 0;border:1px solid var(--color-code-border)}
 .cb-head{display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--color-code-border)}
-.cb-copy{font-size:11px;padding:3px 9px;background:transparent;color:var(--color-code-fg);border:0;border-radius:6px}
-.cb-copy:hover{background:var(--color-code-border)}
+.cb-copy{font-size:11px;padding:3px 9px;background:transparent;color:var(--color-faint);border:0;border-radius:6px}
+.cb-copy:hover{color:var(--color-foreground);background:var(--color-secondary)}
+.codeblock .cb-copy{color:var(--color-code-fg)}
+.codeblock .cb-copy:hover{background:var(--color-code-border);color:var(--color-code-fg)}
 .codeblock pre{overflow:auto;padding:15px;margin:0;font:12.5px/1.6 var(--mono)}
 .tok-com{color:var(--color-tok-com);font-style:italic}
 .tok-str{color:var(--color-tok-str)}
@@ -467,9 +469,10 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .tool-row .err{color:var(--color-destructive);font-weight:600}
 .tool-row.denied{border-color:var(--color-destructive);border-left-color:var(--color-destructive)}
 .tool-row.denied .tname{color:var(--color-destructive)}
-.sysnote,.thinking{font-size:12.5px;color:var(--color-muted-fg)}
-.sysnote.warn{color:var(--color-destructive)}
-.sysnote.mem{color:var(--color-primary)}
+.sysnote{align-self:center;max-width:92%;text-align:center;font-size:11px;color:var(--color-muted-fg);background:var(--color-surface-subtle);border:1px solid var(--color-border-soft);border-radius:999px;padding:5px 13px;margin:0 auto;line-height:1.6}
+.sysnote.warn{color:var(--color-destructive);border-color:color-mix(in srgb,var(--color-destructive) 32%,transparent);background:color-mix(in srgb,var(--color-destructive) 8%,transparent)}
+.sysnote.mem{color:var(--color-muted-fg)}
+.thinking{font-size:12.5px;color:var(--color-muted-fg)}
 .thinking{display:flex;align-items:center;gap:12px;padding:4px 0}
 .thinking .thinking-label{font-weight:600;color:var(--color-foreground)}
 .thinking .thinking-elapsed{font-size:11px;color:var(--color-muted-fg)}
