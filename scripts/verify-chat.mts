@@ -28,7 +28,9 @@ const messageText = [
 
 fs.writeFileSync(path.join(temp, 'preload.cjs'), `
 const {contextBridge}=require('electron');
+let appearance='krishna';
 const api={
+ getAppearance:async()=>({ok:true,theme:appearance}),setAppearance:async theme=>{appearance=String(theme);return {ok:true}},
  getConfig:async()=>({llm:{base_url:'https://api.example.com/v1',model:'muse-preview',visible_models:['muse-preview']},sentinel:{mode:'auto'},memory:{enabled:false}}),
  getProjectScope:async()=>({ok:true,project:null}),listProjects:async()=>[],listSessions:async()=>[],memoryStatus:async()=>({enabled:false}),
  getSettings:async()=>({base_url:'https://api.example.com/v1',model:'muse-preview',visible_models:['muse-preview'],embed_key_set:false,has_key:true}),
@@ -75,6 +77,12 @@ app.whenReady().then(async()=>{try{
  await js("setTheme('light')");await shot('conversation-light');
  await js("setTheme('dark')");
  win.setContentSize(420,780);await pause(250);await shot('narrow');
+ win.setContentSize(1280,860);await pause(250);
+ await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");
+ await js("setTheme('krishna')");await pause(500);await shot('theme-krishna');
+ await js("setTheme('light')");await pause(500);await shot('theme-light');
+ await js("setTheme('dark')");await pause(500);await shot('theme-dark');
+ assert.equal(await js("window.muse.getAppearance().then(r=>r.theme)"),'dark','theme choice must reach the persistent store');
  assert.deepEqual(errors,[],'Renderer console/load errors');console.log('PASS: chat preview '+output);win.destroy();app.exit(0);
 }catch(error){console.error(error);if(win)win.destroy();app.exit(1)}});
 setTimeout(()=>app.exit(1),25000).unref();

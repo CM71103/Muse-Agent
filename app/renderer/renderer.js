@@ -1642,20 +1642,37 @@ async function refreshWorkbenchMemory() {
     $('wb-memcount').textContent = st && st.health && st.health.memories ? String(Object.keys(st.health.memories).length) : '—';
   } catch { $('wb-mem').textContent = '—'; }
 }
-/* ---------- appearance (session-only) ---------- */
+/* ---------- appearance (persisted beside the config, never web storage) ---------- */
 const THEMES = ['light', 'dark', 'krishna'];
-let currentTheme = document.body.dataset?.theme || 'light';
-function setTheme(name) {
-  if (!THEMES.includes(name)) name = 'light';
-  currentTheme = name;
+function applyTheme(name) {
   if (name === 'light') document.body.removeAttribute('data-theme');
   else document.body.setAttribute('data-theme', name);
   for (const b of document.querySelectorAll('[data-theme-pick]')) {
     b.setAttribute('aria-checked', String(b.dataset.themePick === name));
   }
   if (typeof window.__museShaderRefresh === 'function') window.__museShaderRefresh();
-  addSysNote(`appearance: ${name}`, false, 'mem');
 }
+let currentTheme = document.body.dataset?.theme || 'light';
+function setTheme(name, quiet = false) {
+  if (!THEMES.includes(name)) name = 'light';
+  currentTheme = name;
+  try { window.muse?.setAppearance?.(name); } catch {}
+  if (!quiet) {
+    // Brief cross-fade of every themed surface so switching feels like one
+    // continuous space instead of a hard repaint.
+    document.body.classList.add('theme-anim');
+    setTimeout(() => document.body.classList.remove('theme-anim'), 420);
+    addSysNote(`appearance: ${name}`, false, 'mem');
+  }
+  applyTheme(name);
+}
+applyTheme(currentTheme);   // sync the swatches with the boot default
+// Restore the saved appearance once the main process answers; silently.
+try {
+  window.muse?.getAppearance?.().then((r) => {
+    if (r && r.ok && THEMES.includes(r.theme) && r.theme !== currentTheme) setTheme(r.theme, true);
+  }).catch(() => {});
+} catch {}
 for (const b of document.querySelectorAll('[data-theme-pick]')) {
   b.addEventListener('click', () => setTheme(b.dataset.themePick));
 }

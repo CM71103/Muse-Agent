@@ -415,6 +415,14 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 }
 @media (prefers-reduced-motion:reduce) { button,input,textarea,select { transition:none; } }
 
+/* Theme switching: a brief cross-fade of every themed surface so appearance
+   changes read as one continuous space, not a hard repaint. */
+body.theme-anim,body.theme-anim *:not(svg):not(path):not(line):not(circle):not(rect):not(polyline):not(code):not(pre) {
+  transition:background-color .4s var(--ease-soft),border-color .4s var(--ease-soft),color .4s var(--ease-soft),box-shadow .4s var(--ease-soft) !important;
+}
+/* Gentle programmatic scrolling (chat auto-follow, side lists). */
+#mainlog,#sessions-scroll,#projects-list,#palette-results,.sidebar-scroll,.wb-panels,.design-file-list { scroll-behavior:smooth; }
+
 /* Krishna: midnight blue, peacock teal and restrained flute-gold accents. */
 body[data-theme="krishna"] {
   color-scheme:dark;
@@ -466,4 +474,11 @@ body[data-theme="krishna"]::before { background:radial-gradient(ellipse at 50% 0
 body[data-theme="krishna"] #bg-shader { filter:blur(2px) saturate(.55); }
 body[data-theme="krishna"] #bg-shader[data-shader-state="fallback"],body[data-theme="krishna"] #bg-shader[data-shader-state="lost"] { background:radial-gradient(ellipse at 24% 55%,#103e4a,transparent 65%),radial-gradient(ellipse at 80% 18%,#1e3156,#0c1729 75%); }
 body[data-theme="krishna"] .brand-mark { color:#efc46d; }
-body[data-theme="krishna"] #send,body[data-theme="krishna"] #btn-new { box-shadow:0 4px 16px rgb(239 196 109 / .12); }
+body[data-theme="krishna"] #send,body[data-theme="krishna"] #btn-new,body[data-theme="krishna"] .btn-primary {
+  background:linear-gradient(160deg,#f3cf86,#e0aa4e); color:#142139; border-color:transparent;
+  box-shadow:0 6px 18px rgb(224 170 78 / .22);
+}
+body[data-theme="krishna"] #send:hover,body[data-theme="krishna"] #btn-new:hover,body[data-theme="krishna"] .btn-primary:hover {
+  background:linear-gradient(160deg,#f7d99b,#e6b45e); box-shadow:0 8px 22px rgb(224 170 78 / .3);
+}
+body[data-theme="krishna"] .inputwrap:focus-within { box-shadow:0 0 0 3px color-mix(in srgb,#62d1b8 14%,transparent); }

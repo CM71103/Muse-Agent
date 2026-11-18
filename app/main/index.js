@@ -1441,6 +1441,22 @@ ipcMain.handle('design:site:bounds', (e, rect) => {
   designSiteView.setVisible(true);
   return { ok: true };
 });
+// Appearance preference (theme). Lives beside the config as a tiny JSON file:
+// the renderer never touches web storage (privacy invariant pinned by tests).
+ipcMain.handle('appearance:get', (e) => {
+  requireTrusted(e);
+  try {
+    const data = JSON.parse(fs.readFileSync(path.join(configDir(), 'appearance.json'), 'utf8'));
+    return { ok: true, theme: typeof data.theme === 'string' ? data.theme : 'krishna' };
+  } catch { return { ok: true, theme: 'krishna' }; }
+});
+ipcMain.handle('appearance:set', (e, theme) => {
+  requireTrusted(e);
+  try {
+    fs.writeFileSync(path.join(configDir(), 'appearance.json'), JSON.stringify({ theme: String(theme || 'krishna') }));
+    return { ok: true };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
 // Capture the canvas as a PNG the user saves anywhere: the artboard region of
 // the main window, or the live site view's own contents when one is overlaid.
 ipcMain.handle('design:capture', async (e, rect) => {
