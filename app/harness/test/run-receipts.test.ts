@@ -46,6 +46,33 @@ test('an interrupted run is detected on restore and a closed one is not', async 
   assert.equal(agent2.interruptedRun, null);
 });
 
+// --- history repair (answerStoppedCalls pattern) ---
+
+test('unanswered tool calls are repaired and cut-off args rewritten on restore', async () => {
+  const c = cfg();
+  const id = session.newId();
+  session.save({ id, history: [
+    { role: 'user', content: 'do it' },
+    // crash mid-tool: cut-off JSON args, no tool result ever appended
+    { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'shell', arguments: '{"command":"ls"' } }] },
+    // a later call that WAS answered — must not be touched
+    { role: 'assistant', content: 'partial', tool_calls: [{ id: 'c2', type: 'function', function: { name: 'shell', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'c2', content: '{"ok":true}' },
+  ] });
+  const agent = new Agent(c, { approver: async () => true });
+  await agent.restore(id);
+  const hist = agent.history;
+  const a1 = hist.find(m => m.role === 'assistant' && m.tool_calls && m.tool_calls.some(x => x.id === 'c1'));
+  assert.equal(a1.tool_calls[0].function.arguments, '{}', 'cut-off JSON args must be rewritten');
+  const t1 = hist.find(m => m.role === 'tool' && m.tool_call_id === 'c1');
+  assert.ok(t1, 'the unanswered call gets a synthesized result');
+  assert.match(t1.content, /interrupted/);
+  assert.equal(hist.filter(m => m.role === 'tool' && m.tool_call_id === 'c2').length, 1, 'answered calls are not duplicated');
+  // ordering is protocol-valid: every tool reply follows its assistant call
+  const a1i = hist.indexOf(a1), t1i = hist.indexOf(t1);
+  assert.ok(t1i > a1i);
+});
+
 // --- agent:send: queue_after_active + idempotent dispatch ---
 
 function loadSendHandler(shim: Record<string, any>) {

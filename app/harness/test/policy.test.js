@@ -166,7 +166,12 @@ test('write_file requires approval (gate integration)', async () => {
 test('tool registry keeps central policy (no alwaysAsk drift)', () => {
   const { tools } = buildTools(cfg());
   const names = tools.map(t=>t.name);
-  assert.deepEqual(names.sort(),['list_dir','read_file','shell','spawn_agent','web_fetch','write_file'].sort());
+  // Guard for explicit tool-set decisions: data sources + dashboards joined
+  // the registry in the opendashboards port (read-only at the driver; see
+  // datasources.js / dashboards.js).
+  assert.deepEqual(names.sort(),['list_dir','read_file','shell','spawn_agent','web_fetch','write_file',
+    'list_data_sources','sqlite_tables','sqlite_run_sql',
+    'list_dashboards','create_dashboard','edit_dashboard','delete_dashboard'].sort());
 });
 
 test('shipped DEFAULTS and absent legacy fields both support approval-free Auto', () => {

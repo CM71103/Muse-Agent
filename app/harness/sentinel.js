@@ -52,8 +52,8 @@ class Sentinel {
     this.timeoutMs = (this.agentCfg.approval_timeout_s || 3600) * 1000;
     this.denyRules = this.cfg.deny_rules || [];
     // Central policy. Tool registry `alwaysAsk` is advisory; this is the law.
-    this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell', 'windows_click', 'windows_type', 'windows_key', 'windows_scroll', 'sandbox_click', 'sandbox_type', 'sandbox_key', 'sandbox_scroll']);
-    this.readTools = new Set(['read_file', 'list_dir']);
+    this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell', 'windows_click', 'windows_type', 'windows_key', 'windows_scroll', 'sandbox_click', 'sandbox_type', 'sandbox_key', 'sandbox_scroll', 'create_dashboard', 'edit_dashboard', 'delete_dashboard']);
+    this.readTools = new Set(['read_file', 'list_dir', 'list_data_sources', 'sqlite_tables', 'sqlite_run_sql', 'list_dashboards']);
     // Design Studio tools: reads of the shared design registry, and writes that
     // can only land inside the selected project folder (.od metadata, template
     // scaffolding, artifact manifest). Registered with the sentinel so an

@@ -36,7 +36,19 @@ const api={
  getSettings:async()=>({base_url:'https://api.example.com/v1',model:'muse-preview',visible_models:['muse-preview'],embed_key_set:false,has_key:true}),
  saveSettings:async()=>({ok:true}),selectModel:async()=>({ok:true}),fetchModels:async()=>({ok:true,models:['muse-preview','muse-reasoning']}),mcpList:async()=>[],
  agentSend:async()=>({ok:true,text:''}),
- boxStatus:async()=>({state:'disconnected',tools:0}),onBoxStatus:()=>()=>{},boxConnect:async()=>({ok:true}),boxDisconnect:async()=>({ok:true}),boxOpenDesktop:async()=>({ok:true}),boxCancel:async()=>({ok:true})};
+ boxStatus:async()=>({state:'disconnected',tools:0}),onBoxStatus:()=>()=>{},boxConnect:async()=>({ok:true}),boxDisconnect:async()=>({ok:true}),boxOpenDesktop:async()=>({ok:true}),boxCancel:async()=>({ok:true}),
+ datasourcesAddSqlite:async()=>({ok:false,cancelled:true}),dashDelete:async()=>({ok:true}),dashList:async()=>[{id:'d1',title:'Sales overview',description:'',charts:5,created:''}],
+ dashData:async()=>({ok:true,dashboard:{id:'d1',title:'Sales overview',charts:[
+  {id:'c1',title:'Revenue by month',type:'bar',x:'month',y:['revenue']},
+  {id:'c2',title:'Trend',type:'area',x:'month',y:['revenue']},
+  {id:'c3',title:'Share by region',type:'pie',label:'region',value:'revenue'},
+  {id:'c4',title:'Total revenue',type:'stat',value:'revenue',label:'month'},
+  {id:'c5',title:'Raw rows',type:'table'}]},charts:[
+  {chartId:'c1',columns:['month','revenue'],rows:[{month:'jan',revenue:120},{month:'feb',revenue:180},{month:'mar',revenue:150},{month:'apr',revenue:220},{month:'may',revenue:260},{month:'jun',revenue:240}],truncated:false},
+  {chartId:'c2',columns:['month','revenue'],rows:[{month:'jan',revenue:120},{month:'feb',revenue:180},{month:'mar',revenue:150},{month:'apr',revenue:220},{month:'may',revenue:260},{month:'jun',revenue:240}],truncated:false},
+  {chartId:'c3',columns:['region','revenue'],rows:[{region:'east',revenue:420},{region:'west',revenue:310},{region:'north',revenue:180},{region:'south',revenue:90}],truncated:false},
+  {chartId:'c4',columns:['month','revenue'],rows:[{month:'jun',revenue:240}],truncated:false},
+  {chartId:'c5',columns:['month','revenue'],rows:[{month:'jan',revenue:120},{month:'feb',revenue:180},{month:'mar',revenue:150}],truncated:false}]})};
 for(const name of ['onAgentEvent','onApprovalRequest','onApprovalResolved','onApprovalExpired','onSessionReset','onQuestion','onLearningStatus'])api[name]=()=>()=>{};
 contextBridge.exposeInMainWorld('muse',api);
 `);
@@ -89,6 +101,9 @@ app.whenReady().then(async()=>{try{
  await js("setTheme('light')");await pause(500);await shot('theme-light');
  await js("setTheme('dark')");await pause(500);await shot('theme-dark');
  assert.equal(await js("window.muse.getAppearance().then(r=>r.theme)"),'dark','theme choice must reach the persistent store');
+ await js("openDashboardView('d1')");await pause(500);await shot('dashboards');
+ await js("document.getElementById('mainlog').scrollTop=1180");await pause(300);await shot('dashboards-lower');
+ await js("document.getElementById('mainlog').scrollTop=2200");await pause(300);await shot('dashboards-table');
  assert.deepEqual(errors,[],'Renderer console/load errors');console.log('PASS: chat preview '+output);win.destroy();app.exit(0);
 }catch(error){console.error(error);if(win)win.destroy();app.exit(1)}});
 setTimeout(()=>app.exit(1),25000).unref();

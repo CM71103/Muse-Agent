@@ -2,12 +2,14 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   const { Agent, systemPrompt } = require('./agent');
   const { designContext } = require('./design.ts');
   this._cancelRequested = false;
+  Agent.repairHistory(this.history);   // cheap no-op; heals interrupted history before the request
+  this._runToolErrors = 0;             // per-run tool error metric (surfaced on done)
   this.lastMemoryTurnId = null;
   if (!this.history.length) {
     const design = this.cwdOverride ? designContext(this.cwdOverride) : null;
     const systemExtra = [opts.systemExtra || '', design?.text || ''].filter(Boolean).join('\n\n');
     this.history.push({ role: 'system', content:
-      systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking) });
+      systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard')) });
   }
   if (userText !== null) this.history.push({ role: 'user', content: userText });
   this._title ||= require('./session').titleFromHistory(this.history);
@@ -142,7 +144,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
         receipt('run_finished', { outcome: 'complete', turns: turn + 1 });
         const ckComplete = ckpt();
         this.events({ type: 'message', text: finalText });
-        this.events({ type: 'done', reason: 'complete', usage, tokensMissing: missingUsage, runId: this._runEventId, checkpoint: ckComplete });
+        this.events({ type: 'done', reason: 'complete', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckComplete });
         return { text: finalText, turns: turn + 1, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage, checkpoint: ckComplete };
       }
       this.history.push(toWireAssistant(canon));
@@ -161,7 +163,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     receipt('run_finished', { outcome: 'max_turns', turns: this.maxTurns });
     const ckMax = ckpt();
     this.events({ type: 'message', text: finalText });
-    this.events({ type: 'done', reason: 'max_turns', usage, tokensMissing: missingUsage, runId: this._runEventId, checkpoint: ckMax });
+    this.events({ type: 'done', reason: 'max_turns', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckMax });
     return { text: finalText, turns: this.maxTurns, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage, checkpoint: ckMax };
   } catch (error) {
     const cancelled = this._cancelRequested || (error as Error).name === 'AbortError';
@@ -170,7 +172,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     if (cancelled) {
       this.persist();   // partial progress is context worth keeping
       receipt('run_finished', { outcome: 'cancelled' });
-      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, runId: this._runEventId, checkpoint: ckpt() });
+      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckpt() });
       return { text: finalText || '(cancelled)', turns: 0, cancelled: true, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
     }
     this.persist();   // a failed run still leaves resumable context behind

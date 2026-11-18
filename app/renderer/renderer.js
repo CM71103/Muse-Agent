@@ -283,8 +283,11 @@ function scrollDown(force = false) {
 
 function clearEmpty() {
   projectHomeVisible = false;
+  dashboardsViewVisible = false;
   const home = document.getElementById('project-home');
   if (home && home.parentNode) home.remove();
+  const dash = document.getElementById('dashboards-home');
+  if (dash && dash.parentNode) dash.remove();
   const e = $('empty');
   if (e) e.remove();
 }
@@ -666,6 +669,7 @@ function handleAgentEvent(ev) {
       }
       if (ev.denied) addDeniedRow(ev.name, ev.reason);
       else addToolRow({ id: ev.id, name: ev.name, args: null, result: ev.result });
+      if (ev.name === 'create_dashboard' && ev.result && ev.result.ok && ev.result.id) addDashboardChip(ev.result);
       break;
     case 'info':
       if (/compaction/.test(ev.text)) addSysNote(ev.text, false, 'mem');
@@ -710,6 +714,7 @@ function handleAgentEvent(ev) {
         }
         wbUpdateDetails();
       }
+      if (typeof ev.toolErrors === 'number' && ev.toolErrors > 0) { sessionToolErrors += ev.toolErrors; wbUpdateDetails(); }
       if (ev.checkpoint && ev.checkpoint.files && ev.checkpoint.files.length) addUndoChip(ev.checkpoint);
       refreshSessions();
       break;
@@ -931,6 +936,102 @@ function renderQueueChips(items) {
 }
 window.muse.onQueueUpdate?.((state) => renderQueueChips((state && state.items) || []));
 
+/* ---------- dashboards view (live JSON dashboards — queries, not data) ---------- */
+let dashboardsViewVisible = false;
+let selectedDashboardId = null;
+
+async function renderDashboardsView() {
+  if (!dashboardsViewVisible || typeof window.muse.dashList !== 'function') return;
+  let list = [];
+  try { list = await window.muse.dashList(); } catch { /* store not ready */ }
+  if (!dashboardsViewVisible) return;
+  transcript.replaceChildren();
+  const home = document.createElement('section');
+  home.id = 'dashboards-home'; home.className = 'dashboards-home';
+  const h = document.createElement('h1'); h.textContent = 'Dashboards';
+  const hint = document.createElement('p'); hint.className = 'dash-hint';
+  hint.textContent = 'Ask Muse to build one (e.g. “create a dashboard of orders by region”). Each chart is a live SQL query — open a dashboard any time to re-run the numbers.';
+  home.append(h, hint);
+  if (!list.length) {
+    const n = document.createElement('p'); n.className = 'dash-hint';
+    n.textContent = 'No dashboards yet.';
+    home.append(n);
+  }
+  const listWrap = document.createElement('div'); listWrap.className = 'dash-list';
+  for (const d of list) {
+    const item = document.createElement('div');
+    item.className = 'dash-item' + (d.id === selectedDashboardId ? ' active' : '');
+    const t = document.createElement('strong'); t.textContent = d.title;
+    const s = document.createElement('small'); s.textContent = `${d.charts} chart${d.charts === 1 ? '' : 's'}`;
+    const del = document.createElement('button'); del.className = 'btn-ghost dash-del'; del.textContent = 'delete';
+    del.addEventListener('click', guarded(async () => {
+      if (!window.confirm(`Delete “${d.title}”?`)) return;
+      await window.muse.dashDelete(d.id);
+      if (selectedDashboardId === d.id) selectedDashboardId = null;
+      renderDashboardsView();
+    }));
+    item.addEventListener('click', (e) => {
+      if (e && e.target === del) return;
+      selectedDashboardId = d.id;
+      renderDashboardsView();
+    });
+    item.append(t, s, del);
+    listWrap.append(item);
+  }
+  home.append(listWrap);
+  const view = document.createElement('div');
+  view.id = 'dash-view';
+  home.append(view);
+  transcript.append(home);
+  const scroller = $('mainlog');
+  if (scroller) scroller.scrollTop = 0;   // the view is a page — always open at its header
+  if (selectedDashboardId) {
+    try {
+      const data = await window.muse.dashData(selectedDashboardId);
+      if (!dashboardsViewVisible) return;
+      if (data && data.ok && typeof window.MuseCharts !== 'undefined') {
+        const datasets = {};
+        for (const c of data.charts || []) datasets[c.chartId] = c;
+        window.MuseCharts.renderDashboard(view, data.dashboard, datasets);
+      } else {
+        view.textContent = 'Dashboard unavailable.';
+      }
+    } catch (err) {
+      view.textContent = 'Failed to load dashboard data: ' + String(err && err.message || err);
+    }
+  }
+}
+function openDashboardView(id) {
+  selectedDashboardId = id || null;
+  dashboardsViewVisible = true;
+  setNav('dashboards');
+  renderDashboardsView();
+}
+function addDashboardChip(result) {
+  const el = document.createElement('div');
+  el.className = 'sysnote action-chip';
+  const label = document.createElement('span');
+  label.className = 'q-label';
+  label.textContent = `dashboard created: ${result.title || result.id}`;
+  const btn = document.createElement('button');
+  btn.className = 'q-btn';
+  btn.textContent = 'open';
+  btn.addEventListener('click', () => openDashboardView(result.id));
+  el.append(label, btn);
+  transcript.append(el);
+  reveal(el, 8);
+  scrollDown();
+}
+async function addSqliteDataSource() {
+  if (typeof window.muse.datasourcesAddSqlite !== 'function') return;
+  try {
+    const res = await window.muse.datasourcesAddSqlite();
+    if (!res || res.cancelled) return;
+    if (!res.ok) { addSysNote('data source could not be registered: ' + String(res.error || 'unknown error'), true); return; }
+    addSysNote(`data source registered: ${res.connection.name}${res.healthy ? ' — ready' : ' — warning: ' + String(res.error || 'could not open')}`, !res.healthy, 'mem');
+  } catch (e) { reportError(e); }
+}
+
 /* ---------- run checkpoint undo chip ---------- */
 function addUndoChip(checkpoint) {
   const el = document.createElement('div');
@@ -1015,7 +1116,7 @@ async function loadSession(s) {
     projectHomeVisible = false; showThinking(false); subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = [];
     const events = restoredEvents; loadingSession = false;
     events.forEach(handleAgentEvent); renderEmpty();
-    activeSessionId = s.id; crumbTitle = res.title || 'Session'; $('crumb').textContent = crumbTitle; wbCounters = { msgs: 0, tools: 0 }; sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, approximate: false }; wbUpdateDetails(); wbEvent('session loaded: ' + crumbTitle); await refreshProject(); renderSessions();
+    activeSessionId = s.id; crumbTitle = res.title || 'Session'; $('crumb').textContent = crumbTitle; wbCounters = { msgs: 0, tools: 0 }; sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, approximate: false }; sessionToolErrors = 0; wbUpdateDetails(); wbEvent('session loaded: ' + crumbTitle); await refreshProject(); renderSessions();
   } catch (e) { reportError(e); }
   finally { loadingSession = false; restoredEvents = []; setBusy(false); }
 }
@@ -1026,7 +1127,7 @@ async function newSession() {
     const res = await window.muse.reset();
     if (!res || !res.ok) throw new Error(res && res.error || 'Session reset failed');
     activeSessionId = null; crumbTitle = 'New session';
-    wbCounters = { msgs: 0, tools: 0 }; sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, approximate: false }; wbUpdateDetails(); wbEvent('new session');
+    wbCounters = { msgs: 0, tools: 0 }; sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, approximate: false }; sessionToolErrors = 0; wbUpdateDetails(); wbEvent('new session');
     input.value = ''; resetTranscript(); $('crumb').textContent = crumbTitle;
     await refreshProject(); await refreshSessions();
   } catch (e) { reportError(e); }
@@ -1544,6 +1645,7 @@ let wbCounters = { msgs: 0, tools: 0 };
 // per-run totals the LLM reported). 'approximate' when some calls went
 // unreported — never present an estimate as exact.
 let sessionUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, approximate: false };
+let sessionToolErrors = 0;
 function fmtTok(n) {
   if (!n) return '0';
   return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n);
@@ -1564,6 +1666,7 @@ function wbUpdateDetails() {
   $('wb-tokens').textContent = sessionUsage.total_tokens
     ? (sessionUsage.approximate ? '≈' : '') + fmtTok(sessionUsage.prompt_tokens) + ' in · ' + fmtTok(sessionUsage.completion_tokens) + ' out'
     : '—';
+  $('wb-errors').textContent = String(sessionToolErrors);
   $('wb-session').textContent = activeSessionId ? (crumbTitle || t('wb.savedSession', 'Saved session')) : t('wb.new', 'New');
 }
 for (const name of ['activity', 'memory', 'details']) {
@@ -1652,6 +1755,7 @@ const NAV_ACTIONS = {
   chat: () => { if (memOpen) closeMemory(); input.focus(); },
   projects: () => { if (memOpen) closeMemory(); if (activeProjectId) { projectHomeVisible = true; renderProjectHome(); } else { const s = document.getElementById('project-search'); if (s) { s.focus(); s.scrollIntoView?.({ block: 'nearest' }); } } },
   activity: () => { if (memOpen) closeMemory(); setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); },
+  dashboards: () => { if (memOpen) closeMemory(); dashboardsViewVisible = true; renderDashboardsView(); },
   memory: () => { openMemory(); },
 };
 for (const b of navBtns) b.addEventListener('click', () => { const name = (b.dataset && b.dataset.nav) || b.id.slice(4); setNav(name); const act = NAV_ACTIONS[name]; if (act) act(); });
@@ -1958,7 +2062,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Add SQLite data source', addSqliteDataSource, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {

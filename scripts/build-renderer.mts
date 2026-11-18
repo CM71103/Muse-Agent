@@ -3,7 +3,7 @@ import { build } from 'bun';
 
 const root = path.resolve(import.meta.dirname, '..');
 const result = await build({
-  entrypoints: ['dot-orbit.ts', 'subagent-cards.ts', 'settings-panel.ts', 'activity-cards.ts', 'model-picker.ts', 'box-panel.ts', 'sandbox-panel.ts', 'learning-panel.ts', 'design-panel.ts'].map(file => path.join(root, 'scripts/renderer', file)),
+  entrypoints: ['dot-orbit.ts', 'subagent-cards.ts', 'settings-panel.ts', 'activity-cards.ts', 'model-picker.ts', 'box-panel.ts', 'sandbox-panel.ts', 'learning-panel.ts', 'design-panel.ts', 'charts.ts'].map(file => path.join(root, 'scripts/renderer', file)),
   outdir: path.join(root, 'app/renderer/lib'),
   naming: '[name].js', target: 'browser', format: 'iife', minify: true,
   banner: '/* Paper Shaders 0.0.82 | Apache-2.0 | Copyright Lost Coast Labs, Inc. | See node_modules/@paper-design/shaders/LICENSE and NOTICE. */',

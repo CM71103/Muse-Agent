@@ -798,6 +798,63 @@ ipcMain.handle('checkpoint:undo', async (e, runId) => {
   } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
 });
 
+// --- data sources (connection registry) & dashboards ---
+// Connections resolve server-side; model args carry ids only. Dashboard data
+// flows through this process (the interpreter pattern) — the renderer never
+// touches database files itself.
+ipcMain.handle('datasources:list', (e) => {
+  requireTrusted(e);
+  return require('../harness/datasources').listConnections();
+});
+ipcMain.handle('datasources:save', (e, rec) => {
+  requireTrusted(e);
+  try { return { ok: true, connection: require('../harness/datasources').saveConnection(rec || {}) }; }
+  catch (err) { return { ok: false, error: String(err && err.message || err) }; }
+});
+ipcMain.handle('datasources:remove', (e, id) => {
+  requireTrusted(e);
+  return { ok: require('../harness/datasources').removeConnection(String(id || '')) };
+});
+ipcMain.handle('datasources:test', (e, id) => {
+  requireTrusted(e);
+  const ds = require('../harness/datasources');
+  const c = ds.getConnection(String(id || ''));
+  return c ? ds.testConnection(c) : { ok: false, error: 'no such data source' };
+});
+// Pick a SQLite file and register it (command palette: "Add SQLite data source").
+ipcMain.handle('datasources:add-sqlite', async (e) => {
+  requireTrusted(e);
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: 'Choose a SQLite database', properties: ['openFile'],
+    filters: [{ name: 'SQLite databases', extensions: ['db', 'sqlite', 'sqlite3'] }, { name: 'All files', extensions: ['*'] }],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return { ok: false, cancelled: true };
+  const ds = require('../harness/datasources');
+  const file = picked.filePaths[0];
+  const name = path.basename(file).replace(/\.(db|sqlite3?)$/i, '') || 'data source';
+  const rec = ds.saveConnection({ name, type: 'sqlite', config: { file } });
+  const check = ds.testConnection(rec);
+  return { ok: true, connection: rec, healthy: check.ok, error: check.error };
+});
+
+ipcMain.handle('dashboards:list', (e) => {
+  requireTrusted(e);
+  return require('../harness/dashboards').listDashboards();
+});
+ipcMain.handle('dashboards:get', (e, id) => {
+  requireTrusted(e);
+  return require('../harness/dashboards').getDashboard(String(id || ''));
+});
+// Interpreter: re-run every chart's query live (driver read-only, caller caps).
+ipcMain.handle('dashboards:data', (e, id) => {
+  requireTrusted(e);
+  return require('../harness/dashboards').dashboardData(String(id || ''));
+});
+ipcMain.handle('dashboards:delete', (e, id) => {
+  requireTrusted(e);
+  return require('../harness/dashboards').removeDashboard(String(id || '')) ? { ok: true } : { ok: false, error: 'not found' };
+});
+
 ipcMain.handle('approval:respond', async (e, { id, approved }) => {
   requireTrusted(e);
   const p = pendingApprovals.get(String(id || ''));

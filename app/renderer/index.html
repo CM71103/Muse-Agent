@@ -479,6 +479,34 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .action-chip .q-btn{border:1px solid var(--color-border-soft);background:transparent;color:var(--color-muted-fg);border-radius:7px;padding:1px 8px;font-size:10.5px;cursor:pointer;transition:background .16s var(--ease-soft),color .16s var(--ease-soft)}
 .action-chip .q-btn:hover{background:var(--color-secondary);color:var(--color-foreground)}
 .action-chip .q-btn:disabled{opacity:.5;cursor:default}
+/* Dashboards view + chart cards (hand-rolled SVG renderer) */
+.dashboards-home{display:flex;flex-direction:column;gap:16px}
+.dashboards-home h1{font-size:22px;margin:0}
+.dash-hint{color:var(--color-muted-fg);font-size:12.5px;margin:0;line-height:1.6}
+.dash-list{display:flex;flex-wrap:wrap;gap:10px}
+.dash-item{display:flex;flex-direction:column;gap:4px;border:1px solid var(--color-border-soft);background:var(--color-surface);border-radius:12px;padding:12px 14px;min-width:210px;cursor:pointer;transition:border-color .16s var(--ease-soft),transform .16s var(--ease-soft);color:#4a3a2c}
+.dash-item:hover{border-color:var(--color-border);transform:translateY(-1px)}
+.dash-item.active{border-color:color-mix(in srgb,var(--color-primary) 55%,transparent)}
+.dash-item strong{font-size:13px}
+.dash-item small{color:#8a7663}
+.dash-item .dash-del{align-self:flex-start;margin-top:4px;font-size:10.5px;padding:1px 8px;color:#8a7663}
+.mc-grid-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+/* Paper cards: --color-surface is the root-computed paper token (cream in
+   every theme), so ink is pinned here — never inherit the themed foreground. */
+.mc-card{border:1px solid var(--color-border-soft);background:var(--color-surface);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;color:#4a3a2c}
+.mc-title{margin:0;font-size:13px;color:#38271e}
+.mc-svg{width:100%;height:auto;display:block}
+.mc-grid{stroke:#dccdb8;stroke-width:1;opacity:.7}
+.mc-tick{font-size:10px;fill:#8a7663}
+.mc-stat{display:flex;flex-direction:column;align-items:center;padding:18px 0}
+.mc-stat-value{font-size:38px;font-weight:650;color:#38271e}
+.mc-stat-sub{color:#8a7663;font-size:12px}
+.mc-table-wrap{max-height:280px;overflow:auto}
+.mc-table{width:100%;border-collapse:collapse;font-size:11.5px}
+.mc-table th,.mc-table td{text-align:left;padding:4px 8px;border-bottom:1px solid #e5d7c4;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.mc-error p{color:#b3402e;font-size:12px;margin:0}
+.mc-empty{color:#8a7663;font-size:12px;margin:0}
+.mc-note{color:#8a7663}
 .thinking{font-size:12.5px;color:var(--color-muted-fg)}
 .thinking{display:flex;align-items:center;gap:12px;padding:4px 0}
 .thinking .thinking-label{font-weight:600;color:var(--color-foreground)}
@@ -943,6 +971,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <button id="nav-projects" aria-pressed="false" data-nav="projects" data-tip="Project spaces · Alt 2">Projects</button>
       <button id="nav-activity" aria-pressed="false" data-nav="activity" aria-controls="workbench" data-tip="Live agent activity · Alt 3">Activity</button>
       <button id="nav-memory" aria-pressed="false" data-nav="memory" data-tip="Memory scopes · Alt 4">Memory</button>
+      <button id="nav-dashboards" aria-pressed="false" data-nav="dashboards" data-tip="Live dashboards · ask Muse to build one">Dashboards</button>
     </div>
     <div class="navbar-side right">
       <div class="right">
@@ -1037,6 +1066,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <div class="wb-section"><div class="wb-k" data-i18n="wb.messages">Messages</div><div id="wb-msgs" class="wb-v">0</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.toolCalls">Tool calls</div><div id="wb-tools" class="wb-v">0</div></div>
       <div class="wb-section"><div class="wb-k">Tokens</div><div id="wb-tokens" class="wb-v">—</div></div>
+      <div class="wb-section"><div class="wb-k">Tool errors</div><div id="wb-errors" class="wb-v">0</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.shortcuts">Shortcuts</div>
         <div class="shortcut"><span data-i18n="wb.scCommands">Commands</span><kbd>Ctrl K</kbd></div>
         <div class="shortcut"><span data-i18n="wb.scNew">New session</span><kbd>Ctrl N</kbd></div>
@@ -1270,4 +1300,5 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
 <script src="lib/learning-panel.js"></script>
 <link rel="stylesheet" href="design-panel.css">
 <script src="lib/design-panel.js"></script>
+<script src="lib/charts.js"></script>
 <script src="renderer.js"></script></body></html>
