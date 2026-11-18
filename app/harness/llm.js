@@ -59,7 +59,7 @@ class LlmClient {
           throw new Error(`The model returned no text after using its ${body.max_tokens}-token response limit. ` +
             `Try a non-reasoning model or increase llm.max_tokens if your provider supports it (model: ${this.cfg.model}).`);
         }
-        const retryable = /HTTP 5\d\d/.test(e.message) || /network|fetch failed|timeout|aborted|socket/i.test(e.message);
+        const retryable = e.transient === true || /HTTP 5\d\d/.test(e.message) || /network|fetch failed|timeout|aborted|socket/i.test(e.message);
         if (!retryable) throw e;
         opts.onStreamReset?.();
         await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
@@ -109,8 +109,17 @@ class LlmClient {
         throw err;
       }
       if (!hasContent && !hasTools) {
-        const err = new Error(`LLM returned empty response (finish_reason: ${choice.finish_reason})`);
+        // finish_reason missing = the stream/connection ended before the
+        // provider's closing chunk (common with reasoning models whose
+        // reasoning_content deltas precede any visible text). That is a
+        // transient transport truncation, not a model decision — mark it
+        // retryable so the retry loop in chat() heals it.
+        const early = choice.finish_reason == null;
+        const err = new Error(early
+          ? `The model stream ended early with no reply (model: ${this.cfg.model}). This is usually a transient provider hiccup.`
+          : `LLM returned empty response (finish_reason: ${choice.finish_reason})`);
         err.code = 'EMPTY_RESPONSE';
+        if (early) err.transient = true;
         throw err;
       }
       return {
@@ -149,6 +158,12 @@ class LlmClient {
         if (typeof delta.content === 'string' && delta.content) {
           message.content += delta.content;
           onDelta(delta.content);
+        }
+        // Reasoning models (GLM, DeepSeek-R1 style) stream their thinking in
+        // reasoning_content before any visible text; keep it so a truncated
+        // stream can be told apart from a truly empty reply.
+        if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) {
+          message.reasoning_content = (message.reasoning_content || '') + delta.reasoning_content;
         }
         for (const part of delta.tool_calls || []) {
           const index = Number.isInteger(part.index) ? part.index : calls.size;
