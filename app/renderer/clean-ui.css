@@ -92,23 +92,27 @@ body { font-family:Inter,'Segoe UI Variable Text','Segoe UI',ui-sans-serif,syste
 body::before { background:radial-gradient(ellipse at 50% -20%,rgb(0 0 0 / .03),transparent 60%),var(--color-surface-app); }
 
 /* ---------- affectUI primitives ---------- */
-/* pixel mark: the tiny coloured squares that give agents a face */
-.pixel-mark { width:8px; height:8px; flex-shrink:0; background:var(--aui-blue);
-  box-shadow:4px 0 0 color-mix(in srgb,var(--aui-blue) 55%,transparent),
-             0 4px 0 color-mix(in srgb,var(--aui-blue) 40%,transparent),
-             4px 4px 0 color-mix(in srgb,var(--aui-blue) 22%,transparent); }
-.pixel-mark.pm-green { background:var(--aui-green); box-shadow:4px 0 0 color-mix(in srgb,var(--aui-green) 55%,transparent), 0 4px 0 color-mix(in srgb,var(--aui-green) 40%,transparent), 4px 4px 0 color-mix(in srgb,var(--aui-green) 22%,transparent); }
-.pixel-mark.pm-orange { background:var(--aui-orange); box-shadow:4px 0 0 color-mix(in srgb,var(--aui-orange) 55%,transparent), 0 4px 0 color-mix(in srgb,var(--aui-orange) 40%,transparent), 4px 4px 0 color-mix(in srgb,var(--aui-orange) 22%,transparent); }
-.pixel-mark.pm-purple { background:var(--aui-purple); box-shadow:4px 0 0 color-mix(in srgb,var(--aui-purple) 55%,transparent), 0 4px 0 color-mix(in srgb,var(--aui-purple) 40%,transparent), 4px 4px 0 color-mix(in srgb,var(--aui-purple) 22%,transparent); }
+/* Pixel mark: the tiny coloured squares that give an agent a face. Rendered
+   as the assistant's identity square before the Muse spark (the Agent Router
+   vocabulary) — colour carries identity, never decoration. */
+.msg.assistant .who::before { content:''; display:inline-block; width:8px; height:8px;
+  margin-right:7px; vertical-align:middle;
+  background:var(--floor,var(--aui-blue));
+  box-shadow:4px 0 0 color-mix(in srgb,var(--floor,var(--aui-blue)) 55%,transparent),
+             0 4px 0 color-mix(in srgb,var(--floor,var(--aui-blue)) 38%,transparent),
+             4px 4px 0 color-mix(in srgb,var(--floor,var(--aui-blue)) 20%,transparent); }
 
-/* gradient floor: a card's colour rises from its lower edge on hover/active —
-   the affectUI signature hover. Decoration only; all information stays in text. */
-.grad-floor { position:relative; }
-.grad-floor::after { content:''; position:absolute; inset:auto 0 0 0; height:34%;
-  background:linear-gradient(to top,color-mix(in srgb,var(--floor,var(--color-primary)) 13%,transparent),transparent);
-  opacity:0; transform:translateY(6px); pointer-events:none;
+/* Gradient floor: the card's own colour rises from its lower edge on hover —
+   the affectUI signature. Decoration only; every fact stays in the text.
+   Applied to the real cards below via their --floor variable. */
+.activity-card,.subagent-card,.q-btn,.sess { position:relative; overflow:hidden; }
+.activity-card::after,.subagent-card::after,.q-btn::after,.sess::after {
+  content:''; position:absolute; inset:auto 0 0 0; height:34%; pointer-events:none;
+  background:linear-gradient(to top,color-mix(in srgb,var(--floor,var(--color-primary)) 12%,transparent),transparent);
+  opacity:0; transform:translateY(6px);
   transition:opacity var(--dur-aui) var(--ease-aui),transform var(--dur-aui) var(--ease-aui); }
-.grad-floor:hover::after,.grad-floor:focus-within::after { opacity:1; transform:translateY(0); }
+.activity-card:hover::after,.subagent-card:hover::after,.q-btn:hover::after,.sess:hover::after,
+.activity-card:focus-within::after,.subagent-card:focus-within::after { opacity:1; transform:translateY(0); }
 
 /* shimmer: the "routing / reading" line */
 @keyframes aui-shimmer { 0% { background-position:-60% 0; } 100% { background-position:160% 0; } }
@@ -158,8 +162,11 @@ body::before { background:radial-gradient(ellipse at 50% -20%,rgb(0 0 0 / .03),t
   background:color-mix(in srgb,var(--aui-blue) 12%,transparent); border-color:color-mix(in srgb,var(--aui-blue) 30%,transparent); }
 
 /* ---------- router-lanes language for subagent cards (Agent Router) ---------- */
+/* Real DOM: .subagent-card > .subagent-heading > (strong, .subagent-state),
+   .subagent-task, .subagent-progress (a TEXT line, not a bar), .subagent-log,
+   .subagent-result. */
 .subagent-card { --floor:var(--aui-blue); border-radius:14px; border:1px solid var(--color-border);
-  background:var(--color-card); position:relative; overflow:hidden;
+  background:var(--color-card);
   transition:border-color var(--dur-aui) var(--ease-aui),box-shadow var(--dur-aui) var(--ease-aui); }
 .subagent-card:hover,.subagent-card:focus-within { border-color:color-mix(in srgb,var(--floor) 32%,var(--color-border)); }
 .subagent-heading::before { content:''; width:8px; height:8px; margin-right:2px; flex-shrink:0;
@@ -170,9 +177,18 @@ body::before { background:radial-gradient(ellipse at 50% -20%,rgb(0 0 0 / .03),t
 .subagent-card[data-state="running"]::after { content:''; position:absolute; left:0; right:0; bottom:0; height:3px;
   background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--floor) 70%,transparent),transparent);
   background-size:45% 100%; background-repeat:no-repeat; animation:aui-shimmer 1.4s linear infinite; }
-.subagent-progress { height:4px; border-radius:999px; background:var(--color-surface-subtle); overflow:hidden; }
-.subagent-progress > i,.subagent-progress::before { border-radius:999px; background:var(--floor); }
-.subagent-state { border-radius:999px; }
+.subagent-progress { border-radius:999px; font:11px/1.5 var(--sans); color:var(--color-muted-fg); }
+.subagent-task { font-size:12.5px; line-height:1.6; }
+.subagent-state { border-radius:999px; font:650 9px/1 var(--sans); letter-spacing:.2px;
+  padding:4px 8px; background:var(--color-surface-subtle); border:1px solid var(--color-border-soft);
+  color:var(--color-muted-fg); }
+.subagent-card[data-state="running"] .subagent-state { color:color-mix(in srgb,var(--floor) 85%,var(--color-foreground));
+  background:color-mix(in srgb,var(--floor) 12%,transparent); border-color:color-mix(in srgb,var(--floor) 30%,transparent); }
+.subagent-card[data-state="completed"] .subagent-state { color:var(--color-success);
+  background:color-mix(in srgb,var(--color-success) 12%,transparent); border-color:color-mix(in srgb,var(--color-success) 30%,transparent); }
+.subagent-card[data-state="failed"] .subagent-state,.subagent-card[data-state="cancelled"] .subagent-state {
+  color:var(--color-destructive); background:color-mix(in srgb,var(--color-destructive) 10%,transparent);
+  border-color:color-mix(in srgb,var(--color-destructive) 28%,transparent); }
 
 /* ---------- task-queue chips (Agent Queue / task-queue cards) ---------- */
 #queuechips .q-btn, .q-btn { border:1px solid var(--color-border); border-radius:12px;
@@ -181,17 +197,29 @@ body::before { background:radial-gradient(ellipse at 50% -20%,rgb(0 0 0 / .03),t
 .q-btn:hover { border-color:color-mix(in srgb,var(--aui-purple) 35%,var(--color-border)); }
 .q-pos { font:650 9px var(--mono); color:var(--color-muted-fg); }
 
-/* ---------- workbench stat rows: usage-meter language ---------- */
-.wb-row,.wb-stat { position:relative; }
-.wb-row::before { content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px;
-  border-radius:2px; background:color-mix(in srgb,var(--color-border) 55%,transparent); }
-.wb-row.wb-active::before { background:var(--aui-blue); }
+/* ---------- workbench rows: usage-meter language ---------- */
+/* Real DOM: .wb-section > (.wb-k label, .wb-v value). */
+.wb-section { position:relative; padding-left:11px; }
+.wb-section::before { content:''; position:absolute; left:0; top:3px; bottom:3px; width:3px;
+  border-radius:2px; background:color-mix(in srgb,var(--color-border) 60%,transparent); }
+.wb-section:hover::before { background:color-mix(in srgb,var(--aui-blue) 55%,transparent); }
+.wb-v { font-variant-numeric:tabular-nums; }
 
 /* ---------- nav + sidebar: inbox-card language ---------- */
 .nav-links button { border-radius:999px; }
 .nav-links button.nav-pill { background:var(--color-primary); color:var(--color-primary-fg); }
-.session-list-item,.session-row { border-radius:12px; --floor:var(--aui-cyan); }
-.session-list-item:hover,.session-row:hover { background:var(--color-surface-subtle); }
+/* Real DOM: .sess > (.t title, .m meta), .sess.active */
+.sess { border-radius:12px; --floor:var(--aui-cyan); padding:7px 9px; margin:6px 0;
+  transition:background-color var(--dur-aui) var(--ease-aui); }
+.sess:hover { background:var(--color-surface-subtle); }
+.sess.active { background:color-mix(in srgb,var(--aui-blue) 10%,transparent);
+  box-shadow:inset 2px 0 0 var(--aui-blue); }
+.sess .t { font-size:13px; }
+
+/* ---------- memory rows: clean list rows ---------- */
+.mem-row { border-radius:12px; border:1px solid var(--color-border-soft);
+  transition:border-color var(--dur-aui) var(--ease-aui),background-color var(--dur-aui) var(--ease-aui); }
+.mem-row:hover { border-color:var(--color-border); background:var(--color-surface-subtle); }
 
 /* ---------- settings + palette ---------- */
 #settings,#palette-dialog,#memory { border:1px solid var(--color-border); border-radius:18px; }
