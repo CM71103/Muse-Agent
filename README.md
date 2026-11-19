@@ -32,7 +32,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
 | **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works — reorder them, jump the line, or cancel one. |
 | **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
-| **Make it yours** | Light, Dark, and Krishna themes with smooth switching — your choice persists across launches. Adjust glass opacity and toggle the animated shader background. |
+| **Make it yours** | Light and Dark follow the affectUI agent-clean language — ink-pill buttons, flat hairline panels, colour used only as data (pixel marks, status pills, live shimmer). Krishna themes are one click away; your choice persists across launches. Adjust glass opacity and toggle the animated shader background. |
 
 ### Built for a continuous workflow
 
