@@ -1736,7 +1736,7 @@ function scheduleHeatmap() {
 /* ---------- gooey nav pill (wensity gooey-navigation-menu port) ----------
    One liquid highlight slides behind the active nav link. Buttons toggle
    aria-pressed, which drives both the pill position and the pressed color. */
-const navBtns = ['nav-chat', 'nav-projects', 'nav-activity', 'nav-memory'].map(id => $(id));
+const navBtns = ['nav-chat', 'nav-projects', 'nav-activity', 'nav-memory', 'nav-dashboards'].map(id => $(id)).filter(Boolean);
 const navPill = document.querySelector ? document.querySelector('.nav-pill') : null;
 function syncPill() {
   if (!navPill || typeof navPill.getBoundingClientRect !== 'function') return; // test mock

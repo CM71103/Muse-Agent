@@ -102,6 +102,8 @@ app.whenReady().then(async()=>{try{
  await js("setTheme('dark')");await pause(500);await shot('theme-dark');
  assert.equal(await js("window.muse.getAppearance().then(r=>r.theme)"),'dark','theme choice must reach the persistent store');
  await js("openDashboardView('d1')");await pause(500);await shot('dashboards');
+ assert.equal(await js("document.querySelector('[data-nav=dashboards]').getAttribute('aria-pressed')"),'true','nav pill state must follow the Dashboards view');
+ assert.equal(await js("document.querySelector('[data-nav=chat]').getAttribute('aria-pressed')"),'false','Chat must not stay marked active');
  await js("document.getElementById('mainlog').scrollTop=1180");await pause(300);await shot('dashboards-lower');
  await js("document.getElementById('mainlog').scrollTop=2200");await pause(300);await shot('dashboards-table');
  assert.deepEqual(errors,[],'Renderer console/load errors');console.log('PASS: chat preview '+output);win.destroy();app.exit(0);
