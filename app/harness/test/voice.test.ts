@@ -85,3 +85,82 @@ test('ChatGPT export parsing reads message pairs from mapping trees', () => {
   assert.deepEqual(msgs.map(m => m.role), ['user', 'assistant']);
   assert.equal(msgs[1].text, 'It is 4.\nAlways.');
 });
+
+test('Codex rollouts are read from disk, including zstd-compressed ones', () => {
+  const root = path.join(home, 'fake-codex', '2026', '06', '13');
+  fs.mkdirSync(root, { recursive: true });
+  const record = (role: string, text: string, extra: any = {}) => JSON.stringify({
+    timestamp: '2026-06-13T00:00:00.000Z',
+    type: 'response_item',
+    payload: { type: 'message', role, content: [{ type: role === 'user' ? 'input_text' : 'output_text', text }], ...extra },
+  });
+  const lines = [
+    record('user', '<environment_context>\n  <cwd>C:\\x</cwd>\n</environment_context>'),
+    record('developer', 'you are a coding agent'),
+    record('user', `how do I ship this ${SECRET} feature?`),
+    record('assistant', 'Here is the plan.', { phase: 'final_answer' }),
+    record('assistant', '[external_agent_tool_call: Skill]\ninput: {}\n[/external_agent_tool_call]', { phase: 'commentary' }),
+    record('user', '[Request interrupted by user for tool use]'),
+  ];
+  fs.writeFileSync(path.join(root, 'rollout-plain.jsonl'), lines.join('\n'));
+  const zlib = require('node:zlib');
+  if (typeof zlib.zstdCompressSync === 'function') {
+    fs.writeFileSync(path.join(root, 'rollout-zst.jsonl.zst'), zlib.zstdCompressSync(Buffer.from(lines.join('\n'), 'utf8')));
+  }
+  const msgs = sources.parseCodexSessions(path.join(home, 'fake-codex'));
+  const texts = msgs.map(m => m.text);
+  assert.ok(texts.includes(`how do I ship this ${SECRET} feature?`), 'the real user turn is kept');
+  assert.ok(texts.includes('Here is the plan.'), 'the final answer is kept');
+  assert.ok(!texts.some(t => t.includes('environment_context')), 'environment context is not voice');
+  assert.ok(!texts.some(t => t.includes('you are a coding agent')), 'developer prompt is not voice');
+  assert.ok(!texts.some(t => t.includes('external_agent_tool_call')), 'tool machinery is not voice');
+  assert.ok(!texts.some(t => t.includes('Request interrupted')), 'interruption notes are not voice');
+  assert.deepEqual(new Set(msgs.map(m => m.role)), new Set(['user', 'assistant']));
+});
+
+test('Codex sessions are discovered as a high-confidence source', () => {
+  const fakeHome = path.join(home, 'home-with-codex');
+  fs.mkdirSync(path.join(fakeHome, '.codex', 'sessions'), { recursive: true });
+  const roots = sources.discoverRoots({ home: fakeHome });
+  const codex = roots.find((r: any) => r.kind === 'codex-sessions');
+  assert.ok(codex, 'codex sessions must be discovered');
+  assert.equal(codex.confidence, 'high');
+});
+
+test('Cline transcripts are read, with tool traffic and wrappers removed', () => {
+  const root = path.join(home, 'fake-cline', 'session-1');
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(path.join(root, 'session-1.messages.json'), JSON.stringify({
+    version: 1,
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: `<user_input mode="plan">please explain ${SECRET}</user_input>` }] },
+      { role: 'assistant', content: [{ type: 'thinking', thinking: 'internal reasoning, not voice' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'Here is the explanation.' }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x', name: 'shell', content: [{ query: 'y', result: 'z' }] }] },
+    ],
+  }));
+  const msgs = sources.parseClineSessions(path.join(home, 'fake-cline'));
+  const texts = msgs.map(m => m.text);
+  assert.deepEqual(msgs.map(m => m.role), ['user', 'assistant']);
+  assert.ok(texts[0].includes('please explain'), 'the wrapper is stripped');
+  assert.ok(!texts[0].includes('user_input'), 'the wrapper tag is gone');
+  assert.equal(texts[1], 'Here is the explanation.');
+  assert.ok(!texts.some(t => t.includes('internal reasoning')), 'thinking is not voice');
+  assert.ok(!texts.some(t => t.includes('tool_use')), 'tool traffic is not voice');
+});
+
+test('the Codex corpus feeds calibration without leaking its content', () => {
+  const root = path.join(home, 'fake-codex-cal', '2026', '06', '13');
+  fs.mkdirSync(root, { recursive: true });
+  const lines = [];
+  for (let i = 0; i < 12; i++) {
+    lines.push(JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: `fix the ${SECRET} bug` }] } }));
+    lines.push(JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'assistant', phase: 'final_answer', content: [{ type: 'output_text', text: 'Short answer:\n\n- step one\n- step two\n\nLet me know.' }] } }));
+  }
+  fs.writeFileSync(path.join(root, 'rollout-a.jsonl'), lines.join('\n'));
+  const res = voice.calibrate({ roots: [{ kind: 'codex-sessions', path: path.join(home, 'fake-codex-cal'), confidence: 'high' }] });
+  assert.equal(res.ok, true);
+  assert.ok(res.messages >= 20, 'enough messages for calibration');
+  assert.ok(!res.guide.includes(SECRET), 'guide must never quote Codex conversations');
+  assert.match(res.guide, /short and direct/i);
+});

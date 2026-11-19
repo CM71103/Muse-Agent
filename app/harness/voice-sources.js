@@ -7,6 +7,7 @@
 // Sources, by confidence:
 //   chatgpt-export   (high)   conversations.json from a ChatGPT data export
 //   claude-projects  (high)   ~/.claude/projects/**/*.jsonl transcripts
+//   codex-sessions   (high)   ~/.codex/sessions/**/rollout-*.jsonl[.zst]
 //   muse-sessions    (high)   this app's own session rollouts
 //   web-cache        (low)    chatgpt.com IndexedDB/LevelDB string fragments
 //                             (best-effort: roles inferred by length)
@@ -14,6 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const zlib = require('zlib');
 
 const MAX_MESSAGES = 20000;          // analysis cap; plenty for statistics
 const MIN_TEXT = 2;
@@ -92,6 +94,126 @@ function parseClaudeProjects(dir) {
   return out;
 }
 
+// Codex (the OpenAI coding agent) keeps one rollout per session under
+// ~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl.zst. The payload is
+// JSONL with response_item messages; zstd is provided by Node's own zlib.
+const CODEX_SKIP_OPENERS = [
+  '<environment_context>',
+  '<user_instructions>',
+  '<permissions instructions>',
+  '<project_doc>',
+];
+function codexTextOf(content) {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content
+    .filter(part => part && (part.type === 'input_text' || part.type === 'output_text' || part.type === 'text') && typeof part.text === 'string')
+    .map(part => part.text)
+    .join('\n');
+}
+function codexIsNoise(text) {
+  const t = text.trim();
+  if (!t) return true;
+  for (const opener of CODEX_SKIP_OPENERS) if (t.startsWith(opener)) return true;
+  if (t.startsWith('PREVIOUS AI RESPONSE')) return true;      // replayed context, not the user's own words
+  if (t.startsWith('[') && /^\[[^\]]*\]/.test(t)) return true; // "[Request interrupted by user...]"
+  if (/^\[external_agent_tool_(call|result)/.test(t)) return true;
+  return false;
+}
+function codexLines(file) {
+  let raw;
+  try { raw = fs.readFileSync(file); } catch { return []; }
+  if (file.endsWith('.zst')) {
+    if (typeof zlib.zstdDecompressSync !== 'function') return [];  // old Node: skip quietly
+    try { raw = zlib.zstdDecompressSync(raw); } catch { return []; }
+  }
+  return raw.toString('utf8').split('\n');
+}
+function parseCodexSessions(dir) {
+  const out = [];
+  const files = [];
+  const walk = (current, depth) => {
+    if (depth > 4 || files.length >= 400) return;
+    let entries = [];
+    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full, depth + 1);
+      else if (/^rollout-.*\.jsonl(\.zst)?$/.test(entry.name)) files.push(full);
+    }
+  };
+  walk(dir, 0);
+  // newest first: recent turns describe how the user wants to be answered now
+  files.sort((a, b) => {
+    const ta = (() => { try { return fs.statSync(a).mtimeMs; } catch { return 0; } })();
+    const tb = (() => { try { return fs.statSync(b).mtimeMs; } catch { return 0; } })();
+    return tb - ta;
+  });
+  for (const file of files.slice(0, 200)) {
+    for (const line of codexLines(file)) {
+      if (out.length >= MAX_MESSAGES) return out;
+      if (!line.trim()) continue;
+      let record;
+      try { record = JSON.parse(line); } catch { continue; }
+      if (!record || record.type !== 'response_item') continue;
+      const payload = record.payload || {};
+      if (payload.type !== 'message') continue;
+      const role = payload.role;
+      if (role !== 'user' && role !== 'assistant') continue;
+      const text = codexTextOf(payload.content);
+      if (codexIsNoise(text)) continue;
+      // assistant turns marked as a tool call are machinery, not voice
+      if (role === 'assistant' && payload.phase && payload.phase !== 'final_answer') continue;
+      pushPair(out, role, text);
+    }
+  }
+  return out;
+}
+
+// Cline (the VS Code agent) stores one JSON transcript per session under
+// ~/.cline/data/sessions/<id>/<id>.messages.json. Tool traffic is skipped;
+// only spoken text (user input, assistant answer) is voice.
+function parseClineSessions(dir) {
+  const out = [];
+  const files = [];
+  const walk = (current, depth) => {
+    if (depth > 3 || files.length >= 400) return;
+    let entries = [];
+    try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full, depth + 1);
+      else if (entry.name.endsWith('.messages.json')) files.push(full);
+    }
+  };
+  walk(dir, 0);
+  for (const file of files.slice(0, 200)) {
+    if (out.length >= MAX_MESSAGES) return out;
+    let parsed;
+    try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { continue; }
+    const messages = Array.isArray(parsed) ? parsed : (parsed && parsed.messages);
+    if (!Array.isArray(messages)) continue;
+    for (const message of messages) {
+      if (out.length >= MAX_MESSAGES) return out;
+      if (!message || (message.role !== 'user' && message.role !== 'assistant')) continue;
+      const parts = Array.isArray(message.content) ? message.content : [];
+      const text = parts
+        .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+        .map(part => part.text)
+        .join('\n');
+      if (!text) continue;
+      if (message.role === 'user') {
+        // "<user_input mode=\"plan\">the actual question</user_input>"
+        const inner = text.match(/<user_input[^>]*>([\s\S]*?)<\/user_input>/i);
+        pushPair(out, 'user', inner ? inner[1] : text);
+      } else {
+        pushPair(out, 'assistant', text);
+      }
+    }
+  }
+  return out;
+}
+
 function parseMuseSessions(dir) {
   const out = [];
   let files = [];
@@ -158,12 +280,18 @@ function discoverRoots({ home = os.homedir(), configDir } = {}) {
   // 2. Claude Code transcripts
   const claudeDir = path.join(home, '.claude', 'projects');
   if (fs.existsSync(claudeDir)) roots.push({ kind: 'claude-projects', path: claudeDir, confidence: 'high' });
-  // 3. Muse's own sessions
+  // 3. Codex (OpenAI coding agent) rollouts
+  const codexDir = path.join(home, '.codex', 'sessions');
+  if (fs.existsSync(codexDir)) roots.push({ kind: 'codex-sessions', path: codexDir, confidence: 'high' });
+  // 4. Cline (the VS Code agent) transcripts
+  const clineDir = path.join(home, '.cline', 'data', 'sessions');
+  if (fs.existsSync(clineDir)) roots.push({ kind: 'cline-sessions', path: clineDir, confidence: 'high' });
+  // 5. Muse's own sessions
   if (configDir) {
     const sess = path.join(configDir, 'sessions');
     if (fs.existsSync(sess)) roots.push({ kind: 'muse-sessions', path: sess, confidence: 'high' });
   }
-  // 4. chatgpt.com web caches (browser profiles + the desktop app package)
+  // 6. chatgpt.com web caches (browser profiles + the desktop app package)
   const cacheGlobs = [
     path.join(home, 'AppData', 'Local'),
     path.join(home, '.config'),
@@ -195,6 +323,8 @@ function parseRoot(root) {
   switch (root.kind) {
     case 'chatgpt-export': return parseChatgptExport(root.path);
     case 'claude-projects': return parseClaudeProjects(root.path);
+    case 'codex-sessions': return parseCodexSessions(root.path);
+    case 'cline-sessions': return parseClineSessions(root.path);
     case 'muse-sessions': return parseMuseSessions(root.path);
     case 'web-cache': return parseWebCache(root.path);
     default: return [];
@@ -216,4 +346,4 @@ function collectMessages(opts = {}) {
   return { messages: messages.slice(0, MAX_MESSAGES), roots: usedRoots };
 }
 
-module.exports = { discoverRoots, parseRoot, collectMessages, parseChatgptExport, parseClaudeProjects, parseMuseSessions, parseWebCache };
+module.exports = { discoverRoots, parseRoot, collectMessages, parseChatgptExport, parseClaudeProjects, parseCodexSessions, parseClineSessions, parseMuseSessions, parseWebCache };
