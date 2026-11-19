@@ -852,6 +852,89 @@ function setBusy(b) {
 function newCommandId() {
   try { return crypto.randomUUID(); } catch { return 'cmd-' + Date.now() + '-' + Math.floor(Math.random() * 1e6); }
 }
+/* ---------- attachments (PDF + images, OCR'd locally) ---------- */
+let pendingAttachments = [];      // staged for the NEXT message
+let attachModelCaps = null;       // what the selected model can do
+
+function attachChip(a) {
+  const el = document.createElement('div');
+  el.className = 'attach-chip';
+  el.dataset.kind = a.kind || 'image';
+  el.title = a.error ? `${a.name} — ${a.error}` : `${a.name} — text extracted locally (${a.text_method === 'ocr' ? 'OCR' : 'text layer'})`;
+  const icon = document.createElement('span');
+  icon.className = 'attach-kind';
+  icon.textContent = a.kind === 'pdf' ? 'PDF' : 'IMG';
+  const name = document.createElement('span');
+  name.className = 'attach-name';
+  name.textContent = a.name;
+  const meta = document.createElement('span');
+  meta.className = 'attach-meta';
+  meta.textContent = a.error ? 'no text' : (a.kind === 'pdf' ? `${a.pages || '?'}p` : (a.text_method === 'ocr' ? 'OCR' : 'text'));
+  const x = document.createElement('button');
+  x.className = 'attach-x';
+  x.textContent = '×';
+  x.setAttribute('aria-label', `Remove ${a.name}`);
+  x.addEventListener('click', () => removeAttachment(a.id));
+  el.append(icon, name, meta, x);
+  return el;
+}
+
+function renderAttachmentStrip() {
+  const strip = $('attach-strip');
+  if (!strip) return;
+  strip.replaceChildren();
+  strip.hidden = pendingAttachments.length === 0;
+  for (const a of pendingAttachments) strip.append(attachChip(a));
+  if (pendingAttachments.length && attachModelCaps && !attachModelCaps.vision) {
+    const note = document.createElement('span');
+    note.className = 'attach-note';
+    note.textContent = `${attachModelCaps.model || 'this model'} cannot see images — text extracted locally is sent instead`;
+    strip.append(note);
+  }
+}
+
+async function addAttachments(list) {
+  const clean = (list || []).filter(a => a && a.id);
+  if (!clean.length) return;
+  const seen = new Set(pendingAttachments.map(a => a.id));
+  for (const a of clean) if (!seen.has(a.id)) pendingAttachments.push(a);
+  renderAttachmentStrip();
+  try { attachModelCaps = await window.muse.attachCapabilities(); } catch { /* capability hint is optional */ }
+  renderAttachmentStrip();
+}
+
+function removeAttachment(id) {
+  pendingAttachments = pendingAttachments.filter(a => a.id !== id);
+  renderAttachmentStrip();
+  try { window.muse.attachRemove(id); } catch { /* the file stays on disk; harmless */ }
+}
+
+async function pickAttachments() {
+  try {
+    const res = await window.muse.attachPick();
+    if (!res || res.cancelled) return;
+    await addAttachments(res.attachments || []);
+    for (const err of res.errors || []) addSysNote(`could not attach ${err.path}: ${err.error}`, true);
+  } catch (e) { reportError(e); }
+}
+
+// Drag & drop and paste: resolve the dropped File to a disk path in the
+// preload (File.path no longer exists) and hand it to the main process.
+async function attachFromFileList(files) {
+  const paths = [];
+  for (const f of files) {
+    const p = window.muse.pathForFile ? window.muse.pathForFile(f) : '';
+    if (p) paths.push(p);
+  }
+  if (!paths.length) return false;
+  try {
+    const res = await window.muse.attachAdd(paths);
+    await addAttachments(res.attachments || []);
+    for (const err of res.errors || []) addSysNote(`could not attach ${err.path}: ${err.error}`, true);
+    return true;
+  } catch (e) { reportError(e); return false; }
+}
+
 async function submit(textOverride) {
   const text = typeof textOverride === 'string' ? textOverride.trim() : input.value.trim();
   if (!text || loadingSession || currentApproval || switchingModel) return false;
@@ -860,6 +943,14 @@ async function submit(textOverride) {
   autosize();
   addMsg('user', text);
   const commandId = newCommandId();
+  // Attachments belong to THIS message: stage them under its commandId so a
+  // queued message keeps its own files.
+  const staged = pendingAttachments.map(a => a.id);
+  if (staged.length) {
+    try { await window.muse.attachStage(commandId, staged); } catch { /* the turn still runs */ }
+    pendingAttachments = [];
+    renderAttachmentStrip();
+  }
   if (busy) {
     // Queue behind the active run: the queue chip shows the position and
     // offers reorder / run-now (steer) / cancel; the drain loop runs it next.
@@ -893,6 +984,38 @@ async function submit(textOverride) {
 }
 
 sendBtn.addEventListener('click', submit);
+
+// --- attachment entry points: button, drag & drop, paste ---
+const attachBtn = $('btn-attach');
+if (attachBtn) attachBtn.addEventListener('click', pickAttachments);
+
+const dropZone = $('mainlog') || $('transcript') || document.body;
+if (dropZone) {
+  let dragDepth = 0;
+  const setDropHint = (on) => dropZone.classList.toggle('drop-hint', on);
+  dropZone.addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+    e.preventDefault(); dragDepth++; setDropHint(true);
+  });
+  dropZone.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes('Files')) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'copy';
+  });
+  dropZone.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) setDropHint(false); });
+  dropZone.addEventListener('drop', async (e) => {
+    e.preventDefault(); dragDepth = 0; setDropHint(false);
+    const files = Array.from(e.dataTransfer && e.dataTransfer.files || []);
+    if (files.length) await attachFromFileList(files);
+  });
+}
+window.addEventListener('paste', async (e) => {
+  if (!e.clipboardData || !e.clipboardData.files || !e.clipboardData.files.length) return;
+  const files = Array.from(e.clipboardData.files);
+  if (!files.some(f => /pdf|image/i.test(f.type || '') || /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(f.name || ''))) return;
+  e.preventDefault();
+  await attachFromFileList(files);
+});
+try { window.muse.attachCapabilities().then(c => { attachModelCaps = c; renderAttachmentStrip(); }).catch(() => {}); } catch { /* optional hint */ }
 
 /* ---------- turn queue chips (queue_after_active) ---------- */
 const queueChips = new Map();   // commandId -> {el, pos}
@@ -1249,6 +1372,10 @@ const modelUI = window.MuseModelPicker.create({
   changed: () => settingsUI?.changed(),
   busy: () => busy || loadingSession || !!currentApproval,
   switching: active => { switchingModel = active; if (active) modelRevision++; sendBtn.disabled = active || busy || loadingSession; },
+  vision: async (models) => {
+    try { return await window.muse.attachModelCaps(models); }
+    catch { return {}; }
+  },
   select: async model => {
     const result = await window.muse.selectModel(model);
     if (result?.ok) { $('tag-model').textContent = result.model; $('wb-model').textContent = result.model; if (statusCache?.llm) statusCache.llm.model = result.model; }

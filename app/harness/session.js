@@ -251,7 +251,15 @@ function titleFromText(text) {
 
 function titleFromHistory(history) {
   const first = (history || []).find(m => m.role === 'user');
-  return titleFromText(first && typeof first.content === 'string' ? first.content : '');
+  if (!first) return '';
+  // A user message may carry attachment parts (multimodal content array) —
+  // the title comes from its first text part.
+  if (typeof first.content === 'string') return titleFromText(first.content);
+  if (Array.isArray(first.content)) {
+    const text = first.content.filter(p => p && p.type === 'text' && typeof p.text === 'string').map(p => p.text).join(' ');
+    return titleFromText(text);
+  }
+  return '';
 }
 
 module.exports = { list, load, save, remove, newId, saveSummary, appendReceipt, titleFromText, titleFromHistory, sessionsDir, SUMMARY_FULL_MAX, SUMMARY_COMPACT_MAX };

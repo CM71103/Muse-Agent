@@ -942,6 +942,93 @@ ipcMain.handle('projects:select', async (e,id) => {
   try{return activateProject(id || null);}catch(err){return {ok:false,error:err.message};}
 });
 
+// --- attachments (PDF + images, OCR'd locally) ---
+ipcMain.handle('attachments:pick', async (e) => {
+  requireTrusted(e);
+  const res = await dialog.showOpenDialog(mainWindow, {
+    title: 'Attach files (PDF or image)',
+    properties: ['openFile', 'multiSelections', 'dontAddToRecent'],
+    filters: [
+      { name: 'PDF and images', extensions: ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] },
+      { name: 'PDF', extensions: ['pdf'] },
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] },
+    ],
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: true, cancelled: true, attachments: [] };
+  return ingestAttachmentPaths(res.filePaths);
+});
+
+// Drag & drop / paste paths arrive from the renderer (files chosen outside
+// the dialog) — same ingestion path as the picker.
+ipcMain.handle('attachments:add', async (e, paths) => {
+  requireTrusted(e);
+  const list = Array.isArray(paths) ? paths.map(String).filter(Boolean) : [];
+  if (!list.length) return { ok: true, attachments: [] };
+  return ingestAttachmentPaths(list);
+});
+
+ipcMain.handle('attachments:list', (e) => {
+  requireTrusted(e);
+  return { ok: true, attachments: require('../harness/attachments').list() };
+});
+
+ipcMain.handle('attachments:remove', (e, id) => {
+  requireTrusted(e);
+  return require('../harness/attachments').remove(String(id || ''));
+});
+
+ipcMain.handle('attachments:clear', (e) => {
+  requireTrusted(e);
+  return require('../harness/attachments').clear();
+});
+
+// Stage attachment ids for the next send. The turn path picks them up.
+ipcMain.handle('attachments:stage', (e, commandId, ids) => {
+  requireTrusted(e);
+  return require('../harness/attachments').stage(commandId || 'default', ids);
+});
+
+// What can the CURRENT model do with these files?
+ipcMain.handle('attachments:capabilities', (e) => {
+  requireTrusted(e);
+  const caps = require('../harness/model-caps');
+  const cfg = agent && agent.cfg ? agent.cfg : loadConfig();
+  const modelId = cfg && cfg.llm ? String(cfg.llm.model || '') : '';
+  const vision = caps.modelIsVisionCapable(modelId, cfg || {});
+  return {
+    ok: true, model: modelId, vision,
+    ocr_focused: caps.modelIsOcrFocused(modelId),
+    ocr_available: require('../harness/ocr').ocrAvailable(),
+  };
+});
+
+// Which of these models can see images? (model picker badges)
+ipcMain.handle('attachments:modelCaps', (e, models) => {
+  requireTrusted(e);
+  const caps = require('../harness/model-caps');
+  const cfg = agent && agent.cfg ? agent.cfg : loadConfig();
+  const out = {};
+  for (const m of (Array.isArray(models) ? models : []).slice(0, 200)) {
+    const id = String(m || '').trim();
+    if (id) out[id] = caps.modelIsVisionCapable(id, cfg || {});
+  }
+  return out;
+});
+
+async function ingestAttachmentPaths(paths) {
+  const attachments = require('../harness/attachments');
+  const out = [];
+  const errors = [];
+  for (const p of paths.slice(0, 12)) {
+    const res = await attachments.ingestFile(p);
+    if (res.ok) out.push(res.attachment);
+    else errors.push({ path: p, error: res.error });
+  }
+  for (const a of out) send('agent-event', { type: 'info', text:
+    `attached ${a.name} — ${a.kind === 'pdf' ? `${a.pages || '?'} page(s), text extracted${a.text_method === 'ocr' ? ' by OCR' : ''}` : `text extracted by OCR${a.engine ? ` (${a.engine})` : ''}`}${a.error ? ` — ${a.error}` : ''}` });
+  return { ok: true, attachments: out, errors };
+}
+
 ipcMain.handle('project:browse', async (e) => {
   requireTrusted(e);
   if (agentBusy) return { ok: false, error: 'Agent busy' };
@@ -1138,9 +1225,16 @@ ipcMain.handle('sessions:load', async (e, id) => {
       });
     }
     // replay the restored transcript into the renderer
+    const asText = (content) => {
+      if (typeof content === 'string') return content;
+      if (Array.isArray(content)) {
+        return content.filter(p => p && p.type === 'text' && typeof p.text === 'string').map(p => p.text).join('\n\n');
+      }
+      return '';
+    };
     for (const m of s.history || []) {
-      if (m.role === 'user') send('agent-event', { type: 'restored_user', text: m.content });
-      else if (m.role === 'assistant' && m.content) send('agent-event', { type: 'restored_assistant', text: m.content });
+      if (m.role === 'user') send('agent-event', { type: 'restored_user', text: asText(m.content) });
+      else if (m.role === 'assistant' && m.content) send('agent-event', { type: 'restored_assistant', text: asText(m.content) });
       else if (m.role === 'tool') {
         let result;
         try { result = JSON.parse(m.content); } catch { result = undefined; }

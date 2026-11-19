@@ -221,6 +221,31 @@ body::before { background:radial-gradient(ellipse at 50% -20%,rgb(0 0 0 / .03),t
   transition:border-color var(--dur-aui) var(--ease-aui),background-color var(--dur-aui) var(--ease-aui); }
 .mem-row:hover { border-color:var(--color-border); background:var(--color-surface-subtle); }
 
+/* ---------- attachment strip (task-queue card language) ---------- */
+#attach-strip { display:flex; flex-wrap:wrap; gap:6px; padding:0 2px 8px; }
+#attach-strip[hidden] { display:none; }
+.attach-chip { display:inline-flex; align-items:center; gap:7px; max-width:260px;
+  padding:5px 8px 5px 6px; border:1px solid var(--color-border); border-radius:12px;
+  background:var(--color-card); font-size:11px; color:var(--color-foreground); }
+.attach-kind { font:650 8.5px/1 var(--sans); letter-spacing:.6px; padding:3px 5px; border-radius:5px;
+  background:color-mix(in srgb,var(--aui-blue) 14%,transparent); color:color-mix(in srgb,var(--aui-blue) 85%,var(--color-foreground)); }
+.attach-chip[data-kind="pdf"] .attach-kind { background:color-mix(in srgb,var(--aui-red) 14%,transparent); color:color-mix(in srgb,var(--aui-red) 85%,var(--color-foreground)); }
+.attach-name { max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.attach-meta { font-size:9.5px; color:var(--color-muted-fg); }
+.attach-x { width:18px; height:18px; display:grid; place-items:center; border:0; border-radius:6px;
+  background:transparent; color:var(--color-muted-fg); font-size:13px; line-height:1; padding:0; }
+.attach-x:hover { background:var(--color-surface-subtle); color:var(--color-foreground); }
+.attach-note { align-self:center; font-size:10px; color:var(--color-muted-fg); padding:3px 4px; }
+#btn-attach { width:34px; height:34px; flex-shrink:0; display:grid; place-items:center; border-radius:10px;
+  border:1px solid var(--color-border); background:transparent; font-size:14px; opacity:.8; }
+#btn-attach:hover { background:var(--color-surface-subtle); opacity:1; }
+.drop-hint { outline:2px dashed color-mix(in srgb,var(--aui-blue) 55%,transparent); outline-offset:-6px; }
+
+/* ---------- model picker: vision badge ---------- */
+.model-vision-badge { font:650 8.5px/1 var(--sans); letter-spacing:.4px; padding:3px 6px; border-radius:999px;
+  background:color-mix(in srgb,var(--aui-blue) 13%,transparent); color:color-mix(in srgb,var(--aui-blue) 85%,var(--color-foreground));
+  border:1px solid color-mix(in srgb,var(--aui-blue) 28%,transparent); }
+
 /* ---------- settings + palette ---------- */
 #settings,#palette-dialog,#memory { border:1px solid var(--color-border); border-radius:18px; }
 #palette-dialog input[type=text],#palette-input { border-radius:12px; }

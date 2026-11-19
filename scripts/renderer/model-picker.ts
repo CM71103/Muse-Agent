@@ -1,12 +1,14 @@
 type ModelConfig = { model?: string; visible_models?: string[]; base_url?: string };
 type Hooks = { changed: () => void; busy: () => boolean; switching: (active: boolean) => void;
-  select: (model: string) => Promise<{ok: boolean; error?: string; model?: string; visible_models?: string[]}>; manage: () => void };
+  select: (model: string) => Promise<{ok: boolean; error?: string; model?: string; visible_models?: string[]}>; manage: () => void;
+  vision?: (models: string[]) => Promise<Record<string, boolean>> };
 function create(hooks: Hooks) {
   const el = (id: string) => document.getElementById(id)!;
   const input = (id: string) => el(id) as HTMLInputElement;
   const button = (id: string) => el(id) as HTMLButtonElement;
   let current = '', saved: string[] = [], draft: string[] = [], available: string[] = [];
   let ready = false, locked = false, switching = false, endpoint = '', opened: 'settings' | 'chat' | null = null;
+  let visionCaps: Record<string, boolean> = {};   // model id → can see images
   const unique = (ids: string[]) => [...new Set(ids.filter(id => typeof id === 'string' && id.trim()).map(id => id.trim()))];
   const visible = (cfg: ModelConfig) => Array.isArray(cfg.visible_models) ? unique(cfg.visible_models) : cfg.model ? [cfg.model] : [];
   function close(focus = false) {
@@ -58,6 +60,15 @@ function create(hooks: Hooks) {
       finally {switching = false;hooks.switching(false);renderChat();if (opened === 'chat') renderRows('chat');else button('chat-model-trigger').focus();}
     });
     item.append(select);
+    // Vision marker: a model that can take image parts (PDF/image attachments
+    // go to it as pixels; text-only models get the locally extracted text).
+    if (visionCaps[model]) {
+      const badge = document.createElement('span');
+      badge.className = 'model-vision-badge';
+      badge.textContent = 'sees images';
+      badge.title = 'This model can read images directly';
+      item.append(badge);
+    }
     if (owner === 'settings') {
       const label = document.createElement('label');label.className = 'model-picker-pin';label.title = 'Show this model in the chat picker';
       const check = document.createElement('input');check.type = 'checkbox';check.checked = draft.includes(model);check.disabled = locked;
@@ -83,6 +94,15 @@ function create(hooks: Hooks) {
     const ids = owner === 'settings' ? unique([...available,...draft,input('model-list').value.trim()]) : saved;
     const filtered = ids.filter(id => id.toLowerCase().includes(query));
     for (const model of filtered) host.append(row(model,owner));
+    // Ask the main process which models can see images (once per open).
+    if (hooks.vision && filtered.length) {
+      Promise.resolve(hooks.vision(filtered)).then((map) => {
+        if (!map || typeof map !== 'object') return;
+        let changed = false;
+        for (const [k, v] of Object.entries(map)) if (visionCaps[k] !== v) { visionCaps[k] = !!v; changed = true; }
+        if (changed && opened) renderRows(opened);
+      }).catch(() => {});
+    }
     if (!filtered.length) {
       const empty = document.createElement('p');empty.className = 'model-picker-empty';
       empty.textContent = query ? 'No matching models.' : owner === 'chat' ? 'Choose models in Settings to show them here.' : 'Fetch models, or enter a model ID above.';host.append(empty);

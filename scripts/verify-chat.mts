@@ -97,6 +97,13 @@ app.whenReady().then(async()=>{try{
  await pause(300);await shot('chips');
  await js("renderQueueChips([])");
  await js("document.querySelectorAll('.action-chip').forEach(n=>n.remove())");
+ // attachments: the strip shows what is attached and how its text was obtained
+ await js("addAttachments([{id:'a1',name:'invoice-4821.pdf',kind:'pdf',mime:'application/pdf',bytes:182000,pages:3,has_text:true,text_method:'text-layer',preview:'Invoice 4821 total 99.50'},{id:'a2',name:'receipt-photo.png',kind:'image',mime:'image/png',bytes:820000,has_text:true,text_method:'ocr',preview:'Total 99.50'}])");
+ await pause(300);await shot('attachments');
+ assert.equal(await js("document.querySelectorAll('.attach-chip').length===2"),true,'attachment chips should render');
+ await js("attachModelCaps={model:'Qwen3.8-Flash-Next',vision:false};renderAttachmentStrip()");
+ await pause(200);await shot('attachments-note');
+ await js("pendingAttachments=[];renderAttachmentStrip();attachModelCaps=null;");
  await js("setTheme('krishna')");await pause(500);await shot('theme-krishna');
  await js("setTheme('light')");await pause(500);await shot('theme-light');
  await js("setTheme('dark')");await pause(500);await shot('theme-dark');

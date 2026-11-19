@@ -32,6 +32,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
 | **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works — reorder them, jump the line, or cancel one. |
 | **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
+| **Attach PDFs and images** | Drop or paste a PDF or image — text is extracted locally (exact text layer for digital PDFs, Windows OCR for scans and images). Images are sent as pixels only when the selected model can see them; otherwise the extracted text is sent. |
 | **Make it yours** | Light and Dark follow the affectUI agent-clean language — ink-pill buttons, flat hairline panels, colour used only as data (pixel marks, status pills, live shimmer). Krishna themes are one click away; your choice persists across launches. Adjust glass opacity and toggle the animated shader background. |
 
 ### Built for a continuous workflow
@@ -164,6 +165,30 @@ Two execution shapes are supported:
 - **Inline artifact** — a runtime that answers with a single `<artifact identifier="page.html" title="…">…</artifact>` block has that block parsed and materialized into the project automatically, with the manifest written for it. Block identifiers are sanitized the same way, so `../` cannot escape the folder.
 
 A project that is also a runnable web app keeps its own framework: **Run project** starts its `dev`/`start`/`serve` script and streams the live server into the canvas instead of a static file.
+
+## Attach PDFs and images (local OCR)
+
+Attach a file with the paperclip in the composer, by dragging it onto the conversation, or by pasting it from the clipboard.
+
+**How a file becomes text — all on your machine, nothing uploaded:**
+
+| File | What happens |
+| --- | --- |
+| **Digital PDF** | Its text layer is extracted directly, so numbers, amounts and IDs come out exact. |
+| **Scanned PDF** | Pages are rendered by Windows and read with the built-in Windows OCR engine (offline, no install, no service). |
+| **Image** | Read locally with the same Windows OCR engine; the result is plain text you can search, quote and act on. |
+
+**Images go to the model as pixels only when it can see them.** Muse knows the capabilities of the selected model: with a vision-capable model (GPT-4o/4.1/5, Claude 3/4, Gemini, Qwen-VL, Llama Vision, InternVL, …) the image itself is sent, together with the local OCR transcript so exact numbers survive. With a text-only model the pixels are withheld and only the locally extracted text is sent — and the composer says so plainly instead of failing quietly.
+
+The model picker marks the models that can see images (`sees images`). Overrides live in `config.toml`:
+
+```toml
+[llm]
+vision_capable = true                 # force the active model to be treated as vision-capable
+vision_models = ["my-private-vlm"]    # extra model ids that can see
+```
+
+Files are stored under `~/.muse-agent/attachments/`; delete them from the chip's × or clear them with `attachments:clear`.
 
 ## Live dashboards and data sources
 

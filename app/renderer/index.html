@@ -998,9 +998,11 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   <div id="mainlog"><div id="transcript" role="log" aria-label="Conversation" aria-live="polite"></div></div>
   <footer>
     <div id="composer">
+      <div id="attach-strip" hidden aria-label="Attached files"></div>
       <div class="inputwrap">
         <textarea id="input" aria-label="Task for Muse" rows="2" data-i18n-placeholder="composer.placeholder" placeholder="What would you like to work on?"></textarea>
         <div class="composer-model-control"><button type="button" id="chat-model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-menu-chat" disabled><span aria-hidden="true">✧</span><span id="chat-model-label">Choose model</span><span aria-hidden="true">⌄</span></button><button id="box-toolbar-open" type="button" aria-haspopup="dialog" aria-controls="box-panel" aria-expanded="false">Box</button><span id="chat-model-status" role="status"></span></div>
+        <button id="btn-attach" type="button" aria-label="Attach a PDF or image" title="Attach a PDF or image (text is extracted locally)">📎</button>
         <button id="btn-cancel-turn" aria-label="Stop the current task" style="display:none" data-i18n="composer.stop">Stop</button>
         <button id="send" data-i18n="composer.send">Send</button>
       </div>

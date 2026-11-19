@@ -15,7 +15,15 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     this.history.push({ role: 'system', content:
       systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard')) });
   }
-  if (userText !== null) this.history.push({ role: 'user', content: userText });
+  if (userText !== null) {
+    // A user message may be multimodal (attachments): opts.content carries the
+    // full part array [{type:'text'|'image_url', …}]; otherwise plain text.
+    if (Array.isArray(opts.content) && opts.content.length) {
+      this.history.push({ role: 'user', content: opts.content });
+    } else {
+      this.history.push({ role: 'user', content: userText });
+    }
+  }
   this._title ||= require('./session').titleFromHistory(this.history);
   this._runEventId = require('node:crypto').randomUUID();
   // Durable run receipts: accept is written before the run moves, every

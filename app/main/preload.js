@@ -2,7 +2,7 @@
 // preload.js - contextBridge surface. Renderer gets: send to agent, respond approvals,
 // read config summary, switch permission mode.
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('muse', {
   learningStatus:()=>ipcRenderer.invoke('learning:status'),
@@ -48,6 +48,17 @@ contextBridge.exposeInMainWorld('muse', {
   dashGet: (id) => ipcRenderer.invoke('dashboards:get', id),
   dashData: (id) => ipcRenderer.invoke('dashboards:data', id),
   dashDelete: (id) => ipcRenderer.invoke('dashboards:delete', id),
+  attachPick: () => ipcRenderer.invoke('attachments:pick'),
+  attachAdd: (paths) => ipcRenderer.invoke('attachments:add', paths),
+  attachList: () => ipcRenderer.invoke('attachments:list'),
+  attachRemove: (id) => ipcRenderer.invoke('attachments:remove', id),
+  attachClear: () => ipcRenderer.invoke('attachments:clear'),
+  attachStage: (commandId, ids) => ipcRenderer.invoke('attachments:stage', commandId, ids),
+  // Resolve a dropped/pasted File to its path on disk (Electron's webUtils
+  // is the supported way — File.path was removed in Electron 32).
+  pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
+  attachCapabilities: () => ipcRenderer.invoke('attachments:capabilities'),
+  attachModelCaps: (models) => ipcRenderer.invoke('attachments:modelCaps', models),
   voiceStatus: () => ipcRenderer.invoke('voice:status'),
   voiceCalibrate: () => ipcRenderer.invoke('voice:calibrate'),
   voiceReset: () => ipcRenderer.invoke('voice:reset'),

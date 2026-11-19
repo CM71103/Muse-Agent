@@ -8,6 +8,19 @@ module.exports = {
     const { Agent } = require('./agent');
     this.refreshPermissionMode();
     const messages = structuredClone(this.history);
+    // Safety net: a text-only model must never receive image parts — not even
+    // ones left in history from an earlier turn (session restored, model
+    // switched since). The text part survives; only the pixels are dropped.
+    try {
+      const caps = require('./model-caps');
+      if (!caps.modelIsVisionCapable(String((this.cfg && this.cfg.llm && this.cfg.llm.model) || ''), this.cfg || {})) {
+        for (const m of messages) {
+          if (!m || !Array.isArray(m.content)) continue;
+          const kept = m.content.filter((p: any) => p && p.type !== 'image_url');
+          m.content = kept.length ? kept : [{ type: 'text', text: '[image omitted — the selected model cannot see images]' }];
+        }
+      }
+    } catch { /* capability check is best-effort */ }
     require('./tool-images.ts').appendToolImages(this, messages);
     if (ctx?.turn_id) {
       this.memory.commitPrepared(ctx); // Revalidate deleted/revoked records at every send.
