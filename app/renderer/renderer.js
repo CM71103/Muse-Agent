@@ -317,6 +317,7 @@ function addMsg(role, text) {
     body.textContent = text;
   }
   div.append(who, body);
+  if (role === 'assistant') div.append(ratingRow());
   transcript.append(div);
   reveal(div, role === 'user' ? 10 : 16);
   scrollDown(role === 'user');   // the user's own message always jumps to bottom
@@ -852,6 +853,48 @@ function setBusy(b) {
 function newCommandId() {
   try { return crypto.randomUUID(); } catch { return 'cmd-' + Date.now() + '-' + Math.floor(Math.random() * 1e6); }
 }
+/* ---------- answer feedback: explicit liked / disliked markers ---------- */
+async function gradeLatestAnswer(rating) {
+  try {
+    const res = await window.muse.feedbackGrade(rating);
+    if (!res || !res.ok) { addSysNote(String(res && res.error || 'nothing to grade yet'), true); return; }
+    const s = res.summary || {};
+    const note = res.policy && res.policy.applied
+      ? `answer ${rating === 1 ? 'liked' : 'disliked'} — answer style adjusted from ${s.liked} liked / ${s.disliked} disliked`
+      : `answer ${rating === 1 ? 'liked' : 'disliked'} (${s.liked} liked · ${s.disliked} disliked) — a few more grades and the style adapts`;
+    addSysNote(note, false, 'mem');
+  } catch (e) { reportError(e); }
+}
+// Each answer carries a tiny rate control; the grade becomes an explicit
+// marker and the adaptive policy adjusts the answer style from it.
+function ratingRow() {
+  const row = document.createElement('div');
+  row.className = 'msg-rate';
+  const mk = (glyph, rating, label) => {
+    const b = document.createElement('button');
+    b.className = 'rate-btn';
+    b.textContent = glyph;
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.addEventListener('click', async () => {
+      try {
+        const res = await window.muse.feedbackGrade(rating);
+        if (!res || !res.ok) { addSysNote(String(res && res.error || 'could not record that'), true); return; }
+        row.dataset.rated = String(rating);
+        const s = res.summary || {};
+        const note = res.policy && res.policy.applied
+          ? `style adjusted: ${res.policy.rules.length} rule(s) updated from ${s.liked} liked / ${s.disliked} disliked answers`
+          : `recorded (${s.liked} liked · ${s.disliked} disliked) — a few more grades and the style adapts`;
+        addSysNote(note, false, 'mem');
+        for (const b2 of row.querySelectorAll('.rate-btn')) b2.disabled = true;
+      } catch (e) { reportError(e); }
+    });
+    return b;
+  };
+  row.append(mk('👍', 1, 'I liked this answer'), mk('👎', 0, 'I did not like this answer'));
+  return row;
+}
+
 /* ---------- attachments (PDF + images, OCR'd locally) ---------- */
 let pendingAttachments = [];      // staged for the NEXT message
 let attachModelCaps = null;       // what the selected model can do
@@ -938,6 +981,15 @@ async function attachFromFileList(files) {
 async function submit(textOverride) {
   const text = typeof textOverride === 'string' ? textOverride.trim() : input.value.trim();
   if (!text || loadingSession || currentApproval || switchingModel) return false;
+  // /good and /bad are grades, not tasks: they never reach the agent as a
+  // prompt — they record an explicit marker and let the adaptive policy act.
+  const grade = /^\/(good|bad)\s*$/i.exec(text);
+  if (grade) {
+    input.value = '';
+    autosize();
+    await gradeLatestAnswer(grade[1].toLowerCase() === 'good' ? 1 : 0);
+    return true;
+  }
   turnErrorsDisplayed = new Set();
   input.value = '';
   autosize();
@@ -1173,6 +1225,24 @@ async function recalibrateVoice() {
     addSysNote(res && res.ok
       ? `answer style recalibrated from ${res.messages} messages — Muse will match that style`
       : `could not calibrate: ${String(res && res.error || 'no conversation history found')}`, !(res && res.ok), 'mem');
+  } catch (e) { reportError(e); }
+}
+async function showAnswerFeedback() {
+  try {
+    const s = await window.muse.feedbackSummary();
+    if (!s || !s.total) { addSysNote('no answers graded yet — use 👍 / 👎 under an answer, or /good and /bad', false, 'mem'); return; }
+    const lines = [`**Answer feedback** — ${s.liked} liked · ${s.disliked} disliked`, ''];
+    for (const m of s.markers || []) {
+      const t = m.traits || {};
+      lines.push(`${m.rating === 1 ? '👍 liked' : '👎 disliked'} · ${t.length}, ${t.shape}, ${t.stance} · ${m.words} words`);
+    }
+    addMsg('assistant', lines.join('\n'));
+  } catch (e) { reportError(e); }
+}
+async function resetAnswerFeedback() {
+  try {
+    await window.muse.feedbackReset();
+    addSysNote('answer feedback cleared — the adaptive style rules were removed', false, 'mem');
   } catch (e) { reportError(e); }
 }
 async function resetVoiceProfile() {
@@ -1822,6 +1892,19 @@ function wbUpdateDetails() {
     : '—';
   $('wb-errors').textContent = String(sessionToolErrors);
   $('wb-session').textContent = activeSessionId ? (crumbTitle || t('wb.savedSession', 'Saved session')) : t('wb.new', 'New');
+  updateFeedbackRow();
+}
+
+// Answer feedback counters (liked / disliked markers) — read straight from
+// the main process so the count survives a restart.
+async function updateFeedbackRow() {
+  const el = $('wb-feedback');
+  if (!el) return;
+  try {
+    const s = await window.muse.feedbackSummary();
+    el.textContent = s && s.total ? `${s.liked} liked · ${s.disliked} disliked` : '—';
+    if (s && s.total) el.title = 'Grades recorded for the adaptive answer style';
+  } catch { el.textContent = '—'; }
 }
 for (const name of ['activity', 'memory', 'details']) {
   $('wb-tab-' + name).addEventListener('click', () => {
@@ -2216,7 +2299,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {

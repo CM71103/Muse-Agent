@@ -33,6 +33,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works — reorder them, jump the line, or cancel one. |
 | **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
 | **Attach PDFs and images** | Drop or paste a PDF or image — text is extracted locally (exact text layer for digital PDFs, Windows OCR for scans and images). Images are sent as pixels only when the selected model can see them; otherwise the extracted text is sent. |
+| **Teach it by grading** | Mark an answer liked or disliked (👍 / 👎, or `/good` and `/bad`). Each grade leaves an explicit marker; the answer style adapts to what you actually reward. |
 | **Make it yours** | Light and Dark follow the affectUI agent-clean language — ink-pill buttons, flat hairline panels, colour used only as data (pixel marks, status pills, live shimmer). Krishna themes are one click away; your choice persists across launches. Adjust glass opacity and toggle the animated shader background. |
 
 ### Built for a continuous workflow
@@ -233,6 +234,25 @@ Deny rules still apply in every mode, and unknown tools are rejected. Legacy `al
 **Commands run with your Windows user permissions.** The approval gate is not an operating-system sandbox. Review commands and choose the mode that fits the work you are authorizing.
 
 Subagents share the parent's live permission policy, while keeping separate model context. Child agents cannot spawn further children.
+
+## Answer feedback the agent learns from
+
+Every answer you grade becomes an **explicit marker** — a local, append-only record that the answer was liked or disliked, together with the objective traits of that answer (length, shape, stance, closer, emoji) and its word count.
+
+**How to grade**
+
+- **👍 / 👎** under any answer, or
+- **`/good`** and **`/bad`** in the composer
+
+**What happens then**
+
+1. The marker is written to `~/.muse-agent/feedback.jsonl` — inspectable, yours, never uploaded.
+2. The **adaptive apply** turns those markers into style rules: 3 liked short answers plus 2 disliked hedged ones means *"keep answers tight"* and *"answer directly"*.
+3. The rules join the answer-style guide that goes into the system prompt, so **the very next answer** already matches — the style block is refreshed in place inside the live session, not only in the next one.
+
+The policy is deliberately conservative: a rule needs at least **two** liked samples and a **margin of two** over the disliked ones, so one bad day never flips your agent's voice. Contradictory grades produce no rule at all.
+
+The workbench shows the running count (`Answer feedback`), and the command palette has **Show answer feedback** and **Reset answer feedback**.
 
 ## Answer style that matches you (vibe calibration)
 

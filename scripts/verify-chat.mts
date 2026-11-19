@@ -104,6 +104,10 @@ app.whenReady().then(async()=>{try{
  await js("attachModelCaps={model:'Qwen3.8-Flash-Next',vision:false};renderAttachmentStrip()");
  await pause(200);await shot('attachments-note');
  await js("pendingAttachments=[];renderAttachmentStrip();attachModelCaps=null;");
+ // answer feedback: the 👍/👎 controls under an answer
+ await js("document.querySelectorAll('.msg-rate').forEach(n=>n.style.opacity=1)");
+ await pause(200);await shot('rating');
+ assert.equal(await js("document.querySelectorAll('.msg-rate .rate-btn').length>=2"),true,'rating controls should render');
  await js("setTheme('krishna')");await pause(500);await shot('theme-krishna');
  await js("setTheme('light')");await pause(500);await shot('theme-light');
  await js("setTheme('dark')");await pause(500);await shot('theme-dark');

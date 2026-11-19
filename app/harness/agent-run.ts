@@ -5,15 +5,30 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   Agent.repairHistory(this.history);   // cheap no-op; heals interrupted history before the request
   this._runToolErrors = 0;             // per-run tool error metric (surfaced on done)
   this.lastMemoryTurnId = null;
+  // The learned answer style lives at the TAIL of the system message, behind
+  // a fixed marker, so it can be refreshed in place when a grade changes it —
+  // without rebuilding (and losing) the rest of the system prompt.
+  const VOICE_START = '# Muse answer style (learned locally from this user\'s preferences)';
+  const readVoice = () => { try { return require('./voice').voiceGuide(); } catch { return ''; } };
   if (!this.history.length) {
     const design = this.cwdOverride ? designContext(this.cwdOverride) : null;
-    // Voice profile (vibe calibration): style-only guide learned locally from
-    // the user's previous AI conversations — '' until calibrated or if reset.
-    let voiceGuide = '';
-    try { voiceGuide = require('./voice').voiceGuide(); } catch { /* voice module optional at runtime */ }
-    const systemExtra = [opts.systemExtra || '', voiceGuide, design?.text || ''].filter(Boolean).join('\n\n');
-    this.history.push({ role: 'system', content:
-      systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard')) });
+    const systemExtra = [opts.systemExtra || '', design?.text || ''].filter(Boolean).join('\n\n');
+    const base = systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard'));
+    const voiceGuide = readVoice();
+    this._voiceGuideApplied = voiceGuide;
+    this.history.push({ role: 'system', content: voiceGuide ? `${base}\n\n${VOICE_START}\n${voiceGuide}` : base });
+  } else if (this.history[0] && this.history[0].role === 'system' && typeof this.history[0].content === 'string') {
+    // A grade changes the learned style (the adaptive apply rewrites the
+    // guide). The system message lives at history[0] for the whole session,
+    // so refresh the style block when the guide changed — the new rules then
+    // apply to THIS turn, and whatever else the system prompt carries
+    // (project instructions, permission mode) is left untouched.
+    const voiceGuide = readVoice();
+    if (voiceGuide !== this._voiceGuideApplied) {
+      const head = this.history[0].content.split(VOICE_START)[0].replace(/\s+$/, '');
+      this.history[0].content = voiceGuide ? `${head}\n\n${VOICE_START}\n${voiceGuide}` : head;
+      this._voiceGuideApplied = voiceGuide;
+    }
   }
   if (userText !== null) {
     // A user message may be multimodal (attachments): opts.content carries the

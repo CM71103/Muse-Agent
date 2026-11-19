@@ -128,11 +128,42 @@ function calibrate(opts = {}) {
     features,
     disabled: false,
   };
-  const guide = renderGuide(features, report);
   fs.mkdirSync(configDir(), { recursive: true });
   fs.writeFileSync(voiceJson(), JSON.stringify(report, null, 2));
-  fs.writeFileSync(voiceMd(), guide);
+  const guide = composeGuide();
   return { ok: true, messages: messages.length, roots: report.roots, features, guide };
+}
+
+// The guide is the COMPOSITION of two sources:
+//   1. the base style learned from the user's other AI conversations
+//   2. the adaptive rules derived from the answers the user GRADED here
+// Both are metrics and rules only — never conversation content.
+function composeGuide() {
+  let report = null;
+  try { report = JSON.parse(fs.readFileSync(voiceJson(), 'utf8')); } catch { report = null; }
+  if (report && report.disabled) { try { fs.unlinkSync(voiceMd()); } catch { /* gone */ } return ''; }
+
+  const base = report && report.features ? renderGuide(report.features, report) : '';
+  let adaptive = { rules: [], applied: false, reason: 'not enough graded answers yet' };
+  try { adaptive = require('./feedback').adaptiveRules(require('./feedback').readMarkers()); } catch { adaptive = { rules: [], applied: false }; }
+
+  const sections = [];
+  if (base) sections.push(base);
+  if (adaptive.applied && adaptive.rules.length) {
+    sections.push([
+      '# Answer style (adjusted by your own feedback in this app)',
+      '# Derived from the answers you graded — liked answers shaped these rules,',
+      '# disliked answers ruled the opposite out.',
+      ...adaptive.rules.map(r => `- ${r}`),
+      adaptive.reason ? `\n<!-- ${adaptive.reason} -->` : '',
+    ].filter(Boolean).join('\n'));
+  }
+  const guide = sections.join('\n\n');
+  try {
+    fs.mkdirSync(configDir(), { recursive: true });
+    fs.writeFileSync(voiceMd(), guide);
+  } catch { /* guide is a cache; the prompt falls back to '' */ }
+  return guide;
 }
 
 function isDisabled() {
@@ -172,4 +203,4 @@ function voiceGuide() {
   try { return fs.readFileSync(voiceMd(), 'utf8'); } catch { return ''; }
 }
 
-module.exports = { analyze, renderGuide, calibrate, reset, status, voiceGuide, isDisabled };
+module.exports = { analyze, renderGuide, calibrate, composeGuide, reset, status, voiceGuide, isDisabled };

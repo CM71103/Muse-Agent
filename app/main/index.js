@@ -1002,6 +1002,67 @@ ipcMain.handle('attachments:capabilities', (e) => {
   };
 });
 
+// --- answer feedback (explicit liked / disliked markers) ---
+// The latest assistant answer in the live session: what the user is rating.
+function latestAssistantAnswer() {
+  try {
+    const history = agent && agent.history ? agent.history : [];
+    for (let i = history.length - 1; i >= 0; i--) {
+      const m = history[i];
+      if (!m || m.role !== 'assistant') continue;
+      const text = typeof m.content === 'string' ? m.content
+        : Array.isArray(m.content)
+          ? m.content.filter(p => p && p.type === 'text').map(p => p.text).join('\n')
+          : '';
+      if (text && text.trim()) {
+        const turnId = `${agent.sessionId || 'session'}:${i}`;
+        return { text, turnId, index: i };
+      }
+    }
+  } catch { /* history may be mid-write */ }
+  return { text: '', turnId: '', index: -1 };
+}
+
+ipcMain.handle('feedback:grade', async (e, rating) => {
+  requireTrusted(e);
+  const r = Number(rating) === 1 ? 1 : 0;
+  const target = latestAssistantAnswer();
+  if (!target.text) return { ok: false, error: 'no answer to grade yet' };
+  // Memory semantics are unchanged: an eligible turn still updates the
+  // adaptive memory evidence exactly as before.
+  let memory = null;
+  if (agent && agent.memory && agent.lastMemoryTurnId) {
+    try { memory = agent.memory.grade(agent.lastMemoryTurnId, r); } catch (err) { memory = { ok: false, error: String(err && err.message || err) }; }
+  }
+  const feedback = require('../harness/feedback');
+  const res = feedback.adaptiveApply({
+    sessionId: agent && agent.sessionId ? agent.sessionId : '',
+    turnId: target.turnId,
+    text: target.text,
+  }, r);
+  if (!res.ok) return res;
+  const summary = feedback.summary();
+  send('agent-event', {
+    type: 'info',
+    text: r === 1
+      ? `answer marked as liked (${summary.liked} liked · ${summary.disliked} disliked)`
+      : `answer marked as disliked (${summary.liked} liked · ${summary.disliked} disliked)`,
+  });
+  return { ...res, summary, memory };
+});
+
+ipcMain.handle('feedback:summary', (e) => {
+  requireTrusted(e);
+  return require('../harness/feedback').summary();
+});
+
+ipcMain.handle('feedback:reset', (e) => {
+  requireTrusted(e);
+  const res = require('../harness/feedback').reset();
+  send('agent-event', { type: 'info', text: 'answer feedback cleared — the adaptive style rules were removed' });
+  return res;
+});
+
 // Which of these models can see images? (model picker badges)
 ipcMain.handle('attachments:modelCaps', (e, models) => {
   requireTrusted(e);
