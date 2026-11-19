@@ -1,0 +1,198 @@
+/* clean-ui.css — affectUI "Clean" design language for Muse.
+ *
+ * Monochrome chrome, colour only as data: near-black ink buttons, flat
+ * hairline surfaces, and the categorical palette (blue/green/amber/orange/
+ * red/pink/purple/teal/cyan) reserved for agent identity marks, status and
+ * confidence bars — the affectUI agent-clean vocabulary (affectui.com).
+ *
+ * Layering contract: selectors here are UNSCOPED so they override the global
+ * Ember rules in ember-theme.css (same specificity, later file wins) but lose
+ * automatically to the aria-scoped Krishna rules (body[data-theme=krishna] …)
+ * and to ID-scoped theme overrides. Token values follow the affectUI design
+ * system: ink rgba(0,0,0,.88) · border rgba(0,0,0,.08) · subtle 3% · radius
+ * card 14 / panel 18 / pill 999 · ease cubic-bezier(.22,1,.36,1) · 180ms.
+ */
+
+:root {
+  /* Text */
+  --color-foreground:#0a0a0a;
+  --color-muted-fg:#737373;          /* affectUI --text-muted */
+  --faint:#8b8b92;
+  /* Surfaces */
+  --color-background:#f5f5f5;
+  --color-card:#ffffff;
+  --color-popover:#ffffff;
+  --color-surface-subtle:rgb(0 0 0 / .03);
+  --color-secondary:rgb(0 0 0 / .03); --color-secondary-fg:#0a0a0a;
+  --color-muted:rgb(0 0 0 / .04);
+  --color-accent:rgb(0 0 0 / .03); --color-accent-fg:#0a0a0a;
+  --color-surface-app:#f0f0f1;
+  --frame:#e8e8ea;
+  --color-user-bubble:#ffffff;
+  --field-bg:#ffffff;
+  /* Borders */
+  --color-border:rgb(0 0 0 / .08);       /* affectUI --aui-border */
+  --color-border-soft:rgb(0 0 0 / .05);  /* affectUI --aui-border-strong */
+  --color-input:rgb(0 0 0 / .13);
+  /* Actions — ink primary, the affectUI signature */
+  --color-primary:#171717; --color-primary-fg:#ffffff;
+  --color-brand:#0a0a0a; --color-ring:rgb(0 96 226 / .7);   /* --aui-focus */
+  /* Status (affectUI status colors) */
+  --color-success:#1e8a4f; --color-info:#0070d6; --color-destructive:#c4320a;
+  /* Categorical palette = agent identity data */
+  --aui-blue:#0190fe; --aui-green:#5fc88a; --aui-amber:#e8b000; --aui-orange:#f28a2e;
+  --aui-red:#f04438; --aui-pink:#ee3e9e; --aui-purple:#a651f0; --aui-teal:#13b3a0; --aui-cyan:#14b3f0;
+  --chart-1:#0190fe; --chart-2:#5fc88a; --chart-3:#e8b000; --chart-4:#f28a2e; --chart-5:#a651f0;
+  /* Glass panes become flat hairline panels */
+  --glass-fill:rgb(255 255 255 / .92);
+  --glass-border:var(--color-border);
+  --glass-blur:blur(0);
+  --pane-radius:18px;                       /* affectUI --radius-panel */
+  --pane-shadow:0 1px 0 rgb(0 0 0 / .04), 0 2px 1px -1px rgb(0 0 0 / .05);
+  --shadow-floating:0 4px 42px rgb(0 0 0 / .06), 0 2px 6px rgb(0 0 0 / .05), 0 0 0 1px rgb(0 0 0 / .06);
+  --hero-ink:#0a0a0a; --hero-disc:#ffffff; --hero-lime:#171717;
+  --smoke-front:#0190fe; --splash-dot:rgb(0 0 0 / .06);
+  --shader-opacity:.05; --shader-veil:rgb(255 255 255 / .28);
+  /* affectUI motion tokens */
+  --dur-aui:.18s; --ease-aui:cubic-bezier(.22, 1, .36, 1);
+}
+[data-theme="dark"] {
+  --color-foreground:#ededed;
+  --color-muted-fg:#8b8b92;
+  --faint:#5c5c63;
+  --color-background:#0f0f11;
+  --color-card:#19191b;
+  --color-popover:#19191b;
+  --color-surface-subtle:rgb(255 255 255 / .03);
+  --color-secondary:#26262a; --color-secondary-fg:#ededed;
+  --color-muted:#222225;
+  --color-accent:#26262a; --color-accent-fg:#ededed;
+  --color-surface-app:#0b0b0d;
+  --frame:#0a0a0c;
+  --color-user-bubble:#19191b;
+  --field-bg:#19191b;
+  --color-border:#2a2a2e;
+  --color-border-soft:rgb(255 255 255 / .08);
+  --color-input:rgb(255 255 255 / .14);
+  --color-primary:#ededed; --color-primary-fg:#111113;
+  --color-brand:#c8c8cc; --color-ring:rgb(77 141 255 / .8);
+  --color-success:#5fc88a; --color-info:#4d8dff; --color-destructive:#ff6b5f;
+  --chart-1:#0190fe; --chart-2:#5fc88a; --chart-3:#e8b000; --chart-4:#f28a2e; --chart-5:#a651f0;
+  --glass-fill:rgb(15 15 17 / .88);
+  --glass-border:#2a2a2e;
+  --pane-shadow:0 1px 0 rgb(255 255 255 / .03), 0 2px 1px -1px rgb(0 0 0 / .3);
+  --shadow-floating:0 4px 42px rgb(0 0 0 / .45), 0 2px 6px rgb(0 0 0 / .3), 0 0 0 1px rgb(255 255 255 / .06);
+  --hero-ink:#c8c8cc; --hero-disc:#19191b; --hero-lime:#ededed;
+  --smoke-front:#0190fe; --splash-dot:rgb(255 255 255 / .06);
+  --shader-opacity:.10; --shader-veil:rgb(10 10 12 / .5);
+}
+
+/* ---------- typography: Inter-first, tight tracking ---------- */
+body { font-family:Inter,'Segoe UI Variable Text','Segoe UI',ui-sans-serif,system-ui,sans-serif; letter-spacing:-.11px; }
+body::before { background:radial-gradient(ellipse at 50% -20%,rgb(0 0 0 / .03),transparent 60%),var(--color-surface-app); }
+
+/* ---------- affectUI primitives ---------- */
+/* pixel mark: the tiny coloured squares that give agents a face */
+.pixel-mark { width:8px; height:8px; flex-shrink:0; background:var(--aui-blue);
+  box-shadow:4px 0 0 color-mix(in srgb,var(--aui-blue) 55%,transparent),
+             0 4px 0 color-mix(in srgb,var(--aui-blue) 40%,transparent),
+             4px 4px 0 color-mix(in srgb,var(--aui-blue) 22%,transparent); }
+.pixel-mark.pm-green { background:var(--aui-green); box-shadow:4px 0 0 color-mix(in srgb,var(--aui-green) 55%,transparent), 0 4px 0 color-mix(in srgb,var(--aui-green) 40%,transparent), 4px 4px 0 color-mix(in srgb,var(--aui-green) 22%,transparent); }
+.pixel-mark.pm-orange { background:var(--aui-orange); box-shadow:4px 0 0 color-mix(in srgb,var(--aui-orange) 55%,transparent), 0 4px 0 color-mix(in srgb,var(--aui-orange) 40%,transparent), 4px 4px 0 color-mix(in srgb,var(--aui-orange) 22%,transparent); }
+.pixel-mark.pm-purple { background:var(--aui-purple); box-shadow:4px 0 0 color-mix(in srgb,var(--aui-purple) 55%,transparent), 0 4px 0 color-mix(in srgb,var(--aui-purple) 40%,transparent), 4px 4px 0 color-mix(in srgb,var(--aui-purple) 22%,transparent); }
+
+/* gradient floor: a card's colour rises from its lower edge on hover/active —
+   the affectUI signature hover. Decoration only; all information stays in text. */
+.grad-floor { position:relative; }
+.grad-floor::after { content:''; position:absolute; inset:auto 0 0 0; height:34%;
+  background:linear-gradient(to top,color-mix(in srgb,var(--floor,var(--color-primary)) 13%,transparent),transparent);
+  opacity:0; transform:translateY(6px); pointer-events:none;
+  transition:opacity var(--dur-aui) var(--ease-aui),transform var(--dur-aui) var(--ease-aui); }
+.grad-floor:hover::after,.grad-floor:focus-within::after { opacity:1; transform:translateY(0); }
+
+/* shimmer: the "routing / reading" line */
+@keyframes aui-shimmer { 0% { background-position:-60% 0; } 100% { background-position:160% 0; } }
+
+/* ---------- panes: flat hairline panels ---------- */
+.history,.navbar-panel,#workbench,.design-panel,.design-guide-card,#box-panel {
+  border:1px solid var(--glass-border); box-shadow:var(--pane-shadow); }
+.history,.navbar-panel,#workbench { backdrop-filter:none; -webkit-backdrop-filter:none; }
+
+/* ---------- buttons: ink pills (affectUI primary = near-black ink) ---------- */
+.btn-primary,#btn-new,#send {
+  border-radius:999px;                                   /* --radius-pill */
+  background:var(--color-primary); color:var(--color-primary-fg); border:1px solid transparent;
+  font-weight:600; letter-spacing:-.1px;
+  transition:transform var(--dur-aui) var(--ease-aui),filter var(--dur-aui) var(--ease-aui),
+             background-color var(--dur-aui) var(--ease-aui); }
+.btn-primary:hover,#btn-new:hover,#send:hover { transform:translateY(-1px); filter:brightness(1.08); }
+.btn-primary:active,#btn-new:active,#send:active { transform:translateY(0); filter:brightness(.96); }
+
+/* ---------- composer: chat-composer language ---------- */
+.inputwrap { border:1px solid var(--color-border); border-radius:18px; background:var(--field-bg);
+  box-shadow:0 1px 2px rgb(0 0 0 / .04); }
+.inputwrap:focus-within { box-shadow:0 0 0 3px color-mix(in srgb,var(--color-ring) 16%,transparent); }
+
+/* ---------- messages: clean answer cards ---------- */
+.msg.user .bubble { border:1px solid var(--color-border); border-radius:16px 16px 5px 16px;
+  background:var(--color-user-bubble); }
+.msg.assistant .abody { border-radius:5px 16px 16px 16px; }
+.msg .bubble,.msg .abody { --floor:var(--aui-blue); }
+.sysnote { border-radius:999px; padding:7px 13px; }
+
+/* ---------- tool call cards (affectUI Tool Call Card) ---------- */
+.tool-row.activity-card { border-radius:14px; --floor:var(--aui-blue); }
+.activity-icon { border-radius:10px; background:var(--color-surface-subtle); border-color:var(--color-border);
+  width:30px; height:30px; font-size:15px; }
+.activity-card[data-state="running"] .activity-icon { color:var(--color-primary);
+  background:color-mix(in srgb,var(--aui-blue) 12%,transparent); border-color:color-mix(in srgb,var(--aui-blue) 30%,transparent); }
+.activity-card[data-state="running"] > details > summary::after {
+  content:''; position:absolute; left:0; right:0; bottom:0; height:2px; border-radius:2px;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--aui-blue) 75%,transparent),transparent);
+  background-size:45% 100%; background-repeat:no-repeat; animation:aui-shimmer 1.3s linear infinite; }
+.activity-card[data-state="running"] > details > summary { position:relative; }
+.activity-state { border-radius:999px; font:650 9px/1 var(--sans); letter-spacing:.2px; }
+.activity-card[data-state="completed"] .activity-state { color:var(--color-success);
+  background:color-mix(in srgb,var(--color-success) 12%,transparent); border-color:color-mix(in srgb,var(--color-success) 30%,transparent); }
+.activity-card[data-state="running"] .activity-state { color:color-mix(in srgb,var(--aui-blue) 85%,var(--color-foreground));
+  background:color-mix(in srgb,var(--aui-blue) 12%,transparent); border-color:color-mix(in srgb,var(--aui-blue) 30%,transparent); }
+
+/* ---------- router-lanes language for subagent cards (Agent Router) ---------- */
+.subagent-card { --floor:var(--aui-blue); border-radius:14px; border:1px solid var(--color-border);
+  background:var(--color-card); position:relative; overflow:hidden;
+  transition:border-color var(--dur-aui) var(--ease-aui),box-shadow var(--dur-aui) var(--ease-aui); }
+.subagent-card:hover,.subagent-card:focus-within { border-color:color-mix(in srgb,var(--floor) 32%,var(--color-border)); }
+.subagent-heading::before { content:''; width:8px; height:8px; margin-right:2px; flex-shrink:0;
+  background:var(--floor); box-shadow:4px 0 0 color-mix(in srgb,var(--floor) 55%,transparent),
+    0 4px 0 color-mix(in srgb,var(--floor) 38%,transparent),
+    4px 4px 0 color-mix(in srgb,var(--floor) 20%,transparent); }
+.subagent-card[data-state="running"] { box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--floor) 45%,transparent); }
+.subagent-card[data-state="running"]::after { content:''; position:absolute; left:0; right:0; bottom:0; height:3px;
+  background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--floor) 70%,transparent),transparent);
+  background-size:45% 100%; background-repeat:no-repeat; animation:aui-shimmer 1.4s linear infinite; }
+.subagent-progress { height:4px; border-radius:999px; background:var(--color-surface-subtle); overflow:hidden; }
+.subagent-progress > i,.subagent-progress::before { border-radius:999px; background:var(--floor); }
+.subagent-state { border-radius:999px; }
+
+/* ---------- task-queue chips (Agent Queue / task-queue cards) ---------- */
+#queuechips .q-btn, .q-btn { border:1px solid var(--color-border); border-radius:12px;
+  background:var(--color-card); padding:7px 10px; --floor:var(--aui-purple);
+  transition:border-color var(--dur-aui) var(--ease-aui),background-color var(--dur-aui) var(--ease-aui); }
+.q-btn:hover { border-color:color-mix(in srgb,var(--aui-purple) 35%,var(--color-border)); }
+.q-pos { font:650 9px var(--mono); color:var(--color-muted-fg); }
+
+/* ---------- workbench stat rows: usage-meter language ---------- */
+.wb-row,.wb-stat { position:relative; }
+.wb-row::before { content:''; position:absolute; left:0; top:8px; bottom:8px; width:3px;
+  border-radius:2px; background:color-mix(in srgb,var(--color-border) 55%,transparent); }
+.wb-row.wb-active::before { background:var(--aui-blue); }
+
+/* ---------- nav + sidebar: inbox-card language ---------- */
+.nav-links button { border-radius:999px; }
+.nav-links button.nav-pill { background:var(--color-primary); color:var(--color-primary-fg); }
+.session-list-item,.session-row { border-radius:12px; --floor:var(--aui-cyan); }
+.session-list-item:hover,.session-row:hover { background:var(--color-surface-subtle); }
+
+/* ---------- settings + palette ---------- */
+#settings,#palette-dialog,#memory { border:1px solid var(--color-border); border-radius:18px; }
+#palette-dialog input[type=text],#palette-input { border-radius:12px; }
