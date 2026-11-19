@@ -32,7 +32,11 @@ let appearance='krishna';
 const api={
  getAppearance:async()=>({ok:true,theme:appearance}),setAppearance:async theme=>{appearance=String(theme);return {ok:true}},
  getConfig:async()=>({llm:{base_url:'https://api.example.com/v1',model:'muse-preview',visible_models:['muse-preview']},sentinel:{mode:'auto'},memory:{enabled:false}}),
- getProjectScope:async()=>({ok:true,project:null}),listProjects:async()=>[],listSessions:async()=>[],memoryStatus:async()=>({enabled:false}),
+ getProjectScope:async()=>({ok:true,project:null}),listProjects:async()=>[{id:'p1',name:'Muse Agent',folder:'D:/OpenSourceProg/Test/REA/muse-agent'}],listSessions:async()=>[
+  {id:'s1',title:'Release build and packaging',created:'2026-01-02T09:00:00Z',updatedAt:Date.now()-120000,turns:9,projectId:'p1'},
+  {id:'s2',title:'Vibe calibration from local chats',created:'2026-01-01T09:00:00Z',updatedAt:Date.now()-5400000,turns:14,projectId:'p1'},
+  {id:'s3',title:'affectUI clean revamp',created:'2025-12-20T09:00:00Z',updatedAt:Date.now()-3*86400000,turns:22},
+  {id:'s4',title:'Old idea about the dashboard',created:'2025-09-01T09:00:00Z',updatedAt:Date.now()-90*86400000,turns:5}],memoryStatus:async()=>({enabled:false}),
  getSettings:async()=>({base_url:'https://api.example.com/v1',model:'muse-preview',visible_models:['muse-preview'],embed_key_set:false,has_key:true}),
  saveSettings:async()=>({ok:true}),selectModel:async()=>({ok:true}),fetchModels:async()=>({ok:true,models:['muse-preview','muse-reasoning']}),mcpList:async()=>[],
  agentSend:async()=>({ok:true,text:''}),
@@ -71,7 +75,7 @@ app.whenReady().then(async()=>{try{
  await js("document.getElementById('splash')?.remove();setTheme('dark')");
  await pause(400);
  const shot=async name=>{await pause(250);fs.writeFileSync(path.join(output,name+'.png'),(await win.webContents.capturePage()).toPNG())};
- await shot('empty');
+ await js("sessionCache=[];renderSessions();renderProjects()");await shot('empty');await js('refreshSessions()');
  assert.equal(await js("!!document.querySelector('#empty')"),true,'empty hero should survive system notes');
  // Simulate a realistic exchange through the renderer's own event path.
  await js("addMsg('user','How do I build a release of the app?')");
@@ -84,6 +88,7 @@ app.whenReady().then(async()=>{try{
  await pause(400);
  await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");
  await shot('conversation');
+ await js("document.querySelector('.project-tree-toggle')?.click()");await shot('sidebar-projects');
  assert.equal(await js("document.querySelectorAll('.msg').length>=2"),true,'transcript should hold both turns');
  assert.equal(await js("document.querySelectorAll('.activity-card').length>=1"),true,'tool card should render');
  await js("setTheme('light')");await shot('conversation-light');

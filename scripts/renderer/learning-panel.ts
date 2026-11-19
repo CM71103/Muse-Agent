@@ -6,7 +6,7 @@ function create(options:{api?:LearningApi;busy?:()=>boolean}={}){
  const make=(tag:string,id='',className='',text?:string)=>{const element=document.createElement(tag);if(id)element.id=id;if(className)element.className=className;if(text!==undefined)element.textContent=text;return element;};
  const button=(id:string,text:string)=>{const element=make('button',id,'',text) as HTMLButtonElement;element.type='button';return element;};
  const launcher=button('learning-open','Learning');launcher.setAttribute('aria-haspopup','dialog');launcher.setAttribute('aria-controls','learning-panel');launcher.setAttribute('aria-expanded','false');
- const actions=document.querySelector('.sidebar-actions'),settingsButton=document.getElementById('btn-settings');if(actions){if(settingsButton?.parentElement===actions)actions.insertBefore(launcher,settingsButton);else actions.append(launcher);}
+ const actions=document.querySelector('.rail-actions')||document.querySelector('.sidebar-actions'),settingsButton=document.getElementById('btn-settings');if(actions){if(settingsButton?.parentElement===actions)actions.insertBefore(launcher,settingsButton);else actions.append(launcher);}
  const backdrop=make('div','learning-backdrop');backdrop.hidden=true;const panel=make('section','learning-panel');panel.setAttribute('role','dialog');panel.setAttribute('aria-modal','true');panel.setAttribute('aria-labelledby','learning-title');
  const header=make('div','','learning-heading'),title=make('div');title.append(make('p','','learning-eyebrow','A little practice, a clearer next step'),make('h2','learning-title','','Independent learning'),make('p','','','Choose what Muse can study while you are away.'));
  const closeButton=button('learning-close','Close');header.append(title,closeButton);

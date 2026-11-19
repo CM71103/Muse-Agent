@@ -25,6 +25,8 @@ let activeProjectId = null;
 let projectCache = [];
 let projectHomeVisible = false;
 let showArchivedProjects = false;
+// Projects a user opened in the rail but did not switch the workspace to.
+const expandedProjects = new Set();
 let projectEditorId = null;
 let transcriptMessages = [];
 let designUI = null;
@@ -1326,6 +1328,27 @@ async function refreshSessions() {
   try { sessionCache = await window.muse.listSessions(); renderSessions(); if(window.muse.listProjects)renderProjects(); if(projectHomeVisible)renderProjectHome(); }
   catch (e) { $('sessions-empty').textContent = `History unavailable: ${e.message || e}`; $('sessions-empty').style.display = 'block'; }
 }
+// Relative time, the way a workspace shell reports recency:
+//  just now · 15m · 3h · 2d · 5w · 3mo · 2y
+function relTime(ts) {
+  if (!ts) return '';
+  const then = typeof ts === 'number' ? ts : Date.parse(ts);
+  if (!Number.isFinite(then)) return '';
+  const secs = Math.max(0, (Date.now() - then) / 1000);
+  if (secs < 60) return 'now';
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
+  if (secs < 604800) return `${Math.floor(secs / 86400)}d`;
+  if (secs < 2629800) return `${Math.floor(secs / 604800)}w`;
+  if (secs < 31557600) return `${Math.floor(secs / 2629800)}mo`;
+  return `${Math.floor(secs / 31557600)}y`;
+}
+
+function relTimeOf(session) {
+  if (!session) return '';
+  return relTime(session.updatedAt || session.created || session.mtime || 0);
+}
+
 function renderSessions() {
   scheduleHeatmap();
   const query = $('session-search').value.trim().toLowerCase();
@@ -1335,10 +1358,11 @@ function renderSessions() {
   $('sessions-empty').textContent = sessionCache.length ? t('sidebar.noMatch', 'No matching sessions.') : t('sidebar.empty', 'No saved sessions yet. Complete a task to keep it here.');
   for (const s of list) {
     const li = document.createElement('div'); li.className = 'sess' + (s.id === activeSessionId ? ' active' : '');
-    const t = document.createElement('button'); t.className = 't'; t.textContent = s.title || 'Untitled'; t.title = t.textContent;
+    const t = document.createElement('button'); t.className = 't'; t.textContent = s.title || 'Untitled';
+    t.title = `${s.title || 'Untitled'} — ${s.turns || 0} turn(s)`;
     if (s.id === activeSessionId) t.setAttribute('aria-current', 'true');
     t.addEventListener('click', () => { closeMobileHistory(); loadSession(s); });
-    const m = document.createElement('span'); m.className = 'm'; m.textContent = String(s.turns || 0);
+    const m = document.createElement('span'); m.className = 'when'; m.textContent = relTimeOf(s);
     const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.setAttribute('aria-label', `Delete ${s.title || 'Untitled'}`);
     x.addEventListener('click', guarded(async () => {
       if (busy || loadingSession || currentApproval) return;
@@ -1460,6 +1484,18 @@ const boxUI = window.MuseBox.create({busy:()=>busy||loadingSession||!!currentApp
 const sandboxUI = window.MuseSandbox?.create({api:window.muse,busy:()=>busy||loadingSession||!!currentApproval});
 const learningUI = window.MuseLearning?.create({api:window.muse,busy:()=>busy||loadingSession||!!currentApproval});
 designUI = window.MuseDesign?.create({api:window.muse,busy:()=>busy||loadingSession||!!currentApproval,submitBrief:text=>{if(!text?.trim()||busy||loadingSession||currentApproval||switchingModel)return false;void submit(text);return true;}});
+// Give the panel launchers the same line icon as the rest of the rail.
+try {
+  const decorate=(id, paths)=>{
+    const button=$(id);if(!button)return;
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
+    for(const d of paths){const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',d);svg.append(path);}
+    button.prepend(svg);
+  };
+  decorate('learning-open',['M4 19V9','M9 19V5','M14 19v-7','M19 19V7']);
+  decorate('design-open',['M4 5h16v14H4z','M4 10h16','M10 10v9']);
+} catch { /* the rail stays usable without the decorative icons */ }
 let lastLearningActivity=0;
 for(const eventName of ['pointerdown','keydown'])window.addEventListener(eventName,()=>{
   if(Date.now()-lastLearningActivity>750){lastLearningActivity=Date.now();window.muse.learningActivity?.();}
@@ -2233,17 +2269,42 @@ function renderProjects() {
   const list = $('projects-list'); list.replaceChildren();
   const query = $('project-search').value.trim().toLowerCase();
   for (const p of projectCache.filter(p => !!p.archived === showArchivedProjects && p.name.toLowerCase().includes(query))) {
+    const chats = sessionCache.filter(s => s.projectId === p.id);
+    const open = p.id === activeProjectId || expandedProjects.has(p.id);
     const branch = document.createElement('div'); branch.className = 'project-branch' + (p.id === activeProjectId ? ' selected' : '');
     const row = document.createElement('div'); row.className = 'project-tree-row';
-    const button = document.createElement('button'); button.className = 'project-tree-name'; button.textContent = '▱  ' + p.name;
+    const toggle = document.createElement('button'); toggle.className = 'project-tree-toggle' + (open ? ' open' : '');
+    toggle.setAttribute('aria-label', (open ? 'Collapse ' : 'Expand ') + p.name);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chevron.setAttribute('viewBox', '0 0 24 24'); chevron.setAttribute('aria-hidden', 'true');
+    const cp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    cp.setAttribute('d', 'm9 6 6 6-6 6');
+    chevron.append(cp);
+    toggle.append(chevron);
+    toggle.addEventListener('click', guarded(() => {
+      if (expandedProjects.has(p.id)) expandedProjects.delete(p.id); else expandedProjects.add(p.id);
+      renderProjects();
+    }));
+    const button = document.createElement('button'); button.className = 'project-tree-name';
+    const folder = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    folder.setAttribute('viewBox', '0 0 24 24'); folder.setAttribute('aria-hidden', 'true');
+    const fp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    fp.setAttribute('d', 'M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10v7a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17z');
+    folder.append(fp);
+    const pname = document.createElement('span'); pname.textContent = p.name;
+    button.append(folder, pname);
     button.title = p.folder || 'Open project overview'; button.addEventListener('click', guarded(() => openProject(p.id)));
-    const chats = sessionCache.filter(s => s.projectId === p.id);
     const count = document.createElement('span'); count.className = 'project-tree-count'; count.textContent = String(chats.length);
     const plus = document.createElement('button'); plus.className = 'project-tree-new'; plus.textContent = '+'; plus.setAttribute('aria-label','New chat in '+p.name);
     plus.addEventListener('click', guarded(() => p.id === activeProjectId ? newSession() : openProject(p.id, true)));
-    row.append(button,count,plus); branch.append(row);
-    if(p.id===activeProjectId) for(const chat of chats.slice(0,6)) {
-      const child=document.createElement('button');child.className='project-child'+(chat.id===activeSessionId?' current':'');child.textContent=chat.title;child.title=chat.title;
+    row.append(toggle,button,count,plus); branch.append(row);
+    if(open) for(const chat of chats.slice(0,6)) {
+      const child=document.createElement('button');child.className='project-child'+(chat.id===activeSessionId?' current':'');
+      const ct=document.createElement('span');ct.className='t';ct.textContent=chat.title||'Untitled';
+      const cw=document.createElement('span');cw.className='when';cw.textContent=relTimeOf(chat);
+      child.append(ct,cw);
+      child.title=chat.title||'Untitled';
       child.addEventListener('click',guarded(()=>loadSession(chat)));branch.append(child);
     }
     list.append(branch);

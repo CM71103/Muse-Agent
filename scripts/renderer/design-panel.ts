@@ -7,7 +7,7 @@ function create(options:{api?:DesignApi;busy?:()=>boolean;submitBrief?:(text:str
  const make=(tag:string,id='',className='',text?:string)=>{const el=document.createElement(tag);if(id)el.id=id;if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;};
  const button=(id:string,text:string)=>{const el=make('button',id,'',text) as HTMLButtonElement;el.type='button';return el;};
  const launcher=button('design-open','Design');launcher.setAttribute('aria-haspopup','dialog');launcher.setAttribute('aria-controls','design-panel');launcher.setAttribute('aria-expanded','false');launcher.title='Open design workspace';
- const actions=document.querySelector('.sidebar-actions'),settingsNavButton=document.getElementById('btn-settings');if(actions){if(settingsNavButton?.parentElement===actions)actions.insertBefore(launcher,settingsNavButton);else actions.append(launcher);}
+ const actions=document.querySelector('.rail-actions')||document.querySelector('.sidebar-actions'),settingsNavButton=document.getElementById('btn-settings');if(actions){if(settingsNavButton?.parentElement===actions)actions.insertBefore(launcher,settingsNavButton);else actions.append(launcher);}
  const backdrop=make('dialog','design-backdrop','design-backdrop') as HTMLDialogElement;
  backdrop.setAttribute('aria-labelledby','design-title');const panel=make('section','design-panel');panel.setAttribute('role','region');panel.setAttribute('aria-label','Design Studio workspace');
  const heading=make('header','','design-heading'),title=make('div','');title.append(make('span','','design-mark','✳'),make('span','','','Muse'),make('span','','design-slash','/'),make('h2','design-title','','Design Studio'));
