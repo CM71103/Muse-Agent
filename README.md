@@ -6,7 +6,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 
 [![Latest release](https://img.shields.io/github/v/release/CM71103/Muse-Agent?color=eaa064&label=release)](https://github.com/CM71103/Muse-Agent/releases/latest)
 [![Windows](https://img.shields.io/badge/desktop-Windows-eaa064)](https://github.com/CM71103/Muse-Agent/releases)
-[![MIT license](https://img.shields.io/badge/license-MIT-889977)](#license)
+[![MIT license](https://img.shields.io/badge/license-MIT-889977)](LICENSE)
 
 [Download](https://github.com/CM71103/Muse-Agent/releases/latest) · [Get started](#get-started) · [Features](#what-you-can-do) · [Build](#build-for-windows) · [Troubleshooting](#troubleshooting)
 
@@ -23,18 +23,25 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Work with projects** | Group conversations, attach a working folder, and give each project shared instructions. |
 | **Read and change files** | Explore directories, inspect source, and write changes through the agent's tools. |
 | **Run commands** | Execute shell commands and inspect readable output, completion status, and duration. |
+| **Query your data** | Register SQLite databases as read-only data sources; the agent explores schemas and runs capped, single-statement SELECTs. |
+| **Build live dashboards** | Ask for a dashboard in plain English — one SQL query per chart, re-run every time you open it. Bar, line, area, pie, stat, and table charts. |
 | **Choose your models** | Search available models in Settings, select the ones visible in chat, and switch from the composer. |
 | **Delegate work** | Follow subagents through individual cards with their task, activity, status, and result. |
 | **Recall useful context** | Enable project-scoped memory backed by SQLite and embeddings, with feedback and memory-management controls. |
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
-| **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. |
-| **Make it yours** | Switch between light and dark themes, adjust glass opacity, and toggle the animated shader background. |
+| **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works — reorder them, jump the line, or cancel one. |
+| **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
+| **Make it yours** | Light, Dark, and Krishna themes with smooth switching — your choice persists across launches. Adjust glass opacity and toggle the animated shader background. |
 
 ### Built for a continuous workflow
 
 - **Readable activity:** commands and results have their own cards, with Copy buttons and expandable request details.
 - **Long conversations:** automatic context compaction summarizes older history; `/compact` requests compaction explicitly.
 - **Persistent sessions:** reopen previous conversations from the sidebar or project workspace.
+- **Queue and steer:** send follow-ups while the agent runs — they queue in order with reorder, run-now (steer), and cancel controls on each chip.
+- **Crash-safe runs:** every run writes durable receipts to its session; if the app dies mid-run, reopening the session surfaces the interrupted work with its context intact. Sends are idempotent — a retried command never executes twice.
+- **Self-healing history:** tool calls interrupted by a crash are repaired before the next request, so long sessions stay protocol-valid.
+- **Honest accounting:** the activity panel reports real provider token usage and tool-error counts per session — estimates are marked, never presented as exact.
 - **Visible delegation:** child-agent completion does not prematurely finish the parent agent's running state.
 - **Desktop presence:** tray controls and notifications surface work and approval requests.
 - **Update notifications:** Muse checks GitHub Releases and points you to available updates; it does not silently replace the running app.
@@ -154,6 +161,29 @@ Two execution shapes are supported:
 - **Inline artifact** — a runtime that answers with a single `<artifact identifier="page.html" title="…">…</artifact>` block has that block parsed and materialized into the project automatically, with the manifest written for it. Block identifiers are sanitized the same way, so `../` cannot escape the folder.
 
 A project that is also a runnable web app keeps its own framework: **Run project** starts its `dev`/`start`/`serve` script and streams the live server into the canvas instead of a static file.
+
+## Live dashboards and data sources
+
+Muse can answer questions from your own data and turn them into dashboards that stay live.
+
+### Data sources
+
+Register a SQLite database from the command palette (**Add SQLite data source**) or through chat. Connections live in a local registry and are read-only **at the driver level** — the agent physically cannot write, alter, or run multi-statement SQL against them. Queries are single SELECTs, capped per caller (200 rows for exploration, 10,000 for dashboard views).
+
+| Tool | What it does |
+| --- | --- |
+| `list_data_sources` | Shows registered connections with ids the agent passes to the other tools. |
+| `sqlite_tables` | Schema exploration — tables, views, and columns before writing SQL. |
+| `sqlite_run_sql` | One read-only SELECT returning `{columns, rows, truncated}`. |
+
+### Dashboards
+
+Ask in plain English — *“make a dashboard of orders by region with a bar chart and a pie chart”*. Each chart is one SQL query stored **as a query, not as data**; opening a dashboard re-runs every chart through the guarded runner, so numbers are always current.
+
+- Six chart types rendered locally as SVG (no chart-library dependency): bar, line, area, pie, stat, and table.
+- **Edit one chart, keep the rest:** “make the second chart a line chart” replaces just that chart.
+- A failed query becomes an error card on that chart — it never breaks the dashboard.
+- Dashboards appear in the **Dashboards** tab and as an “open” chip in the conversation that created them.
 
 ## Permission modes
 
@@ -375,8 +405,8 @@ Use a new version and tag for each new release — `latest.yml` for a version th
 ```text
 app/
   main/                 Electron lifecycle, IPC, settings, credentials
-  renderer/             Chat, projects, model pickers, activity, themes
-  harness/              Model loop, tools, Sentinel, sessions, CLI, MCP
+  renderer/             Chat, projects, dashboards, charts, model pickers, activity, themes
+  harness/              Model loop, tools, Sentinel, sessions, data sources, dashboards, CLI, MCP
   memory/               SQLite memory, retrieval, extraction, feedback
 build/                   Application icon and branding
 scripts/
@@ -397,4 +427,4 @@ For development, start with `bun run start`. Run `bun run test` for code changes
 
 ## License
 
-The project declares **MIT** in [package.json](package.json). A standalone license text is not currently included in the repository.
+**MIT** — see [LICENSE](LICENSE) and [package.json](package.json).
