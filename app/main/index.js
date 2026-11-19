@@ -556,6 +556,7 @@ app.whenReady().then(async () => {
   buildTray();
   startBridgeIfConfigured();
   startUpdateChecks();
+  autoCalibrateVoice();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
@@ -578,6 +579,29 @@ function startUpdateChecks() {
   };
   setTimeout(run, 15 * 1000).unref?.();   // shortly after boot, off the startup path
   setInterval(run, CHECK_MS).unref?.();
+}
+
+// First-run vibe calibration: if no answer-style profile exists yet and the
+// machine has prior AI conversations (ChatGPT export/caches, Claude Code
+// transcripts, Muse sessions), learn the user's preferred answer style in the
+// background so Muse matches their vibe from the first message. Local-only;
+// style metrics, never content. Skip when disabled (voice:reset) or when a
+// profile already exists — recalibration is explicit from the palette.
+function autoCalibrateVoice() {
+  const run = () => {
+    try {
+      const voice = require('../harness/voice');
+      if (voice.isDisabled() || voice.status().calibrated) return;
+      const res = voice.calibrate();
+      if (res.ok) {
+        send('agent-event', {
+          type: 'info',
+          text: `answer style learned locally from ${res.messages} messages in your previous AI conversations (ChatGPT/Claude/Muse) — Muse will match that style. "Show answer-style profile" in the command palette shows what was learned.`,
+        });
+      }
+    } catch { /* calibration must never disturb the app */ }
+  };
+  setTimeout(run, 12 * 1000).unref?.();   // first-run only; cheap when a profile exists
 }
 
 let shutdownDrain = null;
@@ -853,6 +877,20 @@ ipcMain.handle('dashboards:data', (e, id) => {
 ipcMain.handle('dashboards:delete', (e, id) => {
   requireTrusted(e);
   return require('../harness/dashboards').removeDashboard(String(id || '')) ? { ok: true } : { ok: false, error: 'not found' };
+});
+
+// --- answer-style profile (vibe calibration) ---
+ipcMain.handle('voice:status', (e) => {
+  requireTrusted(e);
+  return require('../harness/voice').status();
+});
+ipcMain.handle('voice:calibrate', (e) => {
+  requireTrusted(e);
+  return require('../harness/voice').calibrate();
+});
+ipcMain.handle('voice:reset', (e) => {
+  requireTrusted(e);
+  return require('../harness/voice').reset();
 });
 
 ipcMain.handle('approval:respond', async (e, { id, approved }) => {

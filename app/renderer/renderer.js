@@ -1032,6 +1032,33 @@ async function addSqliteDataSource() {
   } catch (e) { reportError(e); }
 }
 
+/* ---------- answer-style profile (vibe calibration) ---------- */
+async function showVoiceProfile() {
+  try {
+    const st = await window.muse.voiceStatus();
+    if (!st || !st.calibrated) {
+      addSysNote('no answer-style profile yet — it is learned automatically on first run, or run “Recalibrate answer style”', false, 'mem');
+      return;
+    }
+    const rules = (st.guide || '').split('\n').filter(l => l.startsWith('- ')).map(l => l.slice(2));
+    addMsg('assistant', `**Answer-style profile** — learned locally from ${st.messages} messages in your previous AI conversations (style metrics only, no content kept).\n\n${rules.map(r => '- ' + r).join('\n')}`);
+  } catch (e) { reportError(e); }
+}
+async function recalibrateVoice() {
+  try {
+    const res = await window.muse.voiceCalibrate();
+    addSysNote(res && res.ok
+      ? `answer style recalibrated from ${res.messages} messages — Muse will match that style`
+      : `could not calibrate: ${String(res && res.error || 'no conversation history found')}`, !(res && res.ok), 'mem');
+  } catch (e) { reportError(e); }
+}
+async function resetVoiceProfile() {
+  try {
+    await window.muse.voiceReset();
+    addSysNote('answer-style profile reset — Muse uses its default voice', false, 'mem');
+  } catch (e) { reportError(e); }
+}
+
 /* ---------- run checkpoint undo chip ---------- */
 function addUndoChip(checkpoint) {
   const el = document.createElement('div');
@@ -2062,7 +2089,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Add SQLite data source', addSqliteDataSource, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {

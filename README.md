@@ -28,6 +28,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Choose your models** | Search available models in Settings, select the ones visible in chat, and switch from the composer. |
 | **Delegate work** | Follow subagents through individual cards with their task, activity, status, and result. |
 | **Recall useful context** | Enable project-scoped memory backed by SQLite and embeddings, with feedback and memory-management controls. |
+| **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Muse sessions) — locally, style metrics only. |
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
 | **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works — reorder them, jump the line, or cancel one. |
 | **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
@@ -207,6 +208,17 @@ Deny rules still apply in every mode, and unknown tools are rejected. Legacy `al
 **Commands run with your Windows user permissions.** The approval gate is not an operating-system sandbox. Review commands and choose the mode that fits the work you are authorizing.
 
 Subagents share the parent's live permission policy, while keeping separate model context. Child agents cannot spawn further children.
+
+## Answer style that matches you (vibe calibration)
+
+Muse does not start as a stranger. On first run it looks for AI conversations that already exist on your machine — a ChatGPT data export (`conversations.json` in Downloads/Documents/Desktop), ChatGPT desktop or web caches, Claude Code transcripts (`~/.claude/projects`), and Muse's own sessions — and measures **how you like answers**: their length, structure, use of lists and code, directness, and your register.
+
+The result is an answer-style guide in `~/.muse-agent/voice.md` that joins the system prompt, so Muse answers in the voice you already know from message one.
+
+- **Local and private:** analysis runs on your machine and the guide stores style metrics and rules only — never quotes, topics, or conversation content (pinned by tests).
+- **Automatic:** first run calibrates itself in the background and tells you what it found.
+- **You stay in charge:** the command palette has **Show answer-style profile**, **Recalibrate answer style**, and **Reset answer-style profile**.
+- **Best results:** a ChatGPT data export (Settings → Data controls → Export data) placed anywhere in Downloads gives the richest signal.
 
 ## Memory that follows your work
 

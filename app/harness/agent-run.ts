@@ -7,7 +7,11 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   this.lastMemoryTurnId = null;
   if (!this.history.length) {
     const design = this.cwdOverride ? designContext(this.cwdOverride) : null;
-    const systemExtra = [opts.systemExtra || '', design?.text || ''].filter(Boolean).join('\n\n');
+    // Voice profile (vibe calibration): style-only guide learned locally from
+    // the user's previous AI conversations — '' until calibrated or if reset.
+    let voiceGuide = '';
+    try { voiceGuide = require('./voice').voiceGuide(); } catch { /* voice module optional at runtime */ }
+    const systemExtra = [opts.systemExtra || '', voiceGuide, design?.text || ''].filter(Boolean).join('\n\n');
     this.history.push({ role: 'system', content:
       systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard')) });
   }
