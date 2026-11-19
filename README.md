@@ -116,6 +116,8 @@ Make a plan for adding search to this application before editing files.
 
 **Design** in the sidebar opens the Design Studio: a project folder, the design knowledge that shapes it, a live preview canvas, and the same conversation you use in chat. Everything is local — a project is an ordinary folder that Muse can also open in your editor.
 
+![Muse Agent Design Studio with a centered artboard on a dotted canvas, file tabs, and a floating tool rail](docs/images/muse-design-studio.png)
+
 Selecting a project writes `.od/project.json` next to your files (name, kind, active design system, skill, template, craft rules). Nothing is copied into an app-owned database, so the folder stays usable on its own.
 
 ### Registries
@@ -177,6 +179,8 @@ Register a SQLite database from the command palette (**Add SQLite data source**)
 | `sqlite_run_sql` | One read-only SELECT returning `{columns, rows, truncated}`. |
 
 ### Dashboards
+
+![Muse Agent live dashboard with bar, area, and pie charts rendered on paper cards](docs/images/muse-dashboards.png)
 
 Ask in plain English — *“make a dashboard of orders by region with a bar chart and a pie chart”*. Each chart is one SQL query stored **as a query, not as data**; opening a dashboard re-runs every chart through the guarded runner, so numbers are always current.
 
