@@ -104,10 +104,17 @@ app.whenReady().then(async()=>{try{
  await js("attachModelCaps={model:'Qwen3.8-Flash-Next',vision:false};renderAttachmentStrip()");
  await pause(200);await shot('attachments-note');
  await js("pendingAttachments=[];renderAttachmentStrip();attachModelCaps=null;");
- // answer feedback: the 👍/👎 controls under an answer
+ // answer feedback: the rating control under an answer (idle + graded)
  await js("document.querySelectorAll('.msg-rate').forEach(n=>n.style.opacity=1)");
  await pause(200);await shot('rating');
  assert.equal(await js("document.querySelectorAll('.msg-rate .rate-btn').length>=2"),true,'rating controls should render');
+ assert.equal(await js("!!document.querySelector('.msg-rate .rate-btn svg')"),true,'rating control uses line icons');
+ await js("(()=>{const r=document.querySelector('.msg-rate');r.dataset.rated='1';r.querySelector('.rate-state').textContent='Liked';r.querySelectorAll('.rate-btn')[0].setAttribute('aria-pressed','true');r.style.opacity=1;})()");
+ await pause(200);await shot('rating-graded');
+ await js("setTheme('light')");await pause(400);
+ await js("(()=>{const r=document.querySelector('.msg-rate');r.style.opacity=1;})()");
+ await pause(200);await shot('rating-light');
+ await js("setTheme('dark')");await pause(300);
  await js("setTheme('krishna')");await pause(500);await shot('theme-krishna');
  await js("setTheme('light')");await pause(500);await shot('theme-light');
  await js("setTheme('dark')");await pause(500);await shot('theme-dark');

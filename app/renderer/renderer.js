@@ -867,31 +867,58 @@ async function gradeLatestAnswer(rating) {
 }
 // Each answer carries a tiny rate control; the grade becomes an explicit
 // marker and the adaptive policy adjusts the answer style from it.
+// Crisp line icons instead of emoji — the control reads as part of the
+// interface rather than a reaction sticker.
+function ratingIcon(down) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  const mk = (d) => { const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); return p; };
+  svg.append(
+    mk('M7 21V10.5l4.6-8A2.4 2.4 0 0 1 14 5.8L13.2 9h5.3a2 2 0 0 1 2 2.4l-1.3 7.4a2 2 0 0 1-2 1.7H7z'),
+    mk('M7 10.5H4.2A1.2 1.2 0 0 0 3 11.7v8.1a1.2 1.2 0 0 0 1.2 1.2H7'),
+  );
+  if (down) svg.style.transform = 'scaleY(-1)';
+  return svg;
+}
+
 function ratingRow() {
   const row = document.createElement('div');
   row.className = 'msg-rate';
-  const mk = (glyph, rating, label) => {
+  row.setAttribute('role', 'group');
+  row.setAttribute('aria-label', 'Rate this answer');
+  const state = document.createElement('span');
+  state.className = 'rate-state';
+  state.textContent = 'Rate';
+  const buttons = [];
+  const mk = (icon, rating, label) => {
     const b = document.createElement('button');
     b.className = 'rate-btn';
-    b.textContent = glyph;
+    b.type = 'button';
+    b.append(icon);
     b.title = label;
     b.setAttribute('aria-label', label);
+    b.setAttribute('aria-pressed', 'false');
+    b.setAttribute('data-rating', String(rating));
+    buttons.push({ el: b, rating });
     b.addEventListener('click', async () => {
       try {
         const res = await window.muse.feedbackGrade(rating);
         if (!res || !res.ok) { addSysNote(String(res && res.error || 'could not record that'), true); return; }
-        row.dataset.rated = String(rating);
+        row.setAttribute('data-rated', String(rating));
+        state.textContent = rating === 1 ? 'Liked' : 'Not liked';
+        for (const it of buttons) it.el.setAttribute('aria-pressed', String(it.rating === rating));
         const s = res.summary || {};
         const note = res.policy && res.policy.applied
-          ? `style adjusted: ${res.policy.rules.length} rule(s) updated from ${s.liked} liked / ${s.disliked} disliked answers`
-          : `recorded (${s.liked} liked · ${s.disliked} disliked) — a few more grades and the style adapts`;
+          ? `Answer style updated from your feedback: ${res.policy.rules.length} rule(s) now reflect ${s.liked} liked / ${s.disliked} disliked answers.`
+          : `Feedback recorded (${s.liked} liked · ${s.disliked} disliked). A few more grades and the answer style adapts.`;
         addSysNote(note, false, 'mem');
-        for (const b2 of row.querySelectorAll('.rate-btn')) b2.disabled = true;
       } catch (e) { reportError(e); }
     });
     return b;
   };
-  row.append(mk('👍', 1, 'I liked this answer'), mk('👎', 0, 'I did not like this answer'));
+  row.append(state, mk(ratingIcon(false), 1, 'Mark this answer as liked'), mk(ratingIcon(true), 0, 'Mark this answer as disliked'));
   return row;
 }
 
