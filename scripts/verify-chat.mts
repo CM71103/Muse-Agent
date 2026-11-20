@@ -41,6 +41,9 @@ const api={
  saveSettings:async()=>({ok:true}),selectModel:async()=>({ok:true}),fetchModels:async()=>({ok:true,models:['muse-preview','muse-reasoning']}),mcpList:async()=>[],
  agentSend:async()=>({ok:true,text:''}),
  boxStatus:async()=>({state:'disconnected',tools:0}),onBoxStatus:()=>()=>{},boxConnect:async()=>({ok:true}),boxDisconnect:async()=>({ok:true}),boxOpenDesktop:async()=>({ok:true}),boxCancel:async()=>({ok:true}),
+ voiceStatus:async()=>({ok:true,calibrated:true,messages:5767,calibrated_at:new Date().toISOString(),liked:{count:21,rules:['The answers you accept run long (about 100 words) — give the real detail instead of a teaser.']},guide:'Match the answer style. The answers you accept run long (about 100 words).',roots:[{kind:'claude-projects'},{kind:'codex-sessions'},{kind:'cline-sessions'}]}),
+ voiceCalibrate:async()=>({ok:true,messages:5767,liked:{count:21,rules:['The answers you accept run long (about 100 words) — give the real detail instead of a teaser.'],note:'21 accepted answers compared with 4370 answers overall'},roots:[{kind:'claude-projects',messages:3654},{kind:'codex-sessions',messages:668},{kind:'cline-sessions',messages:1445}]}),
+ voiceReset:async()=>({ok:true}),feedbackSummary:async()=>({total:0,liked:0,disliked:0,markers:[]}),feedbackReset:async()=>({ok:true}),
  datasourcesAddSqlite:async()=>({ok:false,cancelled:true}),dashDelete:async()=>({ok:true}),dashList:async()=>[{id:'d1',title:'Sales overview',description:'',charts:5,created:''}],
  dashData:async()=>({ok:true,dashboard:{id:'d1',title:'Sales overview',charts:[
   {id:'c1',title:'Revenue by month',type:'bar',x:'month',y:['revenue']},
@@ -70,7 +73,7 @@ app.whenReady().then(async()=>{try{
  win=new BrowserWindow({width:1280,height:860,useContentSize:true,show:false,webPreferences:{offscreen:true,preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}});
  win.webContents.on('console-message',event=>{if(event.level==='error')errors.push(event.message)});
  win.webContents.on('did-fail-load',(_e,code,description)=>errors.push(description));
- const js=async code=>{try{return await win.webContents.executeJavaScript(code)}catch(e){console.error('JS STEP FAILED:',code.slice(0,140));throw e}};
+ const js=async code=>{try{return await win.webContents.executeJavaScript(code)}catch(e){console.error('JS STEP FAILED:',code.slice(0,140));console.error('CONSOLE ERRORS:',JSON.stringify(errors.slice(-6),null,1));throw e}};
  await win.loadFile(path.join(root,'app/renderer/index.html'));win.webContents.startPainting();
  await js("document.getElementById('splash')?.remove();setTheme('dark')");
  await pause(400);
@@ -88,6 +91,8 @@ app.whenReady().then(async()=>{try{
  await pause(400);
  await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");
  await shot('conversation');
+ await js("document.querySelector('.project-tree-toggle')?.click()");
+ await js("learnMyStyle()");await pause(500);await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");await pause(300);await shot('learn-style');
  await js("document.querySelector('.project-tree-toggle')?.click()");await shot('sidebar-projects');
  assert.equal(await js("document.querySelectorAll('.msg').length>=2"),true,'transcript should hold both turns');
  assert.equal(await js("document.querySelectorAll('.activity-card').length>=1"),true,'tool card should render');

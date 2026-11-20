@@ -1237,23 +1237,102 @@ async function addSqliteDataSource() {
 }
 
 /* ---------- answer-style profile (vibe calibration) ---------- */
+// The human-readable summary of what the scan learned, so the click has a
+// visible outcome instead of a spinner that vanishes.
+function voiceSummaryText(res) {
+  if (!res || !res.ok) return `could not learn from local chats: ${String(res && res.error || 'no conversation history found')}`;
+  const parts = [`learned from ${res.messages.toLocaleString ? res.messages.toLocaleString() : res.messages} local messages`];
+  const roots = (res.roots || []).map(r => r.kind).filter(Boolean);
+  if (roots.length) parts.push(`(${roots.join(', ')})`);
+  const liked = res.liked || {};
+  if (liked.count) parts.push(`· ${liked.count} answers you accepted most`);
+  const rules = (liked.rules || []).length;
+  if (rules) parts.push(`· ${rules} new rule${rules === 1 ? '' : 's'}`);
+  return parts.join(' ');
+}
+function setLearnStyleStatus(text, busy) {
+  const status = $('learn-style-status');
+  if (!status) return;
+  status.textContent = text || '';
+  status.classList.toggle('busy', !!busy);
+  const button = $('btn-learn-style');
+  if (button) button.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+// Keep the rail honest about what is currently known.
+async function refreshVoiceStatus() {
+  try {
+    const st = await window.muse.voiceStatus();
+    if (!st || !st.calibrated) { setLearnStyleStatus('not learned yet', false); return; }
+    const liked = st.liked && st.liked.count ? ` · ${st.liked.count} liked` : '';
+    const when = st.calibrated_at ? relativeStamp(st.calibrated_at) : '';
+    setLearnStyleStatus(`${st.messages.toLocaleString ? st.messages.toLocaleString() : st.messages} messages${liked}${when ? ' · ' + when : ''}`, false);
+  } catch { setLearnStyleStatus('not learned yet', false); }
+}
+function relativeStamp(iso) {
+  const then = Date.parse(iso);
+  if (!Number.isFinite(then)) return '';
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+// THE option: read every local chat on this machine, learn the style, and
+// learn specifically which answers the user liked — then apply it.
+async function learnMyStyle() {
+  const button = $('btn-learn-style');
+  const label = $('learn-style-label');
+  if (button && button.getAttribute('aria-busy') === 'true') return;
+  if (button) { button.setAttribute('aria-busy', 'true'); button.disabled = true; }
+  if (label) label.textContent = 'Reading local chats…';
+  setLearnStyleStatus('reading every local AI chat on this machine…', true);
+  try {
+    const res = await window.muse.voiceCalibrate();
+    const summary = voiceSummaryText(res);
+    if (res && res.ok) {
+      setLearnStyleStatus(`${res.messages} messages${res.liked && res.liked.count ? ' · ' + res.liked.count + ' liked' : ''}`, false);
+      const likedRules = (res.liked && res.liked.rules) || [];
+      addMsg('assistant', [
+        `**Learned your style from ${res.messages.toLocaleString ? res.messages.toLocaleString() : res.messages} local messages.**`,
+        '',
+        likedRules.length
+          ? `Your most-liked answers (${res.liked.count} accepted answers compared against the rest):\n\n${likedRules.map(r => '- ' + r).join('\n')}`
+          : (res.liked && res.liked.note ? res.liked.note : 'Your accepted answers look like your usual style — nothing to change yet.'),
+        '',
+        'Muse now answers in that shape. Grade any answer with the thumbs to sharpen it further.',
+      ].join('\n'));
+    } else {
+      setLearnStyleStatus('nothing to learn from yet', false);
+      addSysNote(summary, true, 'mem');
+    }
+  } catch (e) {
+    setLearnStyleStatus('the scan failed', false);
+    reportError(e);
+  } finally {
+    if (button) { button.removeAttribute('aria-busy'); button.disabled = false; }
+    if (label) label.textContent = 'Learn my style';
+  }
+}
 async function showVoiceProfile() {
   try {
     const st = await window.muse.voiceStatus();
     if (!st || !st.calibrated) {
-      addSysNote('no answer-style profile yet — it is learned automatically on first run, or run “Recalibrate answer style”', false, 'mem');
+      addSysNote('no answer-style profile yet — press “Learn my style” in the sidebar to read every local AI chat on this machine', false, 'mem');
       return;
     }
     const rules = (st.guide || '').split('\n').filter(l => l.startsWith('- ')).map(l => l.slice(2));
-    addMsg('assistant', `**Answer-style profile** — learned locally from ${st.messages} messages in your previous AI conversations (style metrics only, no content kept).\n\n${rules.map(r => '- ' + r).join('\n')}`);
+    const liked = st.liked && st.liked.count ? ` · ${st.liked.count} answers you accepted most` : '';
+    addMsg('assistant', `**Answer-style profile** — learned locally from ${st.messages} messages in your previous AI conversations${liked} (style metrics only, no content kept).\n\n${rules.map(r => '- ' + r).join('\n')}`);
   } catch (e) { reportError(e); }
 }
 async function recalibrateVoice() {
   try {
     const res = await window.muse.voiceCalibrate();
     addSysNote(res && res.ok
-      ? `answer style recalibrated from ${res.messages} messages — Muse will match that style`
-      : `could not calibrate: ${String(res && res.error || 'no conversation history found')}`, !(res && res.ok), 'mem');
+      ? `answer style relearned from ${res.messages} local messages${res.liked && res.liked.count ? ` — ${res.liked.count} answers you accepted most shaped the rules` : ''}`
+      : `could not learn from local chats: ${String(res && res.error || 'no conversation history found')}`, !(res && res.ok), 'mem');
+    await refreshVoiceStatus();
   } catch (e) { reportError(e); }
 }
 async function showAnswerFeedback() {
@@ -1899,6 +1978,7 @@ function closeMemory() {
 }
 
 $('btn-memory').addEventListener('click', openMemory);
+$('btn-learn-style').addEventListener('click', learnMyStyle);
 $('mem-close').addEventListener('click', closeMemory);
 $('mem-backdrop').addEventListener('click', (e) => { if (e.target === $('mem-backdrop')) closeMemory(); });
 window.addEventListener('keydown', (e) => {
@@ -2387,7 +2467,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {
@@ -2852,6 +2932,7 @@ if (typeof window.matchMedia === 'function') {
 refreshStatus();
 refreshSessions();
 refreshProject();
+refreshVoiceStatus();
 input.focus();
 
 /* ---------- pointer highlight on starter cards ------------------------------- */

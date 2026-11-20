@@ -28,7 +28,8 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Choose your models** | Search available models in Settings, select the ones visible in chat, and switch from the composer. |
 | **Delegate work** | Follow subagents through individual cards with their task, activity, status, and result. |
 | **Recall useful context** | Enable project-scoped memory backed by SQLite and embeddings, with feedback and memory-management controls. |
-| **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Muse sessions) — locally, style metrics only. |
+| **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Codex, Cline, Muse sessions) — locally, style metrics only. |
+| **Learn my style** | One click in the sidebar re-reads every local chat, finds the answers you accepted, and teaches Muse the difference between those and your average answer. |
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
 | **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works — reorder them, jump the line, or cancel one. |
 | **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
@@ -256,13 +257,23 @@ The workbench shows the running count (`Answer feedback`), and the command palet
 
 ## Answer style that matches you (vibe calibration)
 
-Muse does not start as a stranger. On first run it looks for AI conversations that already exist on your machine — a ChatGPT data export (`conversations.json` in Downloads/Documents/Desktop), ChatGPT desktop or web caches, Claude Code transcripts (`~/.claude/projects`), and Muse's own sessions — and measures **how you like answers**: their length, structure, use of lists and code, directness, and your register.
+Muse does not start as a stranger. On first run it looks for AI conversations that already exist on your machine — a ChatGPT data export (`conversations.json` in Downloads/Documents/Desktop), ChatGPT desktop or web caches, Claude Code transcripts (`~/.claude/projects`), Codex rollouts (`~/.codex/sessions`, zstd-compressed), Cline transcripts (`~/.cline/data/sessions`) and Muse's own sessions — and measures **how you like answers**: their length, structure, use of lists and code, directness, and your register.
 
 The result is an answer-style guide in `~/.muse-agent/voice.md` that joins the system prompt, so Muse answers in the voice you already know from message one.
 
+### Learn my style
+
+The sidebar carries a **Learn my style** button (also in the command palette). One click:
+
+1. re-reads **every** AI chat on the machine — Claude, Codex, Cline, Muse, plus a ChatGPT export if you dropped one in Downloads;
+2. finds the answers you **accepted** — the ones followed by your own *"ok"*, *"thanks"*, *"works"* — and compares them with your average answer;
+3. writes the difference into the guide as explicit rules ("the answers you accept run long — give the real detail instead of a teaser"), and tells you what it found.
+
+Where the liked answers disagree with your average, the liked answers win. The scan runs in a worker thread, so the window never freezes, and the rail shows what is currently known (`5,767 messages · 21 liked`).
+
 - **Local and private:** analysis runs on your machine and the guide stores style metrics and rules only — never quotes, topics, or conversation content (pinned by tests).
 - **Automatic:** first run calibrates itself in the background and tells you what it found.
-- **You stay in charge:** the command palette has **Show answer-style profile**, **Recalibrate answer style**, and **Reset answer-style profile**.
+- **You stay in charge:** the command palette has **Show answer-style profile**, **Learn my style from all local chats**, **Recalibrate answer style**, and **Reset answer-style profile**.
 - **Best results:** a ChatGPT data export (Settings → Data controls → Export data) placed anywhere in Downloads gives the richest signal.
 
 ## Memory that follows your work

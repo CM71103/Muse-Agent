@@ -42,7 +42,7 @@ test('calibrate learns from local sources and the guide is metrics-only', () => 
   const res = voice.calibrate({ roots: [{ kind: 'claude-projects', path: claudeDir, confidence: 'high' }] });
   assert.equal(res.ok, true);
   assert.ok(res.messages >= 20);
-  assert.match(res.guide, /short and direct/i);
+  assert.match(res.guide, /short and direct|shorter than your average/i);
   assert.match(res.guide, /bullet lists/i);
   assert.match(res.guide, /No emoji/);
   // PRIVACY: no content from the transcripts may leak into the guide
@@ -149,6 +149,95 @@ test('Cline transcripts are read, with tool traffic and wrappers removed', () =>
   assert.ok(!texts.some(t => t.includes('tool_use')), 'tool traffic is not voice');
 });
 
+test('the likable answers win over the average when the two disagree', () => {
+  const features = voice.analyze([
+    ...Array.from({ length: 12 }, () => ({ role: 'assistant', text: 'short and plain. one clear step.' })),
+    ...Array.from({ length: 12 }, () => ({ role: 'user', text: 'ok' })),
+  ]);
+  const liked = { count: 8, rules: ['The answers you accept run long (about 100 words) — give the real detail instead of a teaser.'], deltas: { length: 'longer' } };
+  const base = voice.renderGuide(features, null, liked);
+  assert.ok(!/keep replies short and direct/i.test(base), 'the contradicting average-length rule is dropped');
+  const section = voice.renderLikedSection(liked);
+  assert.match(section, /this one wins/i);
+  assert.match(section, /run long/i);
+});
+
+test('accepted answers are found by what the user typed next', () => {
+  const messages = [
+    { role: 'assistant', text: 'A long answer that rambles for a while about many things, explaining every step in detail.' },
+    { role: 'user', text: 'ok' },
+    { role: 'assistant', text: 'Another answer.' },
+    { role: 'user', text: 'are you sure?' },
+    { role: 'assistant', text: 'A third answer.' },
+    { role: 'user', text: 'thanks, that worked' },
+    { role: 'assistant', text: 'A fourth answer.' },
+    { role: 'user', text: 'now explain the deeper part of the design and why you chose that structure over the alternative' },
+  ];
+  const liked = voice.likedAnswers(messages);
+  assert.equal(liked.length, 2, 'only accepted answers count');
+  assert.ok(liked[0].startsWith('A long answer'));
+  assert.ok(liked[1].startsWith('A third answer'));
+  assert.ok(!liked.some(t => t.startsWith('A second answer')), 'a question is not acceptance');
+  assert.ok(!liked.some(t => t.startsWith('A fourth answer')), 'a follow-up question is not acceptance');
+});
+
+test('a plain thumbs-up counts as acceptance', () => {
+  assert.equal(voice.isPositiveReply('👍'), true);
+  assert.equal(voice.isPositiveReply('✅'), true);
+  assert.equal(voice.isPositiveReply('ok thanks'), true);
+  assert.equal(voice.isPositiveReply('perfect.'), true);
+  assert.equal(voice.isPositiveReply('no'), false);
+  assert.equal(voice.isPositiveReply('what does that mean?'), false);
+  assert.equal(voice.isPositiveReply(''), false);
+});
+
+test('the likable answers become their own rules, next to the average', () => {
+  const messages = [];
+  for (let i = 0; i < 20; i++) {
+    // the average answer: long, recap-heavy, asks a question at the end
+    messages.push({ role: 'assistant', text: `Explanation ${i}: ` + 'detail '.repeat(60) + '\n\nIn summary, that is the thing. Let me know. Which one should I use?' });
+    messages.push({ role: 'user', text: 'and what about the other option?' });
+  }
+  for (let i = 0; i < 8; i++) {
+    // the accepted answer: short and plain
+    messages.push({ role: 'assistant', text: `Do this: run the build. ${i}` });
+    messages.push({ role: 'user', text: 'ok' });
+  }
+  const profile = voice.likedProfile(messages);
+  assert.ok(profile.count >= 8, 'the accepted answers were found');
+  assert.ok(profile.rules.length, 'rules were derived from the gap');
+  const text = profile.rules.join(' ');
+  assert.match(text, /shorter than your average/i);
+  assert.match(text, /skip the recap/i);
+  assert.match(text, /do not end with a question/i);
+});
+
+test('the liked section reaches the guide without quoting the answers', () => {
+  const dir = path.join(home, 'liked-source');
+  const project = path.join(dir, 'proj');
+  fs.mkdirSync(project, { recursive: true });
+  const lines = [];
+  for (let i = 0; i < 12; i++) {
+    lines.push(JSON.stringify({ message: { role: 'assistant', content: 'Blah blah ' + 'padding '.repeat(40) + ' In summary, done. Let me know. Which one?' } }));
+    lines.push(JSON.stringify({ message: { role: 'user', content: 'and then what?' } }));
+  }
+  for (let i = 0; i < 8; i++) {
+    lines.push(JSON.stringify({ message: { role: 'assistant', content: `Do this: run build ${i} ${SECRET}` } }));
+    lines.push(JSON.stringify({ message: { role: 'user', content: 'ok' } }));
+  }
+  fs.writeFileSync(path.join(project, 's.jsonl'), lines.join('\n'));
+  const res = voice.calibrate({ roots: [{ kind: 'claude-projects', path: dir, confidence: 'high' }] });
+  assert.equal(res.ok, true);
+  assert.ok(res.liked.count >= 8, 'accepted answers counted');
+  assert.match(res.guide, /answers you liked best/i);
+  // PRIVACY: the accepted answer text must not survive into the guide
+  assert.ok(!res.guide.includes(SECRET), 'guide must never quote an accepted answer');
+  assert.ok(!res.guide.includes('run build'), 'guide must never quote answer content');
+  const stored = JSON.parse(fs.readFileSync(path.join(home, 'voice.json'), 'utf8'));
+  assert.ok(stored.liked && stored.liked.count >= 8);
+  assert.ok(Array.isArray(stored.liked.rules));
+});
+
 test('the Codex corpus feeds calibration without leaking its content', () => {
   const root = path.join(home, 'fake-codex-cal', '2026', '06', '13');
   fs.mkdirSync(root, { recursive: true });
@@ -162,5 +251,5 @@ test('the Codex corpus feeds calibration without leaking its content', () => {
   assert.equal(res.ok, true);
   assert.ok(res.messages >= 20, 'enough messages for calibration');
   assert.ok(!res.guide.includes(SECRET), 'guide must never quote Codex conversations');
-  assert.match(res.guide, /short and direct/i);
+  assert.match(res.guide, /short and direct|shorter than your average/i);
 });

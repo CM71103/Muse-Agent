@@ -592,13 +592,14 @@ function autoCalibrateVoice() {
     try {
       const voice = require('../harness/voice');
       if (voice.isDisabled() || voice.status().calibrated) return;
-      const res = voice.calibrate();
-      if (res.ok) {
+      // Off-thread: the scan reads every local chat and must not stall the UI.
+      runVoiceCalibration().then((res) => {
+        if (!res || !res.ok) return;
         send('agent-event', {
           type: 'info',
-          text: `answer style learned locally from ${res.messages} messages in your previous AI conversations (ChatGPT/Claude/Muse) — Muse will match that style. "Show answer-style profile" in the command palette shows what was learned.`,
+          text: `answer style learned locally from ${res.messages} messages in your previous AI conversations (ChatGPT/Claude/Codex/Cline/Muse)${res.liked && res.liked.count ? ` — including ${res.liked.count} answers you accepted most` : ''}. "Learn my style" in the sidebar re-reads every local chat on demand.`,
         });
-      }
+      }).catch(() => { /* calibration must never disturb the app */ });
     } catch { /* calibration must never disturb the app */ }
   };
   setTimeout(run, 12 * 1000).unref?.();   // first-run only; cheap when a profile exists
@@ -884,9 +885,43 @@ ipcMain.handle('voice:status', (e) => {
   requireTrusted(e);
   return require('../harness/voice').status();
 });
-ipcMain.handle('voice:calibrate', (e) => {
+// The scan reads every local AI conversation on the machine — run it in a
+// worker thread so the window never freezes while it works.
+function runVoiceCalibration() {
+  const { Worker } = require('worker_threads');
+  const path = require('path');
+  const workerFile = path.join(__dirname, 'voice-worker.js');
+  return new Promise((resolve) => {
+    let settled = false;
+    let worker = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      try { worker && worker.terminate(); } catch { /* already gone */ }
+      resolve(value);
+    };
+    try {
+      worker = new Worker(workerFile);
+    } catch (error) {
+      finish({ ok: false, error: String((error && error.message) || error) });
+      return;
+    }
+    worker.once('message', (message) => {
+      if (!message || !message.ok) {
+        finish({ ok: false, error: (message && message.error) || 'the scan failed' });
+        return;
+      }
+      finish(message.result);
+    });
+    worker.once('error', (error) => finish({ ok: false, error: String((error && error.message) || error) }));
+    worker.once('exit', (code) => {
+      if (!settled) finish({ ok: false, error: `the scan stopped unexpectedly (code ${code})` });
+    });
+  });
+}
+ipcMain.handle('voice:calibrate', async (e) => {
   requireTrusted(e);
-  return require('../harness/voice').calibrate();
+  return await runVoiceCalibration();
 });
 ipcMain.handle('voice:reset', (e) => {
   requireTrusted(e);
