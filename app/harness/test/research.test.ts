@@ -112,7 +112,8 @@ test('a failing upstream is reported honestly with a code', async () => {
     const res = await research.searchPapers('rate-limited-query', { cfg: ctx.cfg }, ctx);
     assert.equal(res.ok, false);
     assert.equal(res.code, 'RATE_LIMITED');
-    assert.match(res.error, /semantic scholar api rate limit/i);
+    assert.match(res.error, /rate limit/i);
+    assert.match(res.error, /API key|preprint index/i, 'the message says how to get unblocked');
   } finally { globalThis.fetch = original; }
 });
 
@@ -222,4 +223,51 @@ test('the semantic scholar detail URL is built per id flavour', () => {
   assert.match(research.s2UrlFor('arxiv:2005.11401'), /paper\/ARXIV%3A2005\.11401/);
   assert.match(research.s2UrlFor('doi:10.1234/abc'), /paper\/DOI%3A10\.1234%2Fabc/);
   assert.match(research.s2UrlFor('abc123'), /paper\/abc123/);
+});
+
+test('a configured research key is used by the researcher', () => {
+  const cfg = research.researchCfg({ research: { semantic_scholar_api_key: 'dummy-s2-key', openalex_api_key: 'dummy-oa-key' } });
+  assert.equal(cfg.apiKey, 'dummy-s2-key');
+  assert.equal(cfg.openAlexKey, 'dummy-oa-key');
+});
+
+test('the environment can supply the semantic scholar key', () => {
+  const previous = process.env.SEMANTIC_SCHOLAR_API_KEY;
+  process.env.SEMANTIC_SCHOLAR_API_KEY = 'from-env';
+  try {
+    assert.equal(research.researchCfg({ research: {} }).apiKey, 'from-env');
+    assert.equal(research.researchCfg({ research: { semantic_scholar_api_key: 'explicit' } }).apiKey, 'explicit', 'an explicit key wins over the environment');
+  } finally {
+    if (previous === undefined) delete process.env.SEMANTIC_SCHOLAR_API_KEY;
+    else process.env.SEMANTIC_SCHOLAR_API_KEY = previous;
+  }
+});
+
+test('the openalex api key is sent as a query parameter', async () => {
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = fakeFetch({ results: [] }, calls);
+  try {
+    const ctx = ctxFor({ llm: {}, research: { request_interval_ms: 0, openalex_api_key: 'oa-secret' } });
+    await research.searchPapers('openalex-key-check', { cfg: ctx.cfg }, ctx);
+    const oa = calls.find(u => /openalex/.test(u));
+    assert.ok(oa, 'openalex was called');
+    assert.match(oa, /api_key=oa-secret/);
+  } finally { globalThis.fetch = original; }
+});
+
+test('a rate limited index is retried once before giving up', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) return { ok: false, status: 429, headers: { get: () => '0' }, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => S2_PAYLOAD, text: async () => '' };
+  };
+  try {
+    const ctx = ctxFor();
+    const res = await research.searchPapers('retry-check', { cfg: ctx.cfg }, ctx);
+    assert.equal(res.ok, true, 'the retry recovered the search');
+    assert.ok(calls >= 2, 'the rate limited call was retried');
+  } finally { globalThis.fetch = original; }
 });

@@ -1222,6 +1222,24 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
             <p class="hint" data-i18n="settings.appearanceHint">Session-only; resets on reload.</p>
           </div>
           <label class="pref"><input type="checkbox" id="pref-enter" checked><span data-i18n="settings.enterToSend">Enter to send</span></label>
+          <div class="pref" style="flex-direction:column;gap:8px">
+            <span style="font-weight:600;font-size:13px">Research &amp; citations</span>
+            <p class="hint" style="margin:0">Muse searches Semantic Scholar, OpenAlex and arXiv when a question needs sources. A key is optional — without one the free pools are used, and they are often rate limited.</p>
+            <div class="field" style="margin:0">
+              <label for="research-s2-key">Semantic Scholar API key</label>
+              <input id="research-s2-key" type="password" placeholder="Optional" spellcheck="false" autocomplete="off">
+              <span class="hint" id="research-key-state">Checking…</span>
+            </div>
+            <div class="field" style="margin:0">
+              <label for="research-oa-mail">OpenAlex email (polite pool)</label>
+              <input id="research-oa-mail" type="email" placeholder="you@example.com" spellcheck="false" autocomplete="off">
+            </div>
+            <div class="row">
+              <button class="btn-ghost" id="btn-research-save">Save research settings</button>
+              <button class="btn-ghost" id="btn-research-clear">Remove key</button>
+            </div>
+            <span class="hint" id="research-save-note" role="status"></span>
+          </div>
         </section>
         <section id="panel-mcp" role="tabpanel" aria-labelledby="tab-mcp" hidden>
           <section class="box-settings-card" aria-label="Box cloud desktop">

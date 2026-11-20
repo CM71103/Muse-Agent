@@ -273,14 +273,28 @@ function secureConfig() {
   const cfg=loadConfig();
   const credentials=require('../harness/credentials').vault(safeStorage,configDir());
   const saved=credentials.read();
-  if (cfg.llm.api_key || cfg.memory.embed_api_key) {
-    credentials.write({...saved,...(cfg.llm.api_key ? {llm:cfg.llm.api_key, llm_origin: originOf(cfg.llm.base_url) || saved.llm_origin || ''} : {}),...(cfg.memory.embed_api_key ? {embed:cfg.memory.embed_api_key} : {})});
+  const research=cfg.research||{};
+  // Research keys are secrets too: move them out of config.toml into the
+  // encrypted vault, the same way the chat and embedding keys are handled.
+  if (cfg.llm.api_key || cfg.memory.embed_api_key || research.semantic_scholar_api_key || research.openalex_api_key) {
+    credentials.write({...saved,
+      ...(cfg.llm.api_key ? {llm:cfg.llm.api_key, llm_origin: originOf(cfg.llm.base_url) || saved.llm_origin || ''} : {}),
+      ...(cfg.memory.embed_api_key ? {embed:cfg.memory.embed_api_key} : {}),
+      ...(research.semantic_scholar_api_key ? {research_s2: research.semantic_scholar_api_key} : {}),
+      ...(research.openalex_api_key ? {research_openalex: research.openalex_api_key} : {}),
+    });
     cfg.llm.api_key=''; cfg.memory.embed_api_key='';
+    research.semantic_scholar_api_key=''; research.openalex_api_key='';
     require('../harness/configWrite').writeSections(cfg,cfg._configFile);
   }
   const keys=credentials.read();
   cfg.llm.api_key=keys.llm || ''; cfg.memory.embed_api_key=keys.embed || '';
   cfg.llm.key_origin=keys.llm_origin || '';
+  cfg.research={...(cfg.research||{})};
+  cfg.research.semantic_scholar_api_key=keys.research_s2 || '';
+  cfg.research.openalex_api_key=keys.research_openalex || '';
+  cfg.research.key_set=!!keys.research_s2;
+  cfg.research.openalex_key_set=!!keys.research_openalex;
   return cfg;
 }
 
@@ -1418,6 +1432,52 @@ ipcMain.handle('sentinel:setMode', async (e, mode) => {
 // ---- settings ----
 const { fetchModels, originOf } = require('../harness/models');
 const { apiKey: apiKeyOf } = require('../harness/config');
+
+ipcMain.handle('research:status', async (e) => {
+  requireTrusted(e);
+  const cfg = secureConfig();
+  return {
+    key_set: !!cfg.research.key_set,
+    openalex_key_set: !!cfg.research.openalex_key_set,
+    openalex_mailto: cfg.research.openalex_mailto || '',
+    max_results: cfg.research.max_results || 6,
+    include_arxiv: cfg.research.include_arxiv !== false,
+  };
+});
+
+// Save the research keys. Secrets go straight into the encrypted vault; the
+// only non-secret setting (the polite-pool mailto) is written to config.toml.
+ipcMain.handle('research:save', async (e, patch = {}) => {
+  requireTrusted(e);
+  const credentials = require('../harness/credentials').vault(safeStorage, configDir());
+  const saved = credentials.read();
+  const next = { ...saved };
+  if (typeof patch.semantic_scholar_api_key === 'string') {
+    const value = patch.semantic_scholar_api_key.trim();
+    if (value) next.research_s2 = value;
+    else delete next.research_s2;
+  }
+  if (typeof patch.openalex_api_key === 'string') {
+    const value = patch.openalex_api_key.trim();
+    if (value) next.research_openalex = value;
+    else delete next.research_openalex;
+  }
+  try { credentials.write(next); }
+  catch (error) { return { ok: false, error: String(error && error.message || error) }; }
+  const cfg = secureConfig();
+  const section = { ...(cfg.research || {}) };
+  if (typeof patch.openalex_mailto === 'string') section.openalex_mailto = patch.openalex_mailto.trim().slice(0, 120);
+  if (typeof patch.max_results === 'number') section.max_results = Math.min(10, Math.max(1, Math.round(patch.max_results)));
+  if (typeof patch.include_arxiv === 'boolean') section.include_arxiv = patch.include_arxiv;
+  // Never write the secrets back into the config file.
+  delete section.semantic_scholar_api_key;
+  delete section.openalex_api_key;
+  delete section.key_set;
+  delete section.openalex_key_set;
+  cfg.research = section;
+  require('../harness/configWrite').writeSections(cfg, cfg._configFile || ensureConfigFile());
+  return { ok: true, key_set: !!cfg.research.key_set, openalex_key_set: !!cfg.research.openalex_key_set, openalex_mailto: cfg.research.openalex_mailto || '' };
+});
 
 ipcMain.handle('settings:get', async (e) => {
   requireTrusted(e);

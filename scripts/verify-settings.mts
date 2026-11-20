@@ -14,6 +14,7 @@ const {contextBridge}=require('electron');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let current={base_url:'https://api.example.com/v1',model:'muse-preview',visible_models:['muse-preview']};
 let boxState={state:'disconnected',tools:0},boxListener=()=>{};
+let researchState={key_set:false,openalex_key_set:false,openalex_mailto:''},researchCalls=[];
 const api={getConfig:async()=>({llm:{...current},sentinel:{mode:'auto'},memory:{enabled:false}}),
 getProjectScope:async()=>({ok:true,project:null}),listProjects:async()=>[],listSessions:async()=>[],memoryStatus:async()=>({enabled:false}),
 getSettings:async()=>({...current,embed_key_set:true,has_key:true}),
@@ -22,7 +23,9 @@ selectModel:async model=>{if(!current.visible_models.includes(model))return {ok:
 fetchModels:async()=>{await pause(300);return {ok:true,models:['muse-preview','muse-reasoning']}},mcpList:async()=>[],
 boxStatus:async()=>boxState,onBoxStatus:cb=>{boxListener=cb;return()=>{}},
 boxConnect:async()=>{boxState={state:'authorizing',tools:0};boxListener(boxState);await pause(350);boxState={state:'connected',tools:3};boxListener(boxState);return {ok:true,...boxState}},
-boxDisconnect:async()=>{boxState={state:'disconnected',tools:0};boxListener(boxState);return {ok:true}},boxOpenDesktop:async()=>({ok:true}),boxCancel:async()=>({ok:true})};
+boxDisconnect:async()=>{boxState={state:'disconnected',tools:0};boxListener(boxState);return {ok:true}},boxOpenDesktop:async()=>({ok:true}),boxCancel:async()=>({ok:true}),
+researchStatus:async()=>({key_set:!!researchState.key_set,openalex_key_set:!!researchState.openalex_key_set,openalex_mailto:researchState.openalex_mailto||''}),
+researchSave:async patch=>{researchCalls.push(patch);researchState={...researchState,key_set:!!patch.semantic_scholar_api_key,openalex_mailto:patch.openalex_mailto||''};return {ok:true,...researchState}}};
 for(const name of ['onAgentEvent','onApprovalRequest','onApprovalResolved','onApprovalExpired','onSessionReset','onQuestion'])api[name]=()=>()=>{};
 contextBridge.exposeInMainWorld('muse',api);
 `);
@@ -63,7 +66,15 @@ app.whenReady().then(async()=>{try{
   await js("document.querySelector('#model-results-chat .model-picker-select').click()");await pause(100);
   assert.equal(await js("document.getElementById('chat-model-label').textContent"),'muse-preview');
   await js('openSettings()');await pause(100);
-  await js("document.getElementById('tab-workspace').click()");await shot('workspace');
+  await js("document.getElementById('tab-workspace').click()");await pause(250);
+ // research keys: presence only, saved through the OS vault by the main process
+ assert.equal(await js("!!document.getElementById('research-s2-key')"),true,'research key field exists');
+ assert.match(await js("document.getElementById('research-key-state').textContent"),/free pools/i,'no key = free pools');
+ await js("document.getElementById('research-s2-key').value='sk-test-123';document.getElementById('research-oa-mail').value='me@example.com';document.getElementById('btn-research-save').click()");
+ await pause(400);
+ assert.equal(await js("document.getElementById('research-s2-key').value"),'','the key never stays in the field');
+ assert.match(await js("document.getElementById('research-key-state').textContent"),/saved securely/i,'key presence is reported');
+ await shot('workspace');
   assert.equal(await js("document.getElementById('btn-save').hidden"),true,'Workspace applies immediately');
   await js("document.getElementById('tab-mcp').click()");await shot('box-settings');
   await js("document.getElementById('box-settings-connect').click()");await pause(450);

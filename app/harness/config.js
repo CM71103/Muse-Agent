@@ -25,7 +25,10 @@ const DEFAULTS = {
   research: {
     // Scholarly search (search_papers / read_paper / cite_source).
     // The API key is optional: without it the public rate limit applies.
+    // Both keys are secrets: the main process moves them into the OS
+    // encrypted vault on save, so they never sit in config.toml.
     semantic_scholar_api_key: '',
+    openalex_api_key: '',
     max_results: 6,                  // 1..10
     openalex_mailto: '',             // optional: polite pool for openalex
     cache_ttl_hours: 24,              // raw upstream responses are cached this long

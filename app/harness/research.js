@@ -56,6 +56,7 @@ function researchCfg(cfg) {
   }
   return {
     apiKey: key,
+    openAlexKey: String(section.openalex_api_key || '').trim(),
     maxResults: Math.min(10, Math.max(1, Number(section.max_results) || 6)),
     cacheTtlMs: Math.max(0, Number(section.cache_ttl_hours ?? 24) * 60 * 60 * 1000),
     includeArxiv: section.include_arxiv !== false,
@@ -124,7 +125,22 @@ async function fetchJson(url, { ctx, cfg }) {
     const headers = { 'User-Agent': 'Muse-Agent/0.1 (research; +https://github.com/CM71103/Muse-Agent)', Accept: 'application/json' };
     if (cfg.apiKey) headers['x-api-key'] = cfg.apiKey;
     const res = await fetch(url, { signal: ac.signal, headers });
-    if (res.status === 429) return { ok: false, error: 'the semantic scholar API rate limit was hit — wait a moment or set research.semantic_scholar_api_key', code: 'RATE_LIMITED' };
+    if (res.status === 429) {
+      // Shared pools throttle hard. One patient retry, then give up honestly.
+      const retryAfter = Number(res.headers && res.headers.get('retry-after')) || 0;
+      const waitMs = Math.min(5000, retryAfter ? retryAfter * 1000 : 1500);
+      if (cfg.retryOnRateLimit !== false) {
+        await new Promise(r => setTimeout(r, waitMs));
+        const retry = await fetch(url, { signal: ac.signal, headers });
+        if (retry.ok) {
+          const body = await retry.json();
+          cacheWrite(url, body);
+          return { ok: true, body, retried: true };
+        }
+        if (retry.status !== 429) return { ok: false, error: `upstream returned HTTP ${retry.status}`, code: 'UPSTREAM' };
+      }
+      return { ok: false, error: 'the scholarly index rate limit was hit — wait a moment, add an API key, or rely on the preprint index', code: 'RATE_LIMITED' };
+    }
     if (res.status === 404) return { ok: false, error: 'not found', code: 'NOT_FOUND' };
     if (!res.ok) return { ok: false, error: `upstream returned HTTP ${res.status}`, code: 'UPSTREAM' };
     const body = await res.json();
@@ -150,6 +166,17 @@ async function fetchText(url, { ctx, cfg }) {
   const timer = setTimeout(() => ac.abort(), 20000);
   try {
     const res = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': 'Muse-Agent/0.1 (research)', Accept: 'application/atom+xml' } });
+    if (res.status === 429) {
+      await new Promise(r => setTimeout(r, 1500));
+      const retry = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': 'Muse-Agent/0.1 (research)', Accept: 'application/atom+xml' } });
+      if (retry.ok) {
+        const body = await retry.text();
+        cacheWrite(url, body);
+        return { ok: true, body, retried: true };
+      }
+      if (retry.status !== 429) return { ok: false, error: `upstream returned HTTP ${retry.status}`, code: 'UPSTREAM' };
+      return { ok: false, error: 'the preprint index is rate limited too', code: 'RATE_LIMITED' };
+    }
     if (!res.ok) return { ok: false, error: `upstream returned HTTP ${res.status}`, code: 'UPSTREAM' };
     const body = await res.text();
     cacheWrite(url, body);
@@ -264,6 +291,7 @@ async function searchOpenAlex(query, limit, ctx, cfg) {
   const fields = 'id,title,display_name,publication_year,cited_by_count,doi,ids,open_access,primary_location,authorships,abstract_inverted_index';
   const params = new URLSearchParams({ search: query, 'per-page': String(limit), select: fields });
   if (cfg.mailto) params.set('mailto', cfg.mailto);
+  if (cfg.openAlexKey) params.set('api_key', cfg.openAlexKey);
   const url = `https://${OPENALEX_HOST}/works?${params.toString()}`;
   const res = await fetchJson(url, { ctx, cfg });
   if (!res.ok) return res;

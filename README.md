@@ -282,7 +282,18 @@ The model's training data has a cut-off, so Muse can be wrong about what the sta
 
 That last file is the citation map. It says what the answer is based on, and it survives the session.
 
-**No key required.** OpenAlex works keyless and leads the search; Semantic Scholar is consulted too (add `research.semantic_scholar_api_key` for the higher rate limit — the keyless pool is often saturated); arXiv adds preprints. Upstream responses are cached for a day, so repeated searches cost nothing.
+**No key required.** OpenAlex works keyless and leads the search; Semantic Scholar is consulted too; arXiv adds preprints. Upstream responses are cached for a day, so repeated searches cost nothing.
+
+**Adding a key (optional).** The shared free pools are often rate limited, so a key makes search reliable. Paste it in **Settings → Workspace → Research & citations** — the main process writes it straight into the **OS credential store** (Windows DPAPI / macOS Keychain), exactly like the chat key: it never sits in `config.toml`, never in the renderer, and never in the transcript. Muse reports only *whether* a key is saved.
+
+```toml
+[research]
+max_results = 6            # 1..10
+cache_ttl_hours = 24
+openalex_mailto = ""       # optional, polite pool
+```
+
+A rate limited index is retried once patiently before Muse falls back to the preprint index — and if every index is throttled, it says so instead of pretending the search was empty.
 
 **Honest by construction:** results carry their **year**, so stale sources are visible; where an index has no real abstract, Muse says so instead of inventing one; upstream failures come back as `{ok:false, code}` (`RATE_LIMITED`, `BLOCKED`, `NETWORK`, `EMPTY`) rather than as a fake empty result. Network access goes through the same egress allowlist and private-address guard as `web_fetch`, and the research tools are network class — they ask in Ask mode.
 

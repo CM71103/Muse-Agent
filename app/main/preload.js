@@ -53,6 +53,8 @@ contextBridge.exposeInMainWorld('muse', {
   dashGet: (id) => ipcRenderer.invoke('dashboards:get', id),
   dashData: (id) => ipcRenderer.invoke('dashboards:data', id),
   dashDelete: (id) => ipcRenderer.invoke('dashboards:delete', id),
+  researchStatus: () => ipcRenderer.invoke('research:status'),
+  researchSave: (patch) => ipcRenderer.invoke('research:save', patch),
   attachPick: () => ipcRenderer.invoke('attachments:pick'),
   attachAdd: (paths) => ipcRenderer.invoke('attachments:add', paths),
   attachList: () => ipcRenderer.invoke('attachments:list'),

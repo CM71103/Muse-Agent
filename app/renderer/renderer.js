@@ -1761,6 +1761,8 @@ async function openSettings() {
     ? 'A key is saved in the OS credential store. Type to replace it; leave empty to keep it.'
     : 'Stored in the OS credential store, never in plain config. Empty = use the chat API key.';
   $('f-base').focus();
+  // research keys: show presence only, never the value
+  await refreshResearchSettings();
   modelUI.load(s); modelUI.setLocked(false); settingsUI?.loaded(s);
   } catch (e) { settingsUI?.failedLoad(); $('settings-err').textContent = `Cannot load connection: ${e.message || e}`; }
 }
@@ -2479,6 +2481,48 @@ async function leaveProject() {
 $('btn-leave-project').addEventListener('click', leaveProject);
 const pc = $('btn-project-clear');
 if (pc) pc.addEventListener('click', leaveProject);
+// Research settings: the API key is written straight to the OS encrypted
+// vault by the main process - it is never stored in the renderer, never put
+// in web storage, and never echoed back into the transcript.
+async function refreshResearchSettings() {
+  const keyEl = $('research-s2-key');
+  const stateEl = $('research-key-state');
+  const mailEl = $('research-oa-mail');
+  if (!keyEl || !window.muse.researchStatus) return;
+  try {
+    const st = await window.muse.researchStatus();
+    keyEl.value = '';
+    keyEl.placeholder = st && st.key_set ? '•••••••• · key saved' : 'Optional';
+    if (stateEl) {
+      stateEl.textContent = st && st.key_set
+        ? 'Key saved securely - Muse uses it automatically for scholarly search.'
+        : 'No key saved. Muse uses the free pools, which are often rate limited.';
+    }
+    if (mailEl && st && st.openalex_mailto) mailEl.value = st.openalex_mailto;
+  } catch (e) { reportError(e); }
+}
+async function saveResearchSettings(clearKey) {
+  const keyEl = $('research-s2-key');
+  const mailEl = $('research-oa-mail');
+  const note = $('research-save-note');
+  if (!window.muse.researchSave) return;
+  try {
+    const patch = {
+      openalex_mailto: mailEl ? mailEl.value.trim() : '',
+    };
+    if (clearKey) patch.semantic_scholar_api_key = '';
+    else if (keyEl && keyEl.value.trim()) patch.semantic_scholar_api_key = keyEl.value.trim();
+    const res = await window.muse.researchSave(patch);
+    if (!res || !res.ok) { if (note) note.textContent = String(res && res.error || 'could not save'); return; }
+    if (note) note.textContent = clearKey ? 'Key removed.' : 'Saved.';
+    await refreshResearchSettings();
+  } catch (e) { reportError(e); }
+}
+const brs = $('btn-research-save');
+if (brs) brs.addEventListener('click', () => saveResearchSettings(false));
+const brc = $('btn-research-clear');
+if (brc) brc.addEventListener('click', () => saveResearchSettings(true));
+
 function renderProjects() {
   const list = $('projects-list'); list.replaceChildren();
   const query = $('project-search').value.trim().toLowerCase();
