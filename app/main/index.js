@@ -640,6 +640,10 @@ const windowsService = require('./windows-service.ts').createWindowsService({
   busy:()=>agentBusy||pendingApprovals.size>0||pendingQuestions.size>0,
   useHost:()=>sandboxService?.useHost?.(),
 });
+// Visual check host for visual_render: loads rendered pages in a hidden window
+// and captures their contact sheets (installed like the Windows desktop; a
+// headless run has no capture and the check is skipped with a note).
+try { require('./visual-look-service.js').createVisualLookService(); } catch (e) { console.error('visual-look host unavailable:', e && e.message); }
 function refreshBoxTools() {
   if (!agent || agentBusy) return;
   agent.tools = require('../harness/tools').buildTools(agent.cfg,{mcp:agent.cfg.mcp}).tools;
@@ -881,6 +885,43 @@ ipcMain.handle('dashboards:delete', (e, id) => {
 });
 
 // --- answer-style profile (vibe calibration) ---
+// Visual pages written by visual_render: open in the default browser or reveal
+// in Explorer. Contained to the selected project so this is not a generic
+// "open anything" primitive.
+function visualPageTarget(p) {
+  const root = currentProjectDir ? path.resolve(currentProjectDir) : null;
+  const target = root ? path.resolve(root, String(p || '')) : null;
+  if (!root || !target) throw new Error('no project selected');
+  const rel = path.relative(root, target);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('not inside the selected project');
+  if (!fs.existsSync(target)) throw new Error('no such file');
+  return target;
+}
+ipcMain.handle('visual:open', async (e, p) => {
+  requireTrusted(e);
+  try { const error = await shell.openPath(visualPageTarget(p)); return error ? { ok: false, error: String(error) } : { ok: true }; }
+  catch (error) { return { ok: false, error: String((error && error.message) || error) }; }
+});
+ipcMain.handle('visual:reveal', async (e, p) => {
+  requireTrusted(e);
+  try { shell.showItemInFolder(visualPageTarget(p)); return { ok: true }; }
+  catch (error) { return { ok: false, error: String((error && error.message) || error) }; }
+});
+// The visual pages registry (~/.muse-agent/visual-pages.json): the Pages view
+// lists renders across sessions, thumbnails come from their contact sheets,
+// and "remove" only forgets the entry — files stay in the project.
+ipcMain.handle('visual:pages', (e) => {
+  requireTrusted(e);
+  return require('../harness/visual-tools.ts').listPages();
+});
+ipcMain.handle('visual:page-thumb', (e, id) => {
+  requireTrusted(e);
+  return require('../harness/visual-tools.ts').pageThumb(String(id || ''));
+});
+ipcMain.handle('visual:page-forget', (e, id) => {
+  requireTrusted(e);
+  return require('../harness/visual-tools.ts').forgetPage(String(id || '')) ? { ok: true } : { ok: false, error: 'not found' };
+});
 ipcMain.handle('voice:status', (e) => {
   requireTrusted(e);
   return require('../harness/voice').status();

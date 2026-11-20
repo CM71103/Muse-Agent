@@ -73,3 +73,7 @@
   .q-inputrow input { flex-basis:100%; }
 }
 @media (prefers-reduced-motion:reduce) { .activity-chevron { transition:none; } .activity-card .tr-dot.running { animation:none; } }
+
+/* Visual page chip (visual_render): a pill label plus the render's own preview. */
+.sysnote.visual-page { display:flex; flex-wrap:wrap; align-items:center; gap:8px; width:fit-content; max-width:min(560px,100%); border-radius:12px; }
+.sysnote.visual-page img { flex-basis:100%; display:block; width:100%; max-width:420px; border:1px solid var(--color-border-soft); border-radius:9px; cursor:pointer; }

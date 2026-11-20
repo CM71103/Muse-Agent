@@ -488,6 +488,12 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .dash-item:hover{border-color:var(--color-border);transform:translateY(-1px)}
 .dash-item.active{border-color:color-mix(in srgb,var(--color-primary) 55%,transparent)}
 .dash-item strong{font-size:13px}
+.pages-grid{display:flex;flex-wrap:wrap;gap:12px}
+.page-card{display:flex;flex-direction:column;gap:6px;border:1px solid var(--color-border-soft);background:var(--color-surface);border-radius:12px;padding:12px;width:250px}
+.page-card strong{font-size:13px;overflow-wrap:anywhere}
+.page-card small{color:var(--color-muted-fg);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.page-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;object-position:top left;border:1px solid var(--color-border-soft);border-radius:9px;cursor:pointer;background:var(--color-surface-subtle)}
+.page-actions{display:flex;gap:6px;margin-top:4px}
 .dash-item small{color:#8a7663}
 .dash-item .dash-del{align-self:flex-start;margin-top:4px;font-size:10.5px;padding:1px 8px;color:#8a7663}
 .mc-grid-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
@@ -996,6 +1002,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <button id="nav-activity" aria-pressed="false" data-nav="activity" aria-controls="workbench" data-tip="Live agent activity · Alt 3">Activity</button>
       <button id="nav-memory" aria-pressed="false" data-nav="memory" data-tip="Memory scopes · Alt 4">Memory</button>
       <button id="nav-dashboards" aria-pressed="false" data-nav="dashboards" data-tip="Live dashboards · ask Muse to build one">Dashboards</button>
+      <button id="nav-pages" aria-pressed="false" data-nav="pages" data-tip="Visual pages rendered by Muse">Pages</button>
     </div>
     <div class="navbar-side right">
       <div class="right">

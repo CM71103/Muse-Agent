@@ -106,6 +106,15 @@ app.whenReady().then(async()=>{try{
  await js("addUndoChip({runId:'run-fixture',files:['app/main/index.js','app/renderer/renderer.js']})");
  await pause(300);await shot('chips');
  await js("renderQueueChips([])");
+ // the review gate (PaperOrchestra port): a critique result must show up as a
+ // compact chip with the score and the fix count
+ await js('handleAgentEvent({type:"tool_call",id:"c1",name:"critique",args:{text:"draft"}})');
+ await js('handleAgentEvent({type:"tool_result",id:"c1",name:"critique",result:{ok:true,score:7,verdict:"good structure, thin evidence",weaknesses:["claims a result without a source"],fixes:["cite the experiment log","add the missing number"]}})');
+ await pause(300);
+ await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");
+ await pause(250);await shot('critique');
+ assert.equal(await js("[...document.querySelectorAll('.action-chip')].some(n=>n.textContent.indexOf('review 7/10')>=0)"),true,'critique chip should show the score');
+ assert.equal(await js("[...document.querySelectorAll('.action-chip')].some(n=>n.textContent.indexOf('2 fixes')>=0)"),true,'critique chip should show the fix count');
  await js("document.querySelectorAll('.action-chip').forEach(n=>n.remove())");
  // attachments: the strip shows what is attached and how its text was obtained
  await js("addAttachments([{id:'a1',name:'invoice-4821.pdf',kind:'pdf',mime:'application/pdf',bytes:182000,pages:3,has_text:true,text_method:'text-layer',preview:'Invoice 4821 total 99.50'},{id:'a2',name:'receipt-photo.png',kind:'image',mime:'image/png',bytes:820000,has_text:true,text_method:'ocr',preview:'Total 99.50'}])");

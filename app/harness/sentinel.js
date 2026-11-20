@@ -61,7 +61,13 @@ class Sentinel {
     const designTools = require('./design-tools.ts');
     for (const name of designTools.DESIGN_READ_NAMES) this.readTools.add(name);
     for (const name of designTools.DESIGN_WRITE_NAMES) this.sideEffectTools.add(name);
-    this.projectWriteTools = new Set(['write_file', ...designTools.DESIGN_WRITE_NAMES]);
+    // Visual Explainer tools mirror the Design Studio classes: doc reads of the
+    // bundled kit, and renders that only write <name>.src.html/<name>.html
+    // beside the source inside the project (scope pinning above).
+    const visualTools = require('./visual-tools.ts');
+    for (const name of visualTools.VISUAL_READ_NAMES) this.readTools.add(name);
+    for (const name of visualTools.VISUAL_WRITE_NAMES) this.sideEffectTools.add(name);
+    this.projectWriteTools = new Set(['write_file', ...designTools.DESIGN_WRITE_NAMES, ...visualTools.VISUAL_WRITE_NAMES]);
     // Legacy always_ask_tools values are accepted in config but do not override Auto.
     // Modes live on the sentinel so a running agent picks up a switch
     // immediately (host calls setMode). Config value is the boot default.
@@ -161,8 +167,11 @@ class Sentinel {
     const sideEffect = this.sideEffectTools.has(request.tool);
     const isMcp = this.mcpSideEffects && typeof request.tool === 'string' && request.tool.startsWith('mcp__');
     const isSpawn = request.tool === 'spawn_agent';
+    // critique: a review model call. Read-class (mutates nothing) but spends a
+    // call under the user's key — classify like spawn_agent, not like a write.
+    const isCritique = request.tool === 'critique';
     const isDesktopRead = request.tool === 'windows_screenshot' || request.tool === 'sandbox_screenshot';
-    if (!isRead && !sideEffect && !isMcp && !isSpawn && !isDesktopRead) {
+    if (!isRead && !sideEffect && !isMcp && !isSpawn && !isDesktopRead && !isCritique) {
       return { decision: 'deny', reason: `unknown tool "${request.tool}" (fail closed)` };
     }
     if (this.mode === 'auto') {
@@ -180,9 +189,15 @@ class Sentinel {
       }
       return { decision: 'ask', reason: 'read outside granted scope' };
     }
+    // Review pass: analysis only, nothing is modified — plan mode allows it.
+    if (isCritique && this.mode === 'plan') {
+      return { decision: 'allow', reason: 'critique is read-only analysis (no artifact is modified)' };
+    }
     const reason = sideEffect
       ? `side-effect tool "${request.tool}" requires approval`
-      : isMcp
+      : isCritique
+        ? 'critique spends a review model call under your key'
+        : isMcp
         ? 'MCP tool requires approval (dynamic server tool — conservative default)'
         : 'subagent spawn consumes LLM turns under your key; child tool calls gate separately';
     if (this.mode === 'plan') {

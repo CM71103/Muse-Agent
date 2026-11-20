@@ -286,10 +286,13 @@ function scrollDown(force = false) {
 function clearEmpty() {
   projectHomeVisible = false;
   dashboardsViewVisible = false;
+  pagesViewVisible = false;
   const home = document.getElementById('project-home');
   if (home && home.parentNode) home.remove();
   const dash = document.getElementById('dashboards-home');
   if (dash && dash.parentNode) dash.remove();
+  const pages = document.getElementById('pages-home');
+  if (pages && pages.parentNode) pages.remove();
   const e = $('empty');
   if (e) e.remove();
 }
@@ -673,6 +676,8 @@ function handleAgentEvent(ev) {
       if (ev.denied) addDeniedRow(ev.name, ev.reason);
       else addToolRow({ id: ev.id, name: ev.name, args: null, result: ev.result });
       if (ev.name === 'create_dashboard' && ev.result && ev.result.ok && ev.result.id) addDashboardChip(ev.result);
+      if (ev.name === 'visual_render' && ev.result && ev.result.ok && ev.result.path) addVisualPageChip(ev.result);
+      if (ev.name === 'critique' && ev.result && ev.result.ok) addCritiqueChip(ev.result);
       break;
     case 'info':
       if (/compaction/.test(ev.text)) addSysNote(ev.text, false, 'mem');
@@ -1142,6 +1147,7 @@ window.muse.onQueueUpdate?.((state) => renderQueueChips((state && state.items) |
 
 /* ---------- dashboards view (live JSON dashboards — queries, not data) ---------- */
 let dashboardsViewVisible = false;
+let pagesViewVisible = false;
 let selectedDashboardId = null;
 
 async function renderDashboardsView() {
@@ -1211,6 +1217,81 @@ function openDashboardView(id) {
   setNav('dashboards');
   renderDashboardsView();
 }
+// The visual pages registry, the dashboards pattern: every rendered page
+// listed across sessions with its own preview (the first contact sheet).
+// "remove" only forgets the entry; the files stay in the project.
+async function renderPagesView() {
+  if (!pagesViewVisible || typeof window.muse.visPages !== 'function') return;
+  let list = [];
+  try { list = await window.muse.visPages(); } catch { /* store not ready */ }
+  if (!pagesViewVisible) return;
+  transcript.replaceChildren();
+  const home = document.createElement('section');
+  home.id = 'pages-home'; home.className = 'dashboards-home';
+  const h = document.createElement('h1'); h.textContent = 'Visual pages';
+  const hint = document.createElement('p'); hint.className = 'dash-hint';
+  hint.textContent = 'Self-contained HTML pages Muse rendered — diagrams, reviews, recaps. Each lives in its project beside its .src.html source; re-render the source to revise it.';
+  home.append(h, hint);
+  if (!list.length) {
+    const n = document.createElement('p'); n.className = 'dash-hint';
+    n.textContent = 'No visual pages yet. Ask Muse for a diagram, comparison, or review.';
+    home.append(n);
+  }
+  const grid = document.createElement('div'); grid.className = 'pages-grid';
+  for (const p of list) {
+    const card = document.createElement('div'); card.className = 'page-card';
+    const img = document.createElement('img'); img.className = 'page-thumb';
+    img.alt = p.title || 'visual page'; img.loading = 'lazy';
+    img.addEventListener('click', () => window.muse?.visualOpen?.(p.path));
+    if (typeof window.muse.visPageThumb === 'function') {
+      window.muse.visPageThumb(p.id).then(t => { if (t && t.ok && t.data) img.src = t.data; }).catch(() => {});
+    }
+    const t = document.createElement('strong');
+    t.textContent = p.title || (String(p.path || '').split(/[\\/]/).pop() || 'page');
+    const s = document.createElement('small');
+    s.textContent = [p.report, p.check && !String(p.check).startsWith('skipped') ? String(p.check) : '', p.project]
+      .filter(Boolean).join(' · ');
+    const row = document.createElement('div'); row.className = 'page-actions';
+    const openBtn = document.createElement('button'); openBtn.className = 'q-btn'; openBtn.textContent = 'open';
+    openBtn.addEventListener('click', () => window.muse?.visualOpen?.(p.path));
+    const folderBtn = document.createElement('button'); folderBtn.className = 'q-btn'; folderBtn.textContent = 'folder';
+    folderBtn.addEventListener('click', () => window.muse?.visualReveal?.(p.path));
+    const forget = document.createElement('button'); forget.className = 'q-btn'; forget.textContent = 'remove';
+    forget.addEventListener('click', guarded(async () => {
+      if (!window.confirm(`Remove “${t.textContent}” from the list? The files stay on disk.`)) return;
+      await window.muse.visPageForget(p.id);
+      renderPagesView();
+    }));
+    row.append(openBtn, folderBtn, forget);
+    card.append(img, t, s, row);
+    grid.append(card);
+  }
+  home.append(grid);
+  transcript.append(home);
+  const scroller = $('mainlog');
+  if (scroller) scroller.scrollTop = 0;   // the view is a page — always open at its header
+}
+function openPagesView() {
+  pagesViewVisible = true;
+  setNav('pages');
+  renderPagesView();
+}
+// The review gate (PaperOrchestra port): what the reviewer scored and what
+// it wants fixed - a compact line in the transcript, not a wall of text.
+function addCritiqueChip(result) {
+  const el = document.createElement('div');
+  el.className = 'sysnote action-chip';
+  const label = document.createElement('span');
+  label.className = 'q-label';
+  const score = typeof result.score === 'number' ? `${result.score}/10` : 'scored';
+  const fixes = Array.isArray(result.fixes) ? result.fixes.length : 0;
+  const weak = Array.isArray(result.weaknesses) ? result.weaknesses.length : 0;
+  label.textContent = `review ${score}: ${result.verdict || 'see the fixes'}${fixes ? ` - ${fixes} fix${fixes === 1 ? '' : 'es'}` : ''}${weak ? `, ${weak} weakness${weak === 1 ? '' : 'es'}` : ''}`;
+  el.append(label);
+  transcript.append(el);
+  reveal(el, 8);
+  scrollDown();
+}
 function addDashboardChip(result) {
   const el = document.createElement('div');
   el.className = 'sysnote action-chip';
@@ -1222,6 +1303,42 @@ function addDashboardChip(result) {
   btn.textContent = 'open';
   btn.addEventListener('click', () => openDashboardView(result.id));
   el.append(label, btn);
+  transcript.append(el);
+  reveal(el, 8);
+  scrollDown();
+}
+// The visual_render artifact, like a dashboard chip: what the page says, what
+// the render checked, and its first contact sheet as the preview.
+function addVisualPageChip(result) {
+  const el = document.createElement('div');
+  el.className = 'sysnote action-chip visual-page';
+  const label = document.createElement('span');
+  label.className = 'q-label';
+  const name = String(result.path || '').split(/[\\/]/).pop();
+  const facts = [];
+  if (result.report) facts.push(String(result.report).replace(/^Page:\s*/, ''));
+  if (result.check === 'passed') facts.push('check passed');
+  else if (result.check && !String(result.check).startsWith('skipped')) facts.push(String(result.check));
+  label.textContent = `visual page created: ${name}${facts.length ? ' · ' + facts.join(' · ') : ''}`;
+  const openBtn = document.createElement('button');
+  openBtn.className = 'q-btn';
+  openBtn.textContent = 'open';
+  openBtn.addEventListener('click', () => window.muse?.visualOpen?.(result.path));
+  const folderBtn = document.createElement('button');
+  folderBtn.className = 'q-btn';
+  folderBtn.textContent = 'folder';
+  folderBtn.addEventListener('click', () => window.muse?.visualReveal?.(result.path));
+  el.append(label, openBtn, folderBtn);
+  // sheets are the render's own screenshots of the page; the first is the reader's first screen
+  const sheet = (result.images || [])[0];
+  if (sheet && sheet.data) {
+    const img = document.createElement('img');
+    img.src = `data:${sheet.mimeType || 'image/png'};base64,${sheet.data}`;
+    img.alt = 'preview of the rendered page';
+    img.title = 'open the page';
+    img.addEventListener('click', () => window.muse?.visualOpen?.(result.path));
+    el.append(img);
+  }
   transcript.append(el);
   reveal(el, 8);
   scrollDown();
@@ -2116,7 +2233,7 @@ function scheduleHeatmap() {
 /* ---------- gooey nav pill (wensity gooey-navigation-menu port) ----------
    One liquid highlight slides behind the active nav link. Buttons toggle
    aria-pressed, which drives both the pill position and the pressed color. */
-const navBtns = ['nav-chat', 'nav-projects', 'nav-activity', 'nav-memory', 'nav-dashboards'].map(id => $(id)).filter(Boolean);
+const navBtns = ['nav-chat', 'nav-projects', 'nav-activity', 'nav-memory', 'nav-dashboards', 'nav-pages'].map(id => $(id)).filter(Boolean);
 const navPill = document.querySelector ? document.querySelector('.nav-pill') : null;
 function syncPill() {
   if (!navPill || typeof navPill.getBoundingClientRect !== 'function') return; // test mock
@@ -2136,6 +2253,7 @@ const NAV_ACTIONS = {
   projects: () => { if (memOpen) closeMemory(); if (activeProjectId) { projectHomeVisible = true; renderProjectHome(); } else { const s = document.getElementById('project-search'); if (s) { s.focus(); s.scrollIntoView?.({ block: 'nearest' }); } } },
   activity: () => { if (memOpen) closeMemory(); setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); },
   dashboards: () => { if (memOpen) closeMemory(); dashboardsViewVisible = true; renderDashboardsView(); },
+  pages: () => { if (memOpen) closeMemory(); pagesViewVisible = true; renderPagesView(); },
   memory: () => { openMemory(); },
 };
 for (const b of navBtns) b.addEventListener('click', () => { const name = (b.dataset && b.dataset.nav) || b.id.slice(4); setNav(name); const act = NAV_ACTIONS[name]; if (act) act(); });
@@ -2467,7 +2585,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Open visual pages', () => openPagesView(), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {

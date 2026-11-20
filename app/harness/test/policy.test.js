@@ -168,10 +168,16 @@ test('tool registry keeps central policy (no alwaysAsk drift)', () => {
   const names = tools.map(t=>t.name);
   // Guard for explicit tool-set decisions: data sources + dashboards joined
   // the registry in the opendashboards port (read-only at the driver; see
-  // datasources.js / dashboards.js).
+  // datasources.js / dashboards.js). Visual Explainer (visual_kit_docs /
+  // visual_render, see visual-tools.ts) joined with it: two more schemas that
+  // trade context for page-grade explanations instead of ASCII art. The
+  // critique tool (critic.js) is the PaperOrchestra reviewer port: a
+  // read-class quality gate that never mutates anything.
   assert.deepEqual(names.sort(),['list_dir','read_file','shell','spawn_agent','web_fetch','write_file',
     'list_data_sources','sqlite_tables','sqlite_run_sql',
-    'list_dashboards','create_dashboard','edit_dashboard','delete_dashboard'].sort());
+    'list_dashboards','create_dashboard','edit_dashboard','delete_dashboard',
+    'visual_kit_docs','visual_render','list_visual_pages',
+    'critique'].sort());
 });
 
 test('shipped DEFAULTS and absent legacy fields both support approval-free Auto', () => {

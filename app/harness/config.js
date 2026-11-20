@@ -11,6 +11,10 @@ const DEFAULTS = {
     provider: 'openai-compat',        // openai-compat | anthropic (v2)
     base_url: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
+    // Optional reviewer model for the critique tool (PaperOrchestra pattern:
+    // critique with a stronger model than the one that writes). Empty = use
+    // the chat model.
+    review_model: '',
     // api_key: read from env MUSE_LLM_API_KEY or config value; never logged
     api_key_env: 'MUSE_LLM_API_KEY',
     temperature: 0.3,

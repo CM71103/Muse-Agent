@@ -25,10 +25,12 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Run commands** | Execute shell commands and inspect readable output, completion status, and duration. |
 | **Query your data** | Register SQLite databases as read-only data sources; the agent explores schemas and runs capped, single-statement SELECTs. |
 | **Build live dashboards** | Ask for a dashboard in plain English — one SQL query per chart, re-run every time you open it. Bar, line, area, pie, stat, and table charts. |
+| **Explain visually** | Ask for a diagram, comparison, review, or recap — Muse writes one self-contained HTML page (hand-drawn flows, charts, step-by-step replays) and checks its own layout in a browser before handing it over, instead of ASCII art. |
 | **Choose your models** | Search available models in Settings, select the ones visible in chat, and switch from the composer. |
 | **Delegate work** | Follow subagents through individual cards with their task, activity, status, and result. |
 | **Recall useful context** | Enable project-scoped memory backed by SQLite and embeddings, with feedback and memory-management controls. |
 | **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Codex, Cline, Muse sessions) — locally, style metrics only. |
+| **Review its own work** | Before long output is handed over, a reviewer pass scores the draft against explicit axes and returns ranked fixes — the agent applies them and stops when the score stops improving. |
 | **Learn my style** | One click in the sidebar re-reads every local chat, finds the answers you accepted, and teaches Muse the difference between those and your average answer. |
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
 | **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works — reorder them, jump the line, or cancel one. |
@@ -254,6 +256,20 @@ Every answer you grade becomes an **explicit marker** — a local, append-only r
 The policy is deliberately conservative: a rule needs at least **two** liked samples and a **margin of two** over the disliked ones, so one bad day never flips your agent's voice. Contradictory grades produce no rule at all.
 
 The workbench shows the running count (`Answer feedback`), and the command palette has **Show answer feedback** and **Reset answer feedback**.
+
+## A review pass before "done"
+
+Long answers go through a reviewer before you see them. Muse's `critique` tool scores a draft against explicit axes (correctness, completeness, clarity, conciseness, tone fit — the last one checked against your learned style) and returns ranked weaknesses with concrete fixes. The agent applies them, and critiques again only if the score is still low — it stops as soon as the score stops improving, so drafts don't churn for the sake of a number.
+
+The reviewer is read-class: it changes nothing and only spends a model call, so it is treated like a subagent spawn (asked in Ask mode, automatic in Auto mode).
+
+You can point the reviewer at a different model than the one that writes — handy if you want a stronger model judging the work:
+
+```toml
+[llm]
+model = "deepseek-chat"
+review_model = "gpt-5"      # optional; empty = same model as the writer
+```
 
 ## Answer style that matches you (vibe calibration)
 
