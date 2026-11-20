@@ -74,6 +74,76 @@ const projectStore = require('../harness/projects');
 const webPreviewModule = require('./web-preview-service.js');
 const webPreviewService = webPreviewModule.createWebPreviewService();
 
+// ---- live preview refresh -------------------------------------------------
+// Any file change in the watched project bumps previewTouch; getDesignStatus
+// mixes it into the preview version, which the Design Studio canvas polls
+// (1.2 s), so the canvas reloads itself about a second after a save — no
+// terminal, no manual refresh. Vite-style HMR apps hot-update on their own;
+// this covers every other stack uniformly. Build outputs and caches are
+// skipped so a dev server rebuilding dist/ cannot cause a reload loop.
+const PREVIEW_WATCH_IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.nuxt', 'coverage', '.od', '.muse']);
+let previewTouch = 0;
+let previewWatcher = null;
+let previewWatchRoot = null;
+let previewWatchTimer = null;
+
+function stopPreviewWatcher() {
+  if (previewWatchTimer) { clearTimeout(previewWatchTimer); previewWatchTimer = null; }
+  if (previewWatcher) { try { previewWatcher.close(); } catch {} previewWatcher = null; }
+  previewWatchRoot = null;
+}
+
+function startPreviewWatcher(root) {
+  const target = root ? path.resolve(root) : null;
+  if (!target || previewWatchRoot === target) return;
+  stopPreviewWatcher();
+  try {
+    previewWatcher = fs.watch(target, { recursive: true }, (_event, file) => {
+      const parts = String(file || '').split(/[\\/]/);
+      if (parts.some(part => PREVIEW_WATCH_IGNORE.has(part) || part.endsWith('.tmp') || part.endsWith('.log'))) return;
+      if (previewWatchTimer) clearTimeout(previewWatchTimer);
+      // debounced: one save can touch several files (formatters touch more)
+      previewWatchTimer = setTimeout(() => { previewWatchTimer = null; previewTouch++; }, 700);
+    });
+    previewWatchRoot = target;
+  } catch { /* watching is best-effort; revision polling still applies */ }
+}
+
+// The agent's preview_run / preview_status tools drive the SAME service the
+// canvas uses (harness/preview-tools.ts): one managed process, no terminal.
+// Starting is never blocked on agentBusy — the agent is busy by definition
+// when it asks; the sentinel approval flow is the gate instead.
+require('../harness/preview-tools.ts').configurePreviewService({
+  status: () => {
+    const detected = webPreviewService.inspect(currentProjectDir);
+    return webPreviewModule.mergePreviewStatus(detected, webPreviewService.status());
+  },
+  start: async ({ relativeDir, open } = {}) => {
+    if (!currentProjectDir) return { ok: false, error: 'No project folder is selected.' };
+    const detected = webPreviewService.inspect(currentProjectDir);
+    const selectedApp = (detected.apps || []).find(app => app.relativeDir === (relativeDir || detected.relativeDir));
+    if (!detected.available || !selectedApp) return { ok: false, error: detected.reason || 'No runnable web script was found.' };
+    const running = webPreviewService.status();
+    if (running.running && path.resolve(running.projectDir || '') === path.resolve(currentProjectDir)) {
+      return { ok: true, ...running, note: `The managed preview is already running at ${running.url}.` };
+    }
+    await stopPreviewForProjectChange(currentProjectDir);
+    const result = await webPreviewService.start(currentProjectDir, selectedApp.relativeDir);
+    if (!result?.ok) return { ...(result || {}), webPreview: webPreviewService.status() };
+    startPreviewWatcher(currentProjectDir);
+    const after = webPreviewService.status();
+    if (open !== false && !designWorkspaceOpen && after.url) {
+      try { await shell.openExternal(after.url); } catch {}
+    }
+    return {
+      ok: true,
+      ...after,
+      note: `Managed preview at ${after.url} — shown in the Design Studio canvas, which refreshes within about a second of any file change. action=stop ends it; nothing is left running in a terminal.`,
+    };
+  },
+  stop: () => webPreviewService.stop(),
+});
+
 function stopPreviewForProjectChange(nextDir) {
   const preview = webPreviewService.status();
   if (preview.running && path.resolve(preview.projectDir || '') !== path.resolve(nextDir || '')) {
@@ -1433,6 +1503,52 @@ ipcMain.handle('sentinel:setMode', async (e, mode) => {
 const { fetchModels, originOf } = require('../harness/models');
 const { apiKey: apiKeyOf } = require('../harness/config');
 
+// The research orchestrator (PaperOrchestra shape): plan -> search -> read ->
+// draft -> critique -> revise. Runs in main so it uses the vault-backed
+// config (the renderer's key never reaches it, and neither does the topic
+// reach a third party beyond the searches it asks for).
+let briefRunning = false;
+ipcMain.handle('research:brief', async (e, payload = {}) => {
+  requireTrusted(e);
+  if (briefRunning) return { ok: false, error: 'a research brief is already running' };
+  const topic = String(payload.topic || '').trim();
+  if (!topic) return { ok: false, error: 'a topic is required' };
+  briefRunning = true;
+  try {
+    const cfg = secureConfig();
+    const { runBrief } = require('../harness/research-brief');
+    const { Sentinel } = require('../harness/sentinel');
+    const sentinel = new Sentinel(cfg);
+    const ctx = { cfg, sentinel, tainted: false, netPolicy: { allowLocal: false } };
+    const result = await runBrief(cfg, {
+      topic,
+      goal: String(payload.goal || '').slice(0, 400),
+      maxPapers: Math.min(10, Math.max(2, Number(payload.papers) || 6)),
+      maxRounds: Math.min(3, Math.max(0, Number(payload.rounds ?? 2))),
+      ctx,
+      onStage: (stage, data) => send('research-stage', { stage, data }),
+    });
+    if (!result.ok) return { ok: false, stage: result.stage, error: result.error, outDir: result.outDir };
+    let brief = '';
+    try { brief = require('fs').readFileSync(result.briefPath, 'utf8'); } catch { /* the file was just written */ }
+    return { ok: true, ...result, brief };
+  } catch (error) {
+    return { ok: false, error: String(error && error.message || error) };
+  } finally {
+    briefRunning = false;
+  }
+});
+
+ipcMain.handle('path:reveal', async (e, target) => {
+  requireTrusted(e);
+  try {
+    const resolved = path.resolve(String(target || ''));
+    if (!fs.existsSync(resolved)) return { ok: false, error: 'not found' };
+    shell.showItemInFolder(resolved);
+    return { ok: true };
+  } catch (error) { return { ok: false, error: String(error && error.message || error) }; }
+});
+
 ipcMain.handle('research:status', async (e) => {
   requireTrusted(e);
   const cfg = secureConfig();
@@ -1726,6 +1842,7 @@ ipcMain.handle('memory:extract-now', async (e) => {
 
 const design = require('../harness/design.ts');
 async function getDesignStatus(projectDir) {
+  startPreviewWatcher(currentProjectDir);   // lazy: attach wherever the project lives
   let running = webPreviewService.status();
   if (running.running && (!projectDir || path.resolve(running.projectDir || '') !== path.resolve(projectDir))) {
     await webPreviewService.stop();
@@ -1738,7 +1855,7 @@ async function getDesignStatus(projectDir) {
   const website = webPreviewModule.mergePreviewStatus(detectedWebsite, running);
   const status = design.designStatus(projectDir);
   const preview = website.running && website.url
-    ? { url: website.url, version: String(website.startedAt || Date.now()), title: path.basename(projectDir), entry: '' }
+    ? { url: website.url, version: `${website.startedAt || Date.now()}-${previewTouch}`, title: path.basename(projectDir), entry: '' }
     : designPreviewInfo(projectDir, status.artifact);
   return { ok: true, ...status, preview, webPreview: website, projectBaseDir: projectDir || path.join(app.getPath('documents'), 'Muse Designs') };
 }

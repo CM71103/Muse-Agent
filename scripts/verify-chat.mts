@@ -57,6 +57,12 @@ const api={
   {chartId:'c4',columns:['month','revenue'],rows:[{month:'jun',revenue:240}],truncated:false},
   {chartId:'c5',columns:['month','revenue'],rows:[{month:'jan',revenue:120},{month:'feb',revenue:180},{month:'mar',revenue:150}],truncated:false}]})};
 for(const name of ['onAgentEvent','onApprovalRequest','onApprovalResolved','onApprovalExpired','onSessionReset','onQuestion','onLearningStatus'])api[name]=()=>()=>{};
+api.researchBrief=async payload=>{
+  const stages=['plan','search','read','draft','critique','revise','done'];
+  for(const stage of stages){briefListener({stage,data:{ok:true,count:4,chars:2200,score:8,total:4,read:4,query:'routing memory',found:9}});}
+  return {ok:true,score:8,papers:4,briefPath:'C:/Users/chand/.muse-agent/briefs/demo/brief.md',sourcesPath:'C:/Users/chand/.muse-agent/briefs/demo/sources.json',brief:'# Research brief: routing memory -- Long context beats retrieval for coding agents [1]. -- ## References -- [1] A Study.'};
+};
+api.onResearchStage=cb=>{briefListener=cb;return()=>{briefListener=()=>{}}};
 contextBridge.exposeInMainWorld('muse',api);
 `);
 
@@ -65,6 +71,7 @@ const {app,BrowserWindow}=require('electron');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const root=${JSON.stringify(root)},output=${JSON.stringify(output)};
 const messageText=${JSON.stringify(messageText)},toolOutput=${JSON.stringify(toolOutput)};
+let briefListener=()=>{};
 app.setPath('userData',path.join(__dirname,'profile'));
 app.commandLine.appendSwitch('disable-features','CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -108,6 +115,16 @@ app.whenReady().then(async()=>{try{
  await js('handleAgentEvent({type:"tool_result",id:"s1",name:"cite_source",result:{ok:true,text:"Recorded sources for retrieval-vs-long-context (3): [arxiv:2005.11401] RAG for Knowledge-Intensive NLP — 2020 — claim: retrieval beats parametric memory."}})');
  await pause(250);
  assert.equal(await js("[...document.querySelectorAll('.action-chip')].some(n=>n.textContent.indexOf('sources recorded: 3')>=0)"),true,'citation chip should show the source count');
+ // /research <topic>: the orchestrator runs in main and streams its stages
+ await js("input.value='/research routing memory'");
+ await js("submit('/research routing memory')");
+ await pause(600);
+ assert.equal(await js("document.body.textContent.indexOf('selected 4 papers')>=0"),true,'stage lines appear while the brief runs');
+ assert.equal(await js("document.body.textContent.indexOf('review score 8/10')>=0"),true,'the critique score is reported');
+ assert.equal(await js("[...document.querySelectorAll('.msg')].some(n=>n.textContent.indexOf('Research brief')>=0)"),true,'the brief is shown');
+ assert.equal(await js("[...document.querySelectorAll('.action-chip')].some(n=>n.textContent.indexOf('research brief ready')>=0)"),true,'the brief chip appears');
+ await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");
+ await pause(250);await shot('research-brief');
  await js("renderQueueChips([])");
  // the review gate (PaperOrchestra port): a critique result must show up as a
  // compact chip with the score and the fix count

@@ -311,6 +311,32 @@ function arxivExpression(query) {
   return picked.map(t => `all:${t}`).join(' AND ');
 }
 
+// Read the papers behind a search result: full record via Semantic Scholar,
+// OpenAlex fallback for DOIs. Returns shaped papers (no tool wrapper), so the
+// orchestrator and the tool share the same behaviour and rate limiting.
+async function readPapers(ids, ctx, cfgIn) {
+  const cfg = cfgIn || researchCfg(ctx && ctx.cfg);
+  const list = (Array.isArray(ids) ? ids : []).map(String).slice(0, 3);
+  const out = [];
+  for (const id of list) {
+    const s2 = await fetchJson(s2UrlFor(id), { ctx, cfg });
+    if (s2.ok && s2.body) { out.push(shapePaper(s2.body)); continue; }
+    if (id.startsWith('doi:')) {
+      const oa = await fetchJson(`https://${OPENALEX_HOST}/works/https://doi.org/${encodeURIComponent(id.slice(4))}`, { ctx, cfg });
+      if (oa.ok && oa.body) { out.push(shapeOpenAlex(oa.body)); continue; }
+    }
+    if (id.startsWith('arxiv:')) {
+      const ax = await fetchText(`https://${ARXIV_HOST}/api/query?id_list=${encodeURIComponent(id.slice(6))}&max_results=1`, { ctx, cfg });
+      if (ax.ok) {
+        const parsed = parseArxiv(ax.body);
+        if (parsed.length) { out.push(parsed[0]); continue; }
+      }
+    }
+    out.push({ id, title: '(record unavailable)', authors: '', year: null, venue: '', citations: 0, url: '', abstract: '', missing: true });
+  }
+  return out;
+}
+
 function parseArxiv(xml) {
   const out = [];
   const entries = String(xml || '').split('<entry>').slice(1);
@@ -526,21 +552,11 @@ function mkResearchTools() {
     async run(args, ctx) {
       const ids = (Array.isArray(args.ids) ? args.ids : []).map(String).slice(0, 3);
       if (!ids.length) return { ok: false, error: 'ids must not be empty', code: 'BAD_INPUT' };
-      const cfg = researchCfg(ctx.cfg);
-      const blocks = [];
-      for (const id of ids) {
-        // The semantic scholar index has the cleanest abstracts. OpenAlex is
-        // the fallback (metadata only for some records).
-        let paper = null;
-        const s2 = await fetchJson(s2UrlFor(id), { ctx, cfg });
-        if (s2.ok && s2.body) paper = shapePaper(s2.body);
-        if (!paper && id.startsWith('doi:')) {
-          const oa = await fetchJson(`https://${OPENALEX_HOST}/works/https://doi.org/${encodeURIComponent(id.slice(4))}`, { ctx, cfg });
-          if (oa.ok && oa.body) paper = shapeOpenAlex(oa.body);
-        }
-        if (!paper) { blocks.push(`[${id}] unavailable (no index has this record right now)`); continue; }
-        blocks.push(`[${paper.id}] ${paper.title}\n   ${paper.authors} · ${paper.year || 'n.d.'} · ${paper.venue || 'unknown venue'} · ${paper.citations} cites\n   ${paper.abstract || '(no abstract available in the index — take the metadata and the link, not a guess)'}\n   ${paper.url}`);
-      }
+      const papers = await readPapers(ids, ctx);
+      const blocks = papers.map(paper => {
+        if (paper.missing) return `[${paper.id}] unavailable (no index has this record right now)`;
+        return `[${paper.id}] ${paper.title}\n   ${paper.authors} · ${paper.year || 'n.d.'} · ${paper.venue || 'unknown venue'} · ${paper.citations} cites\n   ${paper.abstract || '(no abstract available in the index — take the metadata and the link, not a guess)'}\n   ${paper.url}`;
+      });
       let text = blocks.join('\n\n');
       if (text.length > MAX_DETAIL_CHARS) text = text.slice(0, MAX_DETAIL_CHARS - 1).trimEnd() + '…';
       return { ok: true, text };
@@ -587,7 +603,7 @@ function researchTools() {
 }
 
 module.exports = {
-  researchTools, mkResearchTools, searchPapers, parseArxiv, shapePaper,
+  researchTools, mkResearchTools, searchPapers, readPapers, parseArxiv, shapePaper,
   shapeOpenAlex, abstractFromInvertedIndex, looksLikeCitationHeader, s2UrlFor, arxivExpression,
   saveSource, readStore, researchCfg, researchRoot, MAX_RESULTS,
 };

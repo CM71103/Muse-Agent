@@ -67,6 +67,11 @@ class Sentinel {
     const visualTools = require('./visual-tools.ts');
     for (const name of visualTools.VISUAL_READ_NAMES) this.readTools.add(name);
     for (const name of visualTools.VISUAL_WRITE_NAMES) this.sideEffectTools.add(name);
+    // Managed preview: starting/stopping the project website is a side effect;
+    // reading its status is not.
+    const previewTools = require('./preview-tools.ts');
+    for (const name of previewTools.PREVIEW_READ_NAMES) this.readTools.add(name);
+    for (const name of previewTools.PREVIEW_WRITE_NAMES) this.sideEffectTools.add(name);
     this.projectWriteTools = new Set(['write_file', ...designTools.DESIGN_WRITE_NAMES, ...visualTools.VISUAL_WRITE_NAMES]);
     // Legacy always_ask_tools values are accepted in config but do not override Auto.
     // Modes live on the sentinel so a running agent picks up a switch

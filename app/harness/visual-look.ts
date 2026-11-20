@@ -9,19 +9,19 @@
 // have no capture host; the check is then skipped with a note and the render
 // still stands.
 
-let service: any = null;
+let service = null;
 
-function configureVisualLook(svc: any) { service = svc; }
+function configureVisualLook(svc) { service = svc; }
 
 const NONE = { skipped: '', problems: [], sheets: [], errors: [], widths: {} };
 
-async function lookAt(file: string) {
+async function lookAt(file) {
   if (!service) {
     return { ...NONE, skipped: 'no capture host in this runtime (headless run) — the page was rendered but not visually checked. Open it in a browser yourself.' };
   }
   try {
     return await service.lookAt(String(file));
-  } catch (e: any) {
+  } catch (e) {
     // the page is already written; a capture failure is a skipped check, not a failed render
     return { ...NONE, skipped: `the visual check could not finish: ${String(e?.message || e).split('\n')[0]}` };
   }

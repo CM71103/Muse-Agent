@@ -31,6 +31,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Recall useful context** | Enable project-scoped memory backed by SQLite and embeddings, with feedback and memory-management controls. |
 | **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Codex, Cline, Muse sessions) — locally, style metrics only. |
 | **Research with citations** | Search Semantic Scholar, OpenAlex and arXiv, read the papers that matter, and record every source with the claim it supports — so answers about research, benchmarks or prior art are grounded, not remembered. |
+| **Full research briefs** | `/research <topic>` runs the whole pipeline — plan, search, read, draft, review, revise — and leaves a cited brief plus its citation map on disk. |
 | **Review its own work** | Before long output is handed over, a reviewer pass scores the draft against explicit axes and returns ranked fixes — the agent applies them and stops when the score stops improving. |
 | **Learn my style** | One click in the sidebar re-reads every local chat, finds the answers you accepted, and teaches Muse the difference between those and your average answer. |
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
@@ -271,6 +272,41 @@ Every answer you grade becomes an **explicit marker** — a local, append-only r
 The policy is deliberately conservative: a rule needs at least **two** liked samples and a **margin of two** over the disliked ones, so one bad day never flips your agent's voice. Contradictory grades produce no rule at all.
 
 The workbench shows the running count (`Answer feedback`), and the command palette has **Show answer feedback** and **Reset answer feedback**.
+
+## Run a full research brief: `/research <topic>`
+
+The three tools above are what the agent uses on demand. For a **complete brief**, Muse runs the whole PaperOrchestra-shaped pipeline for you:
+
+```
+/research long context versus retrieval for coding agents
+```
+
+```
+plan      -> the topic becomes 3-5 real search queries and a section outline
+search    -> the scholarly indexes are queried, deduped and ranked
+read      -> the papers that matter are read and each one gets notes
+draft     -> the brief is written, citing [1] [2] markers
+critique  -> a reviewer scores it (llm.review_model gets a different model)
+revise    -> the fixes are applied - then it stops when the score stops climbing
+```
+
+Every stage streams into the transcript as it happens, and the run lands on disk:
+
+```
+~/.muse-agent/briefs/<topic>-<stamp>/brief.md        the brief, with a References section
+                                        /sources.json   the citation map (source -> claim)
+                                        /notes.json     per-paper notes
+                                        /outline.json   queries + section plan
+                                        /run.json       stage receipts (resumable)
+```
+
+The command palette has **Research a topic (brief)** (it prefills `/research `), and a terminal run is available for scripting:
+
+```bash
+node scripts/research-brief.mts "your topic" --goal "what should we adopt" --print
+```
+
+The CLI needs `MUSE_LLM_API_KEY` exported (a terminal cannot read the app's OS-encrypted credential store) and picks up `SEMANTIC_SCHOLAR_API_KEY` the same way.
 
 ## Research that cites its sources
 

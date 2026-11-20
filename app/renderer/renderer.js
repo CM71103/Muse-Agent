@@ -1025,6 +1025,15 @@ async function submit(textOverride) {
     await gradeLatestAnswer(grade[1].toLowerCase() === 'good' ? 1 : 0);
     return true;
   }
+  // /research <topic> runs the research orchestrator (plan -> search -> read
+  // -> draft -> critique -> revise) instead of chatting with the agent.
+  const researchCmd = /^\/research\s+(.+)$/i.exec(text);
+  if (researchCmd) {
+    input.value = '';
+    autosize();
+    await runResearchBrief(researchCmd[1].trim());
+    return true;
+  }
   turnErrorsDisplayed = new Set();
   input.value = '';
   autosize();
@@ -2645,7 +2654,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Open visual pages', () => openPagesView(), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Open visual pages', () => openPagesView(), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Research a topic (brief)', () => { closePalette(); input.value = '/research '; input.focus(); autosize(); }, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {
@@ -2687,6 +2696,75 @@ window.addEventListener('keydown', e => {
   if (!dialog && e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); exportTranscript(); }
 });
 
+
+/* ---------- research orchestrator (/research <topic>) ---------- */
+const RESEARCH_STAGE_TEXT = {
+  start: (d) => `research brief started - ${d.papers || 6} papers, output in ${d.outDir || 'the briefs folder'}`,
+  plan: (d) => `planned: ${(d.queries || []).length} searches, ${(d.outline || []).length} sections`,
+  'search-progress': (d) => `searched "${d.query}" - ${d.found} candidates so far`,
+  'search-warning': (d) => `search for "${d.query}" could not run: ${d.error}`,
+  search: (d) => `selected ${d.count} papers`,
+  'read-progress': (d) => `read ${d.read}/${d.total} papers`,
+  read: (d) => `took notes on ${d.count} papers`,
+  draft: (d) => `draft written (${d.chars} characters)`,
+  critique: (d) => (d.ok ? `review score ${d.score}/10` : 'the reviewer could not score the draft'),
+  revise: (d) => `revised after the review (${d.chars} characters)`,
+  converged: (d) => `stopped revising (${d.score}/10${d.reason ? ' - ' + d.reason : ''})`,
+  done: (d) => `brief ready (${d.score}/10)`,
+  error: (d) => `research stopped: ${d.message}`,
+};
+
+function addBriefChip(result) {
+  const el = document.createElement('div');
+  el.className = 'sysnote action-chip';
+  const label = document.createElement('span');
+  label.className = 'q-label';
+  const score = result.score != null ? ` · review ${result.score}/10` : '';
+  label.textContent = `research brief ready${score} · ${result.papers || 0} sources`;
+  const btn = document.createElement('button');
+  btn.className = 'q-btn';
+  btn.textContent = 'open folder';
+  btn.addEventListener('click', async () => {
+    try { await window.muse.revealPath ? window.muse.revealPath(result.briefPath) : null; } catch { /* optional */ }
+  });
+  el.append(label, btn);
+  transcript.append(el);
+  reveal(el, 8);
+  scrollDown();
+}
+
+async function runResearchBrief(topic) {
+  if (busy || loadingSession || currentApproval) { addSysNote('Finish the current task before starting a research brief.', true); return; }
+  addMsg('user', `research brief: ${topic}`);
+  setBusy(true);
+  showThinking(true);
+  $('crumb').textContent = 'RESEARCHING…';
+  const stageLines = [];
+  const off = window.muse.onResearchStage ? window.muse.onResearchStage(({ stage, data }) => {
+    const fn = RESEARCH_STAGE_TEXT[stage];
+    if (!fn) return;
+    const line = fn(data || {});
+    stageLines.push(line);
+    addSysNote(line, false, 'mem');
+  }) : null;
+  try {
+    const res = await window.muse.researchBrief({ topic });
+    if (!res || !res.ok) {
+      addSysNote(`research brief failed: ${String(res && res.error || 'unknown error')}`, true);
+      return;
+    }
+    addMsg('assistant', res.brief || 'The brief was written to disk.');
+    addBriefChip(res);
+  } catch (e) {
+    reportError(e);
+  } finally {
+    try { off && off(); } catch { /* listener already gone */ }
+    setBusy(false);
+    showThinking(false);
+    $('crumb').textContent = t('crumb.ready', 'READY');
+    refreshStatus();
+  }
+}
 
 /* ---------- boot splash: particle reconstruction (click to skip) ---------- */
 (function bootSplash() {
