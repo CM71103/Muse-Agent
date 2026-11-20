@@ -177,7 +177,8 @@ test('tool registry keeps central policy (no alwaysAsk drift)', () => {
     'list_data_sources','sqlite_tables','sqlite_run_sql',
     'list_dashboards','create_dashboard','edit_dashboard','delete_dashboard',
     'visual_kit_docs','visual_render','list_visual_pages',
-    'critique'].sort());
+    'critique',
+    'search_papers','read_paper','cite_source'].sort());
 });
 
 test('shipped DEFAULTS and absent legacy fields both support approval-free Auto', () => {

@@ -678,6 +678,7 @@ function handleAgentEvent(ev) {
       if (ev.name === 'create_dashboard' && ev.result && ev.result.ok && ev.result.id) addDashboardChip(ev.result);
       if (ev.name === 'visual_render' && ev.result && ev.result.ok && ev.result.path) addVisualPageChip(ev.result);
       if (ev.name === 'critique' && ev.result && ev.result.ok) addCritiqueChip(ev.result);
+      if (ev.name === 'cite_source' && ev.result && ev.result.ok) addSourcesChip(ev.result);
       break;
     case 'info':
       if (/compaction/.test(ev.text)) addSysNote(ev.text, false, 'mem');
@@ -1278,6 +1279,20 @@ function openPagesView() {
 }
 // The review gate (PaperOrchestra port): what the reviewer scored and what
 // it wants fixed - a compact line in the transcript, not a wall of text.
+// The citation store: what the answer is actually based on.
+function addSourcesChip(result) {
+  const el = document.createElement('div');
+  el.className = 'sysnote action-chip';
+  const label = document.createElement('span');
+  label.className = 'q-label';
+  const m = /\((\d+)\)/.exec(String(result.text || ''));
+  const count = m ? m[1] : '';
+  label.textContent = count ? `sources recorded: ${count} cited paper${count === '1' ? '' : 's'}` : 'sources recorded';
+  el.append(label);
+  transcript.append(el);
+  reveal(el, 8);
+  scrollDown();
+}
 function addCritiqueChip(result) {
   const el = document.createElement('div');
   el.className = 'sysnote action-chip';

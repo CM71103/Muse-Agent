@@ -13,7 +13,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   if (!this.history.length) {
     const design = this.cwdOverride ? designContext(this.cwdOverride) : null;
     const systemExtra = [opts.systemExtra || '', design?.text || ''].filter(Boolean).join('\n\n');
-    const base = systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard'), this.toolMap.has('visual_render'), this.toolMap.has('critique'));
+    const base = systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard'), this.toolMap.has('visual_render'), this.toolMap.has('critique'), this.toolMap.has('search_papers'));
     const voiceGuide = readVoice();
     this._voiceGuideApplied = voiceGuide;
     this.history.push({ role: 'system', content: voiceGuide ? `${base}\n\n${VOICE_START}\n${voiceGuide}` : base });

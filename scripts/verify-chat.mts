@@ -105,6 +105,9 @@ app.whenReady().then(async()=>{try{
  await js("renderQueueChips([{commandId:'q1',position:1,text:'refactor the parser and update the tests'},{commandId:'q2',position:2,text:'repackage the build'}])");
  await js("addUndoChip({runId:'run-fixture',files:['app/main/index.js','app/renderer/renderer.js']})");
  await pause(300);await shot('chips');
+ await js('handleAgentEvent({type:"tool_result",id:"s1",name:"cite_source",result:{ok:true,text:"Recorded sources for retrieval-vs-long-context (3): [arxiv:2005.11401] RAG for Knowledge-Intensive NLP — 2020 — claim: retrieval beats parametric memory."}})');
+ await pause(250);
+ assert.equal(await js("[...document.querySelectorAll('.action-chip')].some(n=>n.textContent.indexOf('sources recorded: 3')>=0)"),true,'citation chip should show the source count');
  await js("renderQueueChips([])");
  // the review gate (PaperOrchestra port): a critique result must show up as a
  // compact chip with the score and the fix count

@@ -22,6 +22,15 @@ const DEFAULTS = {
     // compaction threshold (tokens). Compact when history estimate crosses ~85% of this.
     context_tokens: 200000,
   },
+  research: {
+    // Scholarly search (search_papers / read_paper / cite_source).
+    // The API key is optional: without it the public rate limit applies.
+    semantic_scholar_api_key: '',
+    max_results: 6,                  // 1..10
+    openalex_mailto: '',             // optional: polite pool for openalex
+    cache_ttl_hours: 24,              // raw upstream responses are cached this long
+    include_arxiv: true,              // include preprints alongside the main index
+  },
   agent: {
     max_turns: 40,                    // hard cap on tool loop
     approval_timeout_s: 3600,         // auto-deny after this (nanoMuse default)
@@ -39,7 +48,7 @@ const DEFAULTS = {
       '*reg delete*',
     ],
     // allowlist applied after agent reads private files (taint-lite)
-    egress_allowlist: ['duckduckgo.com', 'wikipedia.org', 'github.com', 'pypi.org'],
+    egress_allowlist: ['duckduckgo.com', 'wikipedia.org', 'github.com', 'pypi.org', 'api.semanticscholar.org', 'export.arxiv.org'],
   },
   mcp: {
     // OFF by default — no servers configured means no MCP tools exposed.

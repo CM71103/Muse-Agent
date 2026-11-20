@@ -262,7 +262,7 @@ function buildTools(cfg, opts = {}) {
     const tools = opts.disableSubagent ? [] : sandbox.mkSandboxTools();
     return { tools, map: new Map(tools.map(tool => [tool.name, tool])) };
   }
-  const tools = [...mkFsTools(), mkWebTool(), mkShellTool(), ...require('./datasources').dataTools(), ...require('./dashboards').dashboardTools(), ...require('./visual-tools.ts').mkVisualTools(), ...require('./critic').critiqueTools()];
+  const tools = [...mkFsTools(), mkWebTool(), mkShellTool(), ...require('./datasources').dataTools(), ...require('./dashboards').dashboardTools(), ...require('./visual-tools.ts').mkVisualTools(), ...require('./critic').critiqueTools(), ...require('./research').researchTools()];
   // Subagent (Antigravity-style delegation). Not registered for child agents
   // — mkSubagentTool's own depth check also fails closed.
   if (!(opts.disableSubagent)) {
@@ -283,4 +283,4 @@ function toSchema(tool) {
   };
 }
 
-module.exports = { buildTools, toSchema, IS_WIN, isPrivateHost, mkWebTool };
+module.exports = { buildTools, toSchema, IS_WIN, isPrivateHost, mkWebTool, assertPublicAddress };

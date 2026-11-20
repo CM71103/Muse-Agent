@@ -30,6 +30,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Delegate work** | Follow subagents through individual cards with their task, activity, status, and result. |
 | **Recall useful context** | Enable project-scoped memory backed by SQLite and embeddings, with feedback and memory-management controls. |
 | **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Codex, Cline, Muse sessions) — locally, style metrics only. |
+| **Research with citations** | Search Semantic Scholar, OpenAlex and arXiv, read the papers that matter, and record every source with the claim it supports — so answers about research, benchmarks or prior art are grounded, not remembered. |
 | **Review its own work** | Before long output is handed over, a reviewer pass scores the draft against explicit axes and returns ranked fixes — the agent applies them and stops when the score stops improving. |
 | **Learn my style** | One click in the sidebar re-reads every local chat, finds the answers you accepted, and teaches Muse the difference between those and your average answer. |
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
@@ -270,6 +271,27 @@ Every answer you grade becomes an **explicit marker** — a local, append-only r
 The policy is deliberately conservative: a rule needs at least **two** liked samples and a **margin of two** over the disliked ones, so one bad day never flips your agent's voice. Contradictory grades produce no rule at all.
 
 The workbench shows the running count (`Answer feedback`), and the command palette has **Show answer feedback** and **Reset answer feedback**.
+
+## Research that cites its sources
+
+The model's training data has a cut-off, so Muse can be wrong about what the state of the art *is*. Three tools make it check instead of guess:
+
+- **`search_papers`** — searches **OpenAlex**, **Semantic Scholar** and **arXiv**; returns a compact ranked list: title, authors, year, venue, citation count, a one-line takeaway and an id
+- **`read_paper`** — full record for the hits that matter (abstract, DOI/arXiv id, link)
+- **`cite_source`** — records the source against the artifact you are writing: the paper id, title, year, url, **the exact claim it supports** and a short quote → `~/.muse-agent/research/artifacts/<name>/sources.json`
+
+That last file is the citation map. It says what the answer is based on, and it survives the session.
+
+**No key required.** OpenAlex works keyless and leads the search; Semantic Scholar is consulted too (add `research.semantic_scholar_api_key` for the higher rate limit — the keyless pool is often saturated); arXiv adds preprints. Upstream responses are cached for a day, so repeated searches cost nothing.
+
+**Honest by construction:** results carry their **year**, so stale sources are visible; where an index has no real abstract, Muse says so instead of inventing one; upstream failures come back as `{ok:false, code}` (`RATE_LIMITED`, `BLOCKED`, `NETWORK`, `EMPTY`) rather than as a fake empty result. Network access goes through the same egress allowlist and private-address guard as `web_fetch`, and the research tools are network class — they ask in Ask mode.
+
+```toml
+[research]
+max_results = 6            # 1..10
+cache_ttl_hours = 24
+openalex_mailto = ""       # optional, for the polite pool
+```
 
 ## A review pass before "done"
 
