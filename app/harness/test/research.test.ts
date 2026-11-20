@@ -271,3 +271,18 @@ test('a rate limited index is retried once before giving up', async () => {
     assert.ok(calls >= 2, 'the rate limited call was retried');
   } finally { globalThis.fetch = original; }
 });
+
+test('the arxiv expression drops stopwords and keeps the distinctive terms', () => {
+  // ANDing a stopword matches nothing: 'long context versus retrieval for
+  // coding agents' must not become all:versus AND all:for.
+  const expr = research.arxivExpression('long context versus retrieval for coding agents');
+  assert.ok(!/all:versus/.test(expr), 'stopwords are dropped');
+  assert.ok(!/all:for/.test(expr), 'stopwords are dropped');
+  assert.match(expr, /all:retrieval/);
+  assert.match(expr, /all:context/);
+  assert.match(expr, / AND /, 'terms are ANDed, not ORed');
+});
+
+test('a quoted query is used as an exact phrase', () => {
+  assert.equal(research.arxivExpression('"retrieval augmented generation"'), 'all:"retrieval augmented generation"');
+});

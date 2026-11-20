@@ -299,6 +299,18 @@ async function searchOpenAlex(query, limit, ctx, cfg) {
   return { ok: true, results };
 }
 
+const STOPWORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'from', 'by', 'is', 'are', 'was', 'vs', 'versus', 'that', 'this', 'it', 'as', 'be', 'into', 'than', 'then', 'using', 'use', 'between', 'over', 'about']);
+
+function arxivExpression(query) {
+  const quoted = String(query || '').match(/"([^"]+)"/);
+  if (quoted) return `all:"${quoted[1]}"`;
+  const terms = (String(query || '').toLowerCase().match(/[a-z0-9+#-]{2,}/g) || [])
+    .filter(t => !STOPWORDS.has(t));
+  const picked = terms.slice(0, 4);
+  if (!picked.length) return `all:${String(query || '').trim()}`;
+  return picked.map(t => `all:${t}`).join(' AND ');
+}
+
 function parseArxiv(xml) {
   const out = [];
   const entries = String(xml || '').split('<entry>').slice(1);
@@ -354,21 +366,23 @@ async function searchPapers(query, opts, ctx) {
   for (const name of order) {
     if (papers.length >= limit && name !== 'arxiv' && !(opts && opts.preprints)) break;
     if (name === 'semantic scholar') {
-      const res = await fetchJson(s2Url, { ctx, cfg });
+      const res = await fetchJson(yearFrom ? s2Url.replace(/limit=\d+/, `limit=${Math.min(50, limit * 2)}`) : s2Url, { ctx, cfg });
       if (!res.ok) { errors.push(res); continue; }
       const list = res.body && Array.isArray(res.body.data) ? res.body.data.map(shapePaper) : [];
       papers.push(...list);
       if (list.length) backends.push('semantic scholar');
     } else if (name === 'openalex') {
-      const res = await searchOpenAlex(q, limit, ctx, cfg);
+      // Ask for more than we need when a year window is in play: relevance
+      // ranking surfaces old papers, and the filter would eat them all.
+      const res = await searchOpenAlex(q, yearFrom ? Math.min(20, limit * 2) : limit, ctx, cfg);
       if (!res.ok) { errors.push(res); continue; }
       papers.push(...res.results);
       if (res.results.length) backends.push('openalex');
     } else {
-      // arXiv terms are ANDed: "retrieval augmented generation" must find
-      // papers about all three words, not papers about one of them.
-      const terms = q.match(/"[^"]+"|\S+/g) || [q];
-      const expr = terms.length > 1 ? terms.map(t => `all:${t}`).join(' AND ') : `all:${terms[0]}`;
+      // arXiv terms are ANDed, so the query must drop the words that carry
+      // no meaning ("versus", "for", "the"). ANDing a stopword matches
+      // nothing at all.
+      const expr = arxivExpression(q);
       const arxivUrl = `https://${ARXIV_HOST}/api/query?search_query=${encodeURIComponent(expr)}&start=0&max_results=${limit}&sortBy=relevance`;
       const ax = await fetchText(arxivUrl, { ctx, cfg });
       if (!ax.ok) { errors.push(ax); continue; }
@@ -394,14 +408,23 @@ async function searchPapers(query, opts, ctx) {
   if (!papers.length && errors.length) return errors[0];
 
   let filtered = papers;
-  if (yearFrom) filtered = filtered.filter(p => (p.year || 0) >= yearFrom);
+  let yearNote = '';
+  if (yearFrom) {
+    filtered = filtered.filter(p => (p.year || 0) >= yearFrom);
+    if (!filtered.length && papers.length) {
+      // Nothing in the window: show the closest matches rather than an
+      // empty answer, and say why the window came up empty.
+      filtered = papers;
+      yearNote = `No papers from ${yearFrom} onward were returned; showing the closest matches instead.`;
+    }
+  }
   // Rank: citations first (a proxy for influence), then recency.
   filtered.sort((a, b) => (b.citations - a.citations) || ((b.year || 0) - (a.year || 0)));
   const results = filtered.slice(0, limit);
-  return { ok: true, backend, total: papers.length, results };
+  return { ok: true, backend, total: papers.length, results, yearNote };
 }
 
-function renderResults(results, backend) {
+function renderResults(results, backend, note) {
   const lines = [];
   for (const paper of results) {
     const meta = [paper.year || 'n.d.', paper.venue, paper.citations ? `${paper.citations} cites` : ''].filter(Boolean).join(' · ');
@@ -412,7 +435,7 @@ function renderResults(results, backend) {
   }
   let text = lines.join('\n');
   if (text.length > MAX_LIST_CHARS) text = text.slice(0, MAX_LIST_CHARS - 1).trimEnd() + '…';
-  return `Sources (${backend}) — ${results.length} result${results.length === 1 ? '' : 's'}:\n${text}\nPick the ones that matter and call read_paper for their full abstracts, then cite_source for the ones you use.`;
+  return `Sources (${backend}) — ${results.length} result${results.length === 1 ? '' : 's'}${note ? ` — ${note}` : ''}:\n${text}\nPick the ones that matter and call read_paper for their full abstracts, then cite_source for the ones you use.`;
 }
 
 // --- citation store --------------------------------------------------------
@@ -486,7 +509,7 @@ function mkResearchTools() {
       const res = await searchPapers(args.query, { ...args, cfg: ctx.cfg }, ctx);
       if (!res.ok) return { ok: false, error: res.error, code: res.code };
       if (!res.results.length) return { ok: false, error: 'no matching papers — try a broader query or fewer filters', code: 'EMPTY' };
-      return { ok: true, text: renderResults(res.results, res.backend), count: res.results.length };
+      return { ok: true, text: renderResults(res.results, res.backend, res.yearNote), count: res.results.length };
     },
   };
 
@@ -565,6 +588,6 @@ function researchTools() {
 
 module.exports = {
   researchTools, mkResearchTools, searchPapers, parseArxiv, shapePaper,
-  shapeOpenAlex, abstractFromInvertedIndex, looksLikeCitationHeader, s2UrlFor,
+  shapeOpenAlex, abstractFromInvertedIndex, looksLikeCitationHeader, s2UrlFor, arxivExpression,
   saveSource, readStore, researchCfg, researchRoot, MAX_RESULTS,
 };
