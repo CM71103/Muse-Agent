@@ -107,6 +107,20 @@ function isPermanent(status, body) {
     || b.includes('invalid_api_key') || b.includes('incorrect api key');
 }
 
+// A provider that screens its inputs rejects ONE text (422 "input rejected
+// by content safety screening"). That is a property of that text, not of the
+// endpoint: the batch is fine, the rest of the memories are fine, and the
+// endpoint keeps working. It must never be classified as a permanent
+// endpoint failure - that would take the whole memory subsystem offline for
+// a cooldown window because of one poisoned row.
+function isInputRejected(status, body) {
+  if (status !== 400 && status !== 422 && status !== 451) return false;
+  const b = String(body || '').toLowerCase();
+  return b.includes('content safety') || b.includes('safety screening') || b.includes('rejected by')
+    || b.includes('content policy') || b.includes('content_policy') || b.includes('moderation')
+    || b.includes('unsafe content');
+}
+
 // ---- provider client ----
 
 // cfg: { baseUrl, apiKey, model, dims }
@@ -147,6 +161,11 @@ async function embed(cfg, texts) {
       const detail = body ? ` — ${body}` : '';
       // A wrong embed_model/auth fails identically every turn; retrying it 4x
       // just stalls the composer and reports a misleading "after N attempts".
+      if (isInputRejected(res.status, body)) {
+        const e = new Error(`embeddings HTTP ${res.status}: this input was rejected by the provider's content screening${detail}`);
+        e.inputRejected = true;
+        throw e;
+      }
       if (isPermanent(res.status, body)) {
         const e = new Error(`embeddings HTTP ${res.status} (permanent)${detail}`);
         e.permanent = true;

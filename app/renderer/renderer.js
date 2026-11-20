@@ -2501,8 +2501,9 @@ async function reindexMemory() {
     const res = await window.muse.memoryReindex();
     if (!res || !res.ok) { addSysNote(`memory re-index failed: ${String(res && res.error || 'unknown error')}`, true); return; }
     addSysNote(res.reindexed
-      ? `re-indexed ${res.reindexed} memories (${res.embedded} embedded now, ${res.pending || 0} still pending)`
+      ? `re-indexed ${res.reindexed} memories (${res.embedded} embedded now, ${res.pending || 0} still pending${res.quarantined ? `, ${res.quarantined} quarantined` : ''})`
       : 'every stored memory already matches the current embedding model - nothing to re-index', false, 'mem');
+    if (res.quarantined && res.note) addSysNote(res.note, true);
   } catch (e) { reportError(e); }
   finally { setBusy(false); refreshStatus(); }
 }

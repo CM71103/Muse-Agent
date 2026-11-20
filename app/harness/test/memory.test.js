@@ -44,6 +44,20 @@ function startMock() {
         embedRequests.push(parsed);
         const s = embedScript.shift() || null;
         const texts = Array.isArray(parsed.input) ? parsed.input : [];
+        // Content-aware screening, like a real relay: any input the provider
+        // dislikes is rejected, whatever else is in the batch. This wins over
+        // the scripted queue - the provider judges the text, not the script.
+        if (texts.some(x => String(x).includes('dislikes'))) {
+          res.writeHead(422, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: { message: 'HTTP 422: input rejected by content safety screening', code: 422 } }));
+          return;
+        }
+        // A scripted rejection.
+        if (s && s.status) {
+          res.writeHead(s.status, { 'content-type': 'application/json' });
+          res.end(JSON.stringify(s.body || { error: { message: 'input rejected by content safety screening' } }));
+          return;
+        }
         const vecs = s ? s.vecs : texts.map(() => unitVec(++embedCounter));
         const model = s ? s.model : 'test-embed-model';
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -273,6 +287,74 @@ test('embedPending: activates pending rows with pinned embeddings', async (t) =>
   assert.equal(res2.embedded, 0);
   // mock recorded the batch
   assert.ok(embedRequests.some(b => Array.isArray(b.input) && b.input.length === 2));
+});
+
+test('a screened memory is quarantined alone - the rest still embed', async (t) => {
+  // Deterministic: the embedder is injected, so no HTTP and no shared mock
+  // state. The fake rejects any text the provider would have screened.
+  const calls = [];
+  const mem = mkLayer(t, {
+    opts: {
+      embed: async (cfg, texts) => {
+        calls.push(texts.slice());
+        if (texts.some(x => String(x).includes('dislikes'))) {
+          const e = new Error("embeddings HTTP 422: this input was rejected by the provider's content screening");
+          e.inputRejected = true;
+          throw e;
+        }
+        return {
+          vectors: texts.map(() => ({ vector: [1, 0, 0, 0], model: 'test-embed-model' })),
+          model: 'test-embed-model', dims: 4, usage: { total_tokens: 1 },
+        };
+      },
+    },
+  });
+  plantRow(mem, { id: 'good-1', text: 'a normal memory' });
+  plantRow(mem, { id: 'bad-1', text: 'a memory the screener dislikes' });
+  plantRow(mem, { id: 'good-2', text: 'another normal memory' });
+  for (const id of ['good-1', 'bad-1', 'good-2']) {
+    mem.store.patch(id, { status: 'pending_embed', embedding: null, model_pin: null, dims: null });
+  }
+
+  const res = await mem.embedPending();
+  assert.equal(res.quarantined, 1, 'exactly the screened row is quarantined');
+  assert.equal(res.embedded, 2, 'the other rows are embedded');
+  const rows = mem.store.listMemories(mem.projectId);
+  assert.equal(rows.find(r => r.id === 'bad-1').status, 'quarantined');
+  assert.equal(rows.find(r => r.id === 'good-1').status, 'active');
+  assert.equal(rows.find(r => r.id === 'good-2').status, 'active');
+  assert.ok(calls.length >= 2, 'the batch was retried in pieces');
+  // The endpoint is NOT considered broken: a screened input is a data problem.
+  assert.equal(mem._embBreaker, null, 'a screened input must not open the breaker');
+});
+
+test('a large pending queue is embedded in chunks, one screened row does not stop it', async (t) => {
+  const sizes = [];
+  const mem = mkLayer(t, {
+    opts: {
+      embed: async (cfg, texts) => {
+        sizes.push(texts.length);
+        if (texts.some(x => String(x).includes('dislikes'))) {
+          const e = new Error("embeddings HTTP 422: this input was rejected by the provider's content screening");
+          e.inputRejected = true;
+          throw e;
+        }
+        return {
+          vectors: texts.map(() => ({ vector: [1, 0, 0, 0], model: 'test-embed-model' })),
+          model: 'test-embed-model', dims: 4, usage: { total_tokens: 1 },
+        };
+      },
+    },
+  });
+  // 70 pending rows: 32 + 32 + 6
+  for (let i = 0; i < 70; i++) {
+    plantRow(mem, { id: `row-${i}`, text: i === 5 ? 'the screener dislikes this one' : `memory number ${i}` });
+    mem.store.patch(`row-${i}`, { status: 'pending_embed', embedding: null, model_pin: null, dims: null });
+  }
+  const res = await mem.embedPending();
+  assert.equal(res.embedded, 69, 'every row but the screened one is embedded');
+  assert.equal(res.quarantined, 1);
+  assert.ok(sizes.every(n => n <= 32), 'requests are chunked: ' + sizes.join(','));
 });
 
 test('re-index re-embeds rows whose model or dimension pin no longer matches', async (t) => {

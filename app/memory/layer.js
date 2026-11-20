@@ -773,6 +773,35 @@ class MemoryLayer {
   // Embed all pending rows (status pending_embed). Batch to the provider,
   // gated by the daily token cap. Cap refusal is a returned degrade, not a
   // silent skip; rows stay durable pending_embed until a later window.
+  // Find which single input a provider rejected, by halving the batch.
+  // Each attempt is a real request, but this only runs when a screening
+  // rejection happens, and it is bounded by the number of rows.
+  async _isolateRejected(texts) {
+    const bad = [];
+    // The queue holds BATCHES (arrays of texts), not single texts.
+    const queue = texts.length ? [texts.slice()] : [];
+    let guard = 0;
+    while (queue.length && guard++ < 512) {
+      // One batch at a time: a successful batch proves the bad input is not
+      // in it, a rejected batch is split in half.
+      const batch = queue.shift();
+      try {
+        await this._embedCapped(batch);
+      } catch (e) {
+        if (!e.inputRejected) throw e;
+        if (batch.length === 1) { bad.push(batch[0]); continue; }
+        const mid = Math.ceil(batch.length / 2);
+        queue.unshift(batch.slice(mid), batch.slice(0, mid));
+      }
+    }
+    return bad;
+  }
+
+  // Embedding happens in chunks: one screened (or otherwise rejected) input
+  // must not be able to fail a batch of hundreds, and a big pending queue
+  // must not arrive as one enormous request.
+  static get EMBED_CHUNK_SIZE() { return 32; }
+
   async embedPending(projectId = this.projectId) {
     if (!projectId) return { embedded: 0, refused: 'memory_scope_required' };
     const pending = this.store.listMemories(projectId).filter(m => m.status === 'pending_embed');
@@ -780,23 +809,84 @@ class MemoryLayer {
     if (this._capRemaining() <= 0) {
       return { embedded: 0, refused: 'daily_token_cap_exceeded', pending: pending.length };
     }
-    const texts = pending.map(m => m.text);
+    const totals = { embedded: 0, quarantined: 0, rejected: [], rows: [], pending: 0 };
+    const chunkSize = MemoryLayer.EMBED_CHUNK_SIZE;
+    for (let i = 0; i < pending.length; i += chunkSize) {
+      const chunk = pending.slice(i, i + chunkSize).map(m => ({ row: m, text: m.text }));
+      const res = await this._embedChunk(chunk);
+      totals.embedded += res.embedded || 0;
+      totals.quarantined += res.quarantined || 0;
+      totals.rejected = totals.rejected.concat(res.rejected || []);
+      totals.rows = totals.rows.concat(res.rows || []);
+      if (res.refused) {
+        totals.refused = res.refused;
+        totals.pending = pending.length - i;
+        return totals;
+      }
+    }
+    return totals;
+  }
+
+  // One chunk: embed it, or isolate a rejected input, quarantine just that
+  // row, and embed the rest.
+  async _embedChunk(items) {
     let r;
-    try { r = await this._embedCapped(texts); }
+    try { r = await this._embedCapped(items.map(i => i.text)); }
     catch (e) {
-      if (e.code === 'TOKEN_CAP') return { embedded: 0, refused: 'daily_token_cap_exceeded', pending: pending.length };
+      if (e.code === 'TOKEN_CAP') return { embedded: 0, refused: 'daily_token_cap_exceeded', pending: items.length };
       // Breaker open = the endpoint is known-bad right now. That is a disclosed
       // degrade with rows left durable-pending, not a write failure; throwing
       // would make every turn surface the same red error.
       if (e.code === 'EMBED_BREAKER') {
         this.lastError = e.message;
-        return { embedded: 0, refused: e.message, pending: pending.length };
+        return { embedded: 0, refused: e.message, pending: items.length };
+      }
+      if (e.inputRejected) {
+        // One text tripped the provider's screener. Isolate it, quarantine that
+        // row, and embed everything else - a poisoned row must never take the
+        // batch (or the endpoint) down with it.
+        const bad = await this._isolateRejected(items.map(i => i.text));
+        if (!bad.length) {
+          this.lastError = `Embedding write failed: ${e.message}`;
+          throw new Error(this.lastError);
+        }
+        const badSet = new Set(bad);
+        const quarantined = [];
+        for (const item of items) {
+          if (!badSet.has(item.text)) continue;
+          quarantined.push(item.row.id);
+          this.store.patch(item.row.id, {
+            status: 'quarantined',
+            quarantine_reason: 'provider_rejected_content',
+            embedding: null, model_pin: null, dims: null,
+          });
+          this.store.audit('quarantine_provider_rejected', { id: item.row.id });
+        }
+        items = items.filter(i => !badSet.has(i.text));
+        this.lastError = `${quarantined.length} memory record${quarantined.length === 1 ? '' : 's'} were rejected by the provider's content screening and quarantined`;
+        if (!items.length) {
+          return { embedded: 0, quarantined: quarantined.length, pending: 0, rejected: quarantined };
+        }
+        try { r = await this._embedCapped(items.map(i => i.text)); }
+        catch (e2) {
+          if (e2.code === 'EMBED_BREAKER') {
+            return { embedded: 0, refused: e2.message, pending: items.length, quarantined: quarantined.length };
+          }
+          this.lastError = `Embedding write failed: ${e2.message}`; throw new Error(this.lastError);
+        }
+        const res = this._writeEmbeddings(items, r);
+        return { ...res, quarantined: quarantined.length, rejected: quarantined };
       }
       this.lastError = `Embedding write failed: ${e.message}`; throw new Error(this.lastError);
     }
+    return { ...this._writeEmbeddings(items, r), quarantined: 0, rejected: [] };
+  }
+
+  // Write the vectors back onto their rows, pin-checked.
+  _writeEmbeddings(items, r) {
     const out = [];
-    for (let i = 0; i < pending.length; i++) {
-      const row = pending[i];
+    for (let i = 0; i < items.length; i++) {
+      const row = items[i].row;
       const v = r.vectors[i];
       const pin = checkRowPin({ embedding: v.vector, model_pin: r.model, generation: this.emb.generation }, this.emb.model, this.emb.dims, this.emb.generation);
       if (!pin.ok) { out.push({ id: row.id, ok: false, reason: pin.reason }); continue; }
@@ -833,7 +923,17 @@ class MemoryLayer {
       }
     });
     const result = await this.embedPending(projectId);
-    return { reindexed: stale.length, candidates: rows.length, embedded: result.embedded || 0, pending: result.pending || 0 };
+    return {
+      reindexed: stale.length,
+      candidates: rows.length,
+      embedded: result.embedded || 0,
+      pending: result.pending || 0,
+      quarantined: result.quarantined || 0,
+      rejected: result.rejected || [],
+      note: result.quarantined || 0
+        ? `${result.quarantined} record(s) were rejected by the provider's content screening and are quarantined - they are excluded from recall until you delete or review them in the memory panel`
+        : '',
+    };
   }
 
   // ---------- extraction: session-end distillation (spec §2 extract) ----------
