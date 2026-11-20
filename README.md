@@ -120,6 +120,20 @@ Make a plan for adding search to this application before editing files.
 
 ## Design Studio workspace
 
+### Template guidelines (the spec that travels with the template)
+
+A design template says *what* to build; its optional `GUIDELINES.md` says *the rules the result must satisfy* — honesty rules, legibility limits, responsive breakpoints, density caps, required states. The guidelines file lives inside the template folder, so it ships with the template, gets copied into the project when the template is scaffolded, and is injected into the agent's context as a spec whenever that template is the one in use. These rules outrank Muse's defaults for that project.
+
+The three bundled templates ship with guidelines:
+
+| Template | What its guidelines pin down |
+|---|---|
+| `landing-page` | No invented customer counts or testimonials, 16px minimum type, 4.5:1 contrast, one CTA per section, mobile-first at 360px |
+| `deck` | One claim per slide, ≤ 6 lines of body text, ≤ 5 rows per table, every number traceable, nothing on the slide that is not in the material |
+| `dashboard` | Units and period on every metric, missing data is `-` not `0`, three distinct loading/empty/error states, "41–60 of 318" pagination |
+
+Add your own: drop a `GUIDELINES.md` next to the `TEMPLATE.md` in any template folder (project, personal `~/.muse-agent/design/`, or a custom registry root).
+
 **Design** in the sidebar opens the Design Studio: a project folder, the design knowledge that shapes it, a live preview canvas, and the same conversation you use in chat. Everything is local — a project is an ordinary folder that Muse can also open in your editor.
 
 ![Muse Agent Design Studio with a centered artboard on a dotted canvas, file tabs, and a floating tool rail](docs/images/muse-design-studio.png)
@@ -262,6 +276,8 @@ The workbench shows the running count (`Answer feedback`), and the command palet
 Long answers go through a reviewer before you see them. Muse's `critique` tool scores a draft against explicit axes (correctness, completeness, clarity, conciseness, tone fit — the last one checked against your learned style) and returns ranked weaknesses with concrete fixes. The agent applies them, and critiques again only if the score is still low — it stops as soon as the score stops improving, so drafts don't churn for the sake of a number.
 
 The reviewer is read-class: it changes nothing and only spends a model call, so it is treated like a subagent spawn (asked in Ask mode, automatic in Auto mode).
+
+**Every review is archived.** Pass a stable artifact label (the same slug each round) and Muse keeps the whole trail in `~/.muse-agent/reviews/<artifact>/` — `review_v1.json`, `review_v2.json`, plus a `history.json` with the score of each round. That is how the agent knows whether the score is actually climbing and when to stop instead of churning the draft.
 
 You can point the reviewer at a different model than the one that writes — handy if you want a stronger model judging the work:
 

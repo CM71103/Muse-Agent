@@ -21,6 +21,11 @@ const ENTRY_FILE: Record<string, string> = {
   skills: 'SKILL.md',
   craft: 'CRAFT.md',
 };
+// Optional per-entry spec file (PaperOrchestra's venue-guidelines pattern):
+// the template says WHAT to build, GUIDELINES.md says the RULES the result
+// must satisfy. It travels with the entry, is copied into the project when
+// the template is applied, and is handed to the agent as a context file.
+const GUIDELINES_FILES = ['GUIDELINES.md', 'guidelines.md'];
 const ARTIFACT_KINDS = new Set(['html', 'svg', 'deck', 'markdown', 'react-component', 'mini-app', 'document']);
 const ARTIFACT_RENDERERS = new Set(['html', 'markdown', 'svg', 'iframe-url']);
 const MAX_FILE = 16000;
@@ -151,6 +156,7 @@ function listRegistry(projectDir: string | null, kind: string) {
       const { meta } = frontMatter(text || '');
       const id = String(candidate.id).slice(0, 120);
       const files = kind === 'craft' ? [candidate.file] : entryFiles(kind, candidate.dir);
+      const guidelinesFile = kind === 'craft' ? '' : (GUIDELINES_FILES.find(name => files.includes(name)) || '');
       byId.set(id, {
         id,
         kind,
@@ -159,6 +165,7 @@ function listRegistry(projectDir: string | null, kind: string) {
         description: String(meta.description || meta.summary || '').slice(0, 400),
         entry: path.relative(root.dir, entryPath).split(path.sep).join('/'),
         file: candidate.file,
+        guidelinesFile,
         root: root.dir,
         dir: candidate.dir,
         files,
@@ -439,7 +446,19 @@ function designContext(projectDir: string | null): { active: boolean; text: stri
   }
 
   if (templates.length) {
-    take(`Design templates available: ${templates.slice(0, 24).map(template => `${template.id}${template.description ? ` — ${template.description}` : ''}`).join(' | ')}. Apply one with design_scaffold before building when the request matches a template.`);
+    take(`Design templates available: ${templates.slice(0, 24).map(template => `${template.id}${template.description ? ` — ${template.description}` : ''}${template.guidelinesFile ? ' (has guidelines)' : ''}`).join(' | ')}. Apply one with design_scaffold before building when the request matches a template.`);
+  }
+
+  // Template spec: the guidelines of the template in use are a context file,
+  // the same way PaperOrchestra hands each agent the venue guidelines. The
+  // registry copy is the source of truth; the materialized copy in the
+  // project is the fallback for a folder that was scaffolded earlier.
+  const activeTemplate = templates.find(template => template.id === projectJson?.template_id);
+  const guidelinesText = activeTemplate && activeTemplate.guidelinesFile
+    ? safeRead(path.join(activeTemplate.dir, activeTemplate.guidelinesFile), MAX_REGISTRY_TEXT)
+    : safeRead(path.join(projectDir, 'GUIDELINES.md'), MAX_REGISTRY_TEXT);
+  if (guidelinesText && total + guidelinesText.length <= MAX_TOTAL) {
+    take(`Template guidelines${activeTemplate ? ` (${activeTemplate.id})` : ''} — these override your own defaults for this project:\n${guidelinesText}`);
   }
 
   parts.push(artifactContract());

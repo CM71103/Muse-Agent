@@ -114,3 +114,36 @@ test('system prompt mentions the critique gate only when the tool exists', () =>
   assert.match(withTool, /You also have critique/);
   assert.match(withTool, /stop as soon as the score stops improving/);
 });
+
+// --- persisted review artifacts (PaperOrchestra review log) ---
+
+test('reviews are archived per artifact with a version and a history', () => {
+  const os = require('node:os');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'muse-reviews-'));
+  const prev = process.env.MUSE_HOME;
+  process.env.MUSE_HOME = home;
+  delete require.cache[require.resolve('../config')];
+  const critic2 = require('../critic');
+
+  const first = critic2.saveReview({ artifact: 'Quarterly Report', goal: 'g', rubric: ['correctness'], text: 'draft one', review: { score: 5, verdict: 'thin', weaknesses: ['a'], fixes: ['b'] } });
+  assert.ok(first, 'review saved');
+  assert.equal(first.version, 1);
+  assert.ok(fs.existsSync(first.path), 'review file on disk');
+  assert.match(first.path, /review_v1\.json$/);
+
+  const second = critic2.saveReview({ artifact: 'quarterly-report', goal: 'g', rubric: ['correctness'], text: 'draft two', review: { score: 8, verdict: 'better', weaknesses: [], fixes: [] } });
+  assert.equal(second.version, 2, 'the same artifact keeps its own version chain');
+  assert.ok(fs.existsSync(second.path));
+  assert.deepEqual(second.history.map(h => h.score), [5, 8], 'history shows the score trajectory');
+
+  const other = critic2.saveReview({ artifact: 'other-doc', text: 'x', review: { score: 3 } });
+  assert.equal(other.version, 1, 'a different artifact starts its own chain');
+
+  assert.equal(critic2.reviewSlug('Quarterly Report', 'x'), 'quarterly-report');
+  assert.equal(critic2.reviewSlug('', 'hello'), 'draft-' + require('node:crypto').createHash('sha1').update('hello').digest('hex').slice(0, 10));
+
+  if (prev === undefined) delete process.env.MUSE_HOME; else process.env.MUSE_HOME = prev;
+  fs.rmSync(home, { recursive: true, force: true });
+});

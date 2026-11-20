@@ -1286,7 +1286,8 @@ function addCritiqueChip(result) {
   const score = typeof result.score === 'number' ? `${result.score}/10` : 'scored';
   const fixes = Array.isArray(result.fixes) ? result.fixes.length : 0;
   const weak = Array.isArray(result.weaknesses) ? result.weaknesses.length : 0;
-  label.textContent = `review ${score}: ${result.verdict || 'see the fixes'}${fixes ? ` - ${fixes} fix${fixes === 1 ? '' : 'es'}` : ''}${weak ? `, ${weak} weakness${weak === 1 ? '' : 'es'}` : ''}`;
+  const round = typeof result.version === 'number' ? ` v${result.version}` : '';
+  label.textContent = `review ${score}${round}: ${result.verdict || 'see the fixes'}${fixes ? ` - ${fixes} fix${fixes === 1 ? '' : 'es'}` : ''}${weak ? `, ${weak} weakness${weak === 1 ? '' : 'es'}` : ''}`;
   el.append(label);
   transcript.append(el);
   reveal(el, 8);

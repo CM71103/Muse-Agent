@@ -20,6 +20,9 @@
 //     window without losing the actionable part.
 
 const { LlmClient } = require('./llm');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
 
 const MAX_CHARS = 40000;            // input cap (bounded cost)
 const MAX_AXES = 6;
@@ -167,6 +170,7 @@ function mkCritiqueTool() {
       properties: {
         text: { type: 'string', description: 'The draft to review' },
         goal: { type: 'string', description: 'What the draft must accomplish (why it exists, who it is for)' },
+        artifact: { type: 'string', description: 'Stable label for the thing being reviewed (e.g. "quarterly-report" or a file path). Reviews of the same artifact are archived together so the iteration history is visible.' },
         rubric: {
           type: 'array',
           items: { type: 'string' },
@@ -188,13 +192,27 @@ function mkCritiqueTool() {
       // Compact: the agent loop keeps only the first 2000 chars of a tool
       // result, so the actionable part has to fit.
       const trim = (arr) => (arr || []).slice(0, 4).map(s => clampText(s, 200));
-      return {
+      const saved = saveReview({
+        artifact: args.artifact,
+        goal: args.goal,
+        rubric: args.rubric,
+        text: args.text,
+        review: res,
+      });
+      const out = {
         ok: true,
         score: res.score,
         verdict: res.verdict,
         weaknesses: trim(res.weaknesses),
         fixes: trim(res.fixes),
       };
+      if (saved) {
+        out.version = saved.version;
+        // Previous rounds of the same artifact: the agent can see whether the
+        // score is actually climbing and stop when it is not.
+        out.history = saved.history.map(h => `v${h.version}: ${h.score}`);
+      }
+      return out;
     },
   };
 }
@@ -203,4 +221,70 @@ function critiqueTools() {
   return [mkCritiqueTool()];
 }
 
-module.exports = { reviewText, parseCritique, normalizeCritique, mkCritiqueTool, critiqueTools, DEFAULT_AXES, MAX_CHARS };
+// --- persisted review artifacts ---------------------------------------------
+// PaperOrchestra keeps every review pass on disk (review_v0.json,
+// review_v1.json, ...) and feeds the previous log back into the refine
+// prompt. Muse does the same, so a draft's review history survives the
+// session: the agent can see whether the score is actually climbing.
+
+function reviewsRoot() {
+  try { return path.join(require('./config').configDir(), 'reviews'); } catch { return ''; }
+}
+
+function reviewSlug(artifact, text) {
+  const raw = String(artifact || '').trim();
+  if (raw) {
+    const slug = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
+    if (slug) return slug;
+  }
+  return 'draft-' + crypto.createHash('sha1').update(String(text || '')).digest('hex').slice(0, 10);
+}
+
+function readHistory(dir) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, 'history.json'), 'utf8')); }
+  catch { return []; }
+}
+
+// Save one review pass and return {path, version, history}.
+function saveReview({ artifact, goal, rubric, text, review }) {
+  const root = reviewsRoot();
+  if (!root) return null;
+  try {
+    const dir = path.join(root, reviewSlug(artifact, text));
+    fs.mkdirSync(dir, { recursive: true });
+    const history = readHistory(dir);
+    const version = history.reduce((max, h) => Math.max(max, Number(h.version) || 0), 0) + 1;
+    const record = {
+      version,
+      at: new Date().toISOString(),
+      artifact: String(artifact || '').slice(0, 200),
+      goal: String(goal || '').slice(0, 2000),
+      rubric: Array.isArray(rubric) ? rubric.map(String).slice(0, 6) : [],
+      score: review && typeof review.score === 'number' ? review.score : null,
+      verdict: (review && review.verdict) || '',
+      weaknesses: (review && review.weaknesses) || [],
+      fixes: (review && review.fixes) || [],
+    };
+    const file = path.join(dir, `review_v${version}.json`);
+    fs.writeFileSync(file, JSON.stringify(record, null, 2));
+    history.push({ version, at: record.at, score: record.score });
+    fs.writeFileSync(path.join(dir, 'history.json'), JSON.stringify(history.slice(-50), null, 2));
+    return { path: file, version, history: history.slice(-5) };
+  } catch {
+    return null;   // a review that cannot be archived is still a valid review
+  }
+}
+
+function reviewHistory(artifact, text) {
+  const root = reviewsRoot();
+  if (!root) return [];
+  try {
+    const dir = path.join(root, reviewSlug(artifact, text));
+    return readHistory(dir).slice(-5);
+  } catch { return []; }
+}
+
+module.exports = {
+  reviewText, parseCritique, normalizeCritique, mkCritiqueTool, critiqueTools,
+  saveReview, reviewHistory, reviewSlug, DEFAULT_AXES, MAX_CHARS,
+};
