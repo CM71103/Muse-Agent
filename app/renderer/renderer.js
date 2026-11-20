@@ -703,7 +703,7 @@ function handleAgentEvent(ev) {
       if(ev.cancelled && currentQuestion?.id===ev.id){currentQuestion=null;$('question').classList.remove('active');composer.style.display='flex';}
       break;   // handled by onQuestion listener
     case 'cancelled':
-      addSysNote('cancelling current task…');
+      addSysNote(t('composer.stopping', 'Stopping…'));
       break;
     case 'queue_started':
       // a queued message began running — same visual contract as a fresh send
@@ -836,9 +836,13 @@ $('question-skip').addEventListener('click', () => answerQuestion('', true));
 const cancelBtn = $('btn-cancel-turn');
 cancelBtn.addEventListener('click', async () => {
   if (!busy) return;
+  // The press is acknowledged immediately: the label says what is happening
+  // and the button stays disabled until the run really ended. Re-enabling it
+  // after a fixed delay made it clickable again while the turn was still
+  // winding down - which read as "Stop does not work".
   cancelBtn.disabled = true;
-  try { await window.muse.cancel(); } catch {}
-  setTimeout(() => { cancelBtn.disabled = false; }, 500);
+  cancelBtn.textContent = t('composer.stopping', 'Stopping…');
+  try { await window.muse.cancel(); } catch { /* the run may have ended first */ }
 });
 
 /* ---------- composer ---------- */
@@ -853,6 +857,9 @@ function setBusy(b) {
   designUI?.busyChanged();
   designUI?.setBusy(b);
   cancelBtn.style.display = b ? 'inline-block' : 'none';
+  // The run ended (or a new one starts): restore the button for the next turn.
+  cancelBtn.disabled = false;
+  cancelBtn.textContent = t('composer.stop', 'Stop');
   input.disabled = b || loadingSession;
   $('btn-new').disabled = b || loadingSession;
   if (!b) { input.focus(); autosize(); }

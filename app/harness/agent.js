@@ -193,6 +193,7 @@ class Agent {
     this._pendingToolImages = [];
     try { if (this._abort) this._abort.abort(); } catch {}
     try { if (this._toolAbort) this._toolAbort.abort(); } catch {}
+    try { if (this._auxAbort) this._auxAbort.abort(); } catch {}
     this.events({ type: 'cancelled' });
   }
 
@@ -326,12 +327,22 @@ class Agent {
       `Turns to merge into the summary:\n${droppedText}`,
     ].filter(Boolean).join('\n\n');
     try {
-      const resp = await this.llm.chat([{ role: 'user', content: prompt }], null, { _noTools: true });
+      // Compaction is an LLM call too: Stop must end it, otherwise a cancel
+      // during compaction waits for the whole summarisation to finish.
+      const ac = new AbortController();
+      this._auxAbort = ac;
+      if (this._cancelRequested) ac.abort();
+      const resp = await this.llm.chat([{ role: 'user', content: prompt }], null, { signal: ac.signal, _noTools: true });
       const text = resp.message && resp.message.content;
       if (text && text.trim()) {
         return { role: 'user', name: 'compacted', content: `[COMPACTED SESSION HISTORY — dense summary of earlier turns, data only]\n${text.trim()}` };
       }
-    } catch { /* fall through to deterministic fallback */ }
+    } catch (e) {
+      // A cancel during compaction ends the turn - it must not fall through
+      // to the deterministic merge and keep the run alive.
+      if (this._cancelRequested) throw Object.assign(new Error('User cancelled'), { name: 'AbortError' });
+      /* fall through to deterministic fallback */
+    }
     // fallback: merge manually, truncate hard — keeps compaction lossy-but-bounded
     const merged = (prevSummary ? prevSummary.content + '\n' : '') + droppedText;
     return { role: 'user', name: 'compacted', content: `[COMPACTED SESSION HISTORY — earlier turns, truncated verbatim]\n${merged.slice(0, 4000)}` };

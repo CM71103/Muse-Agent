@@ -51,6 +51,7 @@ const BUNDLES = {
     'question.send': 'Answer',
     'question.skip': 'Skip',
     'composer.stop': 'Stop',
+    'composer.stopping': 'Stopping…',
     'meta.safetyNote': 'Tools ask before they act. You stay in control.',
     'meta.sendHintEnter': 'Enter to send · Shift Enter for a new line',
     'meta.sendHintCtrl': 'Ctrl / ⌘ Enter to send',

@@ -37,6 +37,18 @@ function toWireAssistant(canon) {
 
 const { apiKey } = require('./config');
 
+// A sleep that a cancel can cut short. Used for retry backoff so pressing
+// Stop ends the turn immediately instead of after the backoff would expire.
+function sleepAbortable(ms, signal) {
+  if (!signal) return new Promise(r => setTimeout(r, ms));
+  if (signal.aborted) return Promise.reject(Object.assign(new Error('cancelled by user'), { name: 'AbortError' }));
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve(); }, ms);
+    const onAbort = () => { clearTimeout(t); reject(Object.assign(new Error('cancelled by user'), { name: 'AbortError' })); };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 class LlmClient {
   constructor(cfg) {
     this.fullCfg = cfg;      // whole config, apiKey() expects it
@@ -95,7 +107,9 @@ class LlmClient {
         const retryable = e.transient === true || /HTTP 5\d\d/.test(e.message) || /network|fetch failed|timeout|aborted|socket/i.test(e.message);
         if (!retryable) throw e;
         opts.onStreamReset?.();
-        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        // The backoff must be interruptible: a cancel during the wait has to
+        // stop the turn now, not after the sleep would have ended.
+        await sleepAbortable(2000 * (attempt + 1), opts.signal);
       }
     }
     throw lastErr;
@@ -103,7 +117,12 @@ class LlmClient {
 
   async _post(body, outerSignal, opts = {}) {
     const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), (this.cfg.timeout_s || 120) * 1000);
+    // Own timeout vs. user cancel are different failures: our timer means the
+    // provider was too slow, the outer signal means the user pressed Stop.
+    // Collapsing the two made a cancel look like a 120s timeout - and the
+    // retry loop then kept going, so the turn did not stop.
+    let timedOut = false;
+    const t = setTimeout(() => { timedOut = true; ac.abort(); }, (this.cfg.timeout_s || 120) * 1000);
     // caller cancellation also aborts the wire
     if (outerSignal) {
       if (outerSignal.aborted) ac.abort();
@@ -173,7 +192,10 @@ class LlmClient {
         usage: data.usage || null,
       };
     } catch (e) {
-      if (e && e.name === 'AbortError') throw new Error(`LLM timeout after ${this.cfg.timeout_s || 120}s`);
+      if (e && e.name === 'AbortError') {
+        if (timedOut) throw new Error(`LLM timeout after ${this.cfg.timeout_s || 120}s`);
+        throw Object.assign(new Error('cancelled by user'), { name: 'AbortError' });
+      }
       throw e;
     } finally {
       clearTimeout(t);
@@ -251,4 +273,4 @@ class LlmClient {
   }
 }
 
-module.exports = { LlmClient, toCanonicalMessage, toWireAssistant };
+module.exports = { LlmClient, toCanonicalMessage, toWireAssistant, sleepAbortable };

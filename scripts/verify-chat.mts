@@ -57,6 +57,7 @@ const api={
   {chartId:'c4',columns:['month','revenue'],rows:[{month:'jun',revenue:240}],truncated:false},
   {chartId:'c5',columns:['month','revenue'],rows:[{month:'jan',revenue:120},{month:'feb',revenue:180},{month:'mar',revenue:150}],truncated:false}]})};
 for(const name of ['onAgentEvent','onApprovalRequest','onApprovalResolved','onApprovalExpired','onSessionReset','onQuestion','onLearningStatus'])api[name]=()=>()=>{};
+api.cancel=async()=>({ok:true});
 api.researchBrief=async payload=>{
   const stages=['plan','search','read','draft','critique','revise','done'];
   for(const stage of stages){briefListener({stage,data:{ok:true,count:4,chars:2200,score:8,total:4,read:4,query:'routing memory',found:9}});}
@@ -108,6 +109,22 @@ app.whenReady().then(async()=>{try{
  win.setContentSize(420,780);await pause(250);await shot('narrow');
  win.setContentSize(1280,860);await pause(250);
  await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");
+ // Stop button: a busy turn shows Stop, pressing it acknowledges at once and
+ // the button stays disabled until the run really ended.
+ await js('setBusy(true)');
+ await pause(250);
+ assert.equal(await js("document.getElementById('btn-cancel-turn').style.display!=='none'"),true,'the stop button is visible while busy');
+ assert.equal(await js("document.getElementById('btn-cancel-turn').textContent.indexOf('Stop')>=0"),true,'the stop button is labelled Stop');
+ await js("document.getElementById('btn-cancel-turn').click()");
+ await pause(300);
+ assert.equal(await js("document.getElementById('btn-cancel-turn').textContent.indexOf('Stopping')>=0"),true,'pressing Stop acknowledges immediately');
+ assert.equal(await js("document.getElementById('btn-cancel-turn').disabled"),true,'the stop button stays disabled until the run ends');
+ assert.equal(await js("document.body.textContent.indexOf('Stopping')>=0"),true,'the transcript says the turn is stopping');
+ await shot('stopping');
+ await js("handleAgentEvent({type:'done',reason:'cancelled'})");
+ await pause(250);
+ assert.equal(await js("document.getElementById('btn-cancel-turn').textContent.indexOf('Stopping')===-1"),true,'the button is restored when the run ends');
+ assert.equal(await js("document.getElementById('btn-cancel-turn').disabled"),false,'the stop button is usable for the next turn');
  // queue + undo chips (top-level renderer functions) must render with controls
  await js("renderQueueChips([{commandId:'q1',position:1,text:'refactor the parser and update the tests'},{commandId:'q2',position:2,text:'repackage the build'}])");
  await js("addUndoChip({runId:'run-fixture',files:['app/main/index.js','app/renderer/renderer.js']})");

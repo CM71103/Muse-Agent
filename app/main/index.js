@@ -834,6 +834,9 @@ ipcMain.handle('agent:send', async (e, text, commandId) => {
           if (completedCommands.size > 100) completedCommands.delete(completedCommands.keys().next().value);
         }
         if (first) result = { ok: true, text: res.text, turns: res.turns, usage: res.usage || null };
+        // A cancelled turn ends the drain: the remaining queue was dropped by
+        // the same Stop press, so nothing else may start.
+        if (res.cancelled) { turnQueue.length = 0; send('queue-update', queueState()); break; }
       } catch (err) {
         send('agent-event', { type: 'error', text: String(err && err.message || err) });
         if (first) result = { ok: false, error: String(err && err.message || err) };
@@ -859,9 +862,16 @@ ipcMain.handle('agent:reset', async (e) => {
 });
 
 // Cancel the running turn: aborts the LLM call and unwinds the tool loop.
+// Stop means stop: the queued turns are dropped too, otherwise the next
+// queued message starts right after the cancel and it looks like nothing
+// happened.
 ipcMain.handle('agent:cancel', async (e) => {
   requireTrusted(e);
   if (agent && agentBusy) agent.requestCancel();
+  if (turnQueue.length) {
+    turnQueue.length = 0;
+    send('queue-update', queueState());
+  }
   return { ok: true };
 });
 

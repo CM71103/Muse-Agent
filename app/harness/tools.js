@@ -42,12 +42,20 @@ function mkShellTool() {
           timeout,
           maxBuffer: 1024 * 1024,
           windowsHide: true,
+          // Stop must kill the command: a shell that keeps running after the
+          // user pressed Stop is exactly the "it does not stop" complaint.
+          ...(ctx.signal ? { signal: ctx.signal } : {}),
           ...(IS_WIN ? { windowsVerbatimArguments: true } : {}),
         }, (err, stdout, stderr) => {
           const parts = [];
           if (stdout) parts.push(String(stdout));
           if (stderr) parts.push(`[stderr]\n${stderr}`);
           if (err && err.killed) parts.push(`[timed out after ${timeout / 1000}s]`);
+          // The run was cancelled, not the command failing.
+          if (err && (err.name === 'AbortError' || ctx.signal?.aborted)) {
+            resolve({ ok: false, error: 'cancelled: the command was stopped', cancelled: true });
+            return;
+          }
           const out = parts.join('\n') || '(no output)';
           resolve({ ok: !err, output: out.slice(0, 65536) });
         });
