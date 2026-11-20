@@ -2490,6 +2490,23 @@ async function leaveProject() {
 $('btn-leave-project').addEventListener('click', leaveProject);
 const pc = $('btn-project-clear');
 if (pc) pc.addEventListener('click', leaveProject);
+// Re-embed stored memories whose embedding pin changed (new key, new model,
+// new dimension). Without it the old vectors stay invisible to recall.
+async function reindexMemory() {
+  if (busy || loadingSession || currentApproval) { addSysNote('Finish the current task before re-indexing memory.', true); return; }
+  if (!window.muse.memoryReindex) return;
+  setBusy(true);
+  addSysNote('re-embedding stored memories for the current embedding model...', false, 'mem');
+  try {
+    const res = await window.muse.memoryReindex();
+    if (!res || !res.ok) { addSysNote(`memory re-index failed: ${String(res && res.error || 'unknown error')}`, true); return; }
+    addSysNote(res.reindexed
+      ? `re-indexed ${res.reindexed} memories (${res.embedded} embedded now, ${res.pending || 0} still pending)`
+      : 'every stored memory already matches the current embedding model - nothing to re-index', false, 'mem');
+  } catch (e) { reportError(e); }
+  finally { setBusy(false); refreshStatus(); }
+}
+
 // Research settings: the API key is written straight to the OS encrypted
 // vault by the main process - it is never stored in the renderer, never put
 // in web storage, and never echoed back into the transcript.
@@ -2654,7 +2671,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Open visual pages', () => openPagesView(), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Research a topic (brief)', () => { closePalette(); input.value = '/research '; input.focus(); autosize(); }, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Open visual pages', () => openPagesView(), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Research a topic (brief)', () => { closePalette(); input.value = '/research '; input.focus(); autosize(); }, ''], ['Re-index memory for the current embedding model', () => { closePalette(); reindexMemory(); }, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {

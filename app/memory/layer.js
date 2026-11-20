@@ -815,6 +815,27 @@ class MemoryLayer {
     return { embedded: out.filter(x => x.ok).length, rows: out };
   }
 
+  // Re-embed stored rows whose pin no longer matches the current embedding
+  // setup. A new API key, a new embedding model or a new dimension makes the
+  // old vectors unusable for recall: the pin check refuses them, which is
+  // correct (never mix vector spaces) but leaves the memory looking empty.
+  // This marks exactly those rows pending and re-embeds them in place.
+  async reindexPins(projectId = this.projectId) {
+    const rows = this.store.listMemories(projectId).filter(m => m.status === 'active' && Array.isArray(m.embedding));
+    const stale = rows.filter(row => {
+      const pin = checkRowPin(row, this.emb.model, this.emb.dims, this.emb.generation);
+      return !pin.ok && (pin.reason === 'dim_mismatch' || pin.reason === 'model_mismatch' || pin.reason === 'generation_mismatch');
+    });
+    if (!stale.length) return { reindexed: 0, candidates: rows.length, embedded: 0 };
+    this.store.transaction(() => {
+      for (const row of stale) {
+        this.store.patch(row.id, { status: 'pending_embed', embedding: null, model_pin: null, dims: null });
+      }
+    });
+    const result = await this.embedPending(projectId);
+    return { reindexed: stale.length, candidates: rows.length, embedded: result.embedded || 0, pending: result.pending || 0 };
+  }
+
   // ---------- extraction: session-end distillation (spec §2 extract) ----------
 
   // events: [{source_event_id, text, provenance, type?}] supplied by the host

@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('muse', {
   researchStatus: () => ipcRenderer.invoke('research:status'),
   researchSave: (patch) => ipcRenderer.invoke('research:save', patch),
   researchBrief: (payload) => ipcRenderer.invoke('research:brief', payload),
+  memoryReindex: () => ipcRenderer.invoke('memory:reindex'),
   onResearchStage: (cb) => { const h = (_event, payload) => cb(payload); ipcRenderer.on('research-stage', h); return () => ipcRenderer.removeListener('research-stage', h); },
   revealPath: (target) => ipcRenderer.invoke('path:reveal', target),
   attachPick: () => ipcRenderer.invoke('attachments:pick'),

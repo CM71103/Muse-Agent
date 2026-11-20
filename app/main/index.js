@@ -1753,6 +1753,24 @@ ipcMain.handle('memory:status', async (e) => {
   };
 });
 
+// Re-embed every stored memory whose model/dimension pin no longer matches
+// the current embedding setup (a key change, a new embedding model, a new
+// dimension). Without this, old rows stay invisible to recall after a swap:
+// the pin check refuses them instead of silently mixing vector spaces.
+ipcMain.handle('memory:reindex', async (e) => {
+  requireTrusted(e);
+  const cfg = loadConfig();
+  if (!cfg.memory || !cfg.memory.enabled) return { ok: false, error: 'memory is disabled' };
+  if (!agent) { try { agent = await mkAgent({ projectDir: currentProjectDir }); } catch (error) { memoryError = error.message; } }
+  if (!agent || !agent.memory) return { ok: false, error: memoryError || 'memory is not ready' };
+  try {
+    const result = await agent.memory.reindexPins();
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, error: String(error && error.message || error) };
+  }
+});
+
 ipcMain.handle('memory:list', async (e) => {
   requireTrusted(e);
   if (!agent || !agent.memory) return { ok: false, error: 'memory disabled' };

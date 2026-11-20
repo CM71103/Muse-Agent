@@ -275,6 +275,32 @@ test('embedPending: activates pending rows with pinned embeddings', async (t) =>
   assert.ok(embedRequests.some(b => Array.isArray(b.input) && b.input.length === 2));
 });
 
+test('re-index re-embeds rows whose model or dimension pin no longer matches', async (t) => {
+  const mem = mkLayer(t);
+  // A row from the old setup: 2 dimensions, an older model.
+  plantRow(mem, { id: 'stale-dims', text: 'old dimensions', dims: 2, embedding: [0.1, 0.9] });
+  // A row from the current setup: it must be left alone.
+  plantRow(mem, { id: 'fresh', text: 'already correct', dims: 4 });
+  // A row whose MODEL changed (same length): also stale.
+  plantRow(mem, { id: 'stale-model', text: 'old model', dims: 4, model: 'previous-embed-model' });
+
+  const before = mem.store.listMemories(mem.projectId).find(m => m.id === 'stale-dims');
+  assert.equal(before.status, 'active');
+
+  const res = await mem.reindexPins();
+  assert.equal(res.reindexed, 2, 'both stale rows are marked for re-embedding');
+  const after = mem.store.listMemories(mem.projectId).find(m => m.id === 'stale-dims');
+  assert.equal(after.status, 'active', 'the stale row came back as active');
+  assert.equal(after.dims, 4, 'with the current dimensions');
+  assert.equal(after.model_pin, 'test-embed-model', 'and the current model pin');
+  const fresh = mem.store.listMemories(mem.projectId).find(m => m.id === 'fresh');
+  assert.equal(fresh.dims, 4);
+
+  // A second run finds nothing left to do.
+  const again = await mem.reindexPins();
+  assert.equal(again.reindexed, 0, 're-index is idempotent');
+});
+
 test('embeddings: checkRowPin rejects dim/model/generation/finite/norm violations', (t) => {
   const ok = checkRowPin({ embedding: [1, 0, 0, 0], model_pin: 'm1' }, 'm1', 4, null);
   assert.equal(ok.ok, true);
