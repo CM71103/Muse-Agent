@@ -222,6 +222,7 @@ body[data-theme="retro"] {
   --color-muted:#241a0c;
   --color-accent:#ffb642; --color-accent-fg:#1a1205;
   --color-surface-app:#0c0803;
+  --color-surface-sidebar:#171006; --sidebar:#171006; --sidebar-accent:#241a0c;
   --frame:#3a2a12;
   --color-user-bubble:#241a0c;
   --field-bg:#1d1409;
@@ -277,6 +278,7 @@ body[data-theme="shiva"] {
   --color-muted:#1b212a;
   --color-accent:#d9a441; --color-accent-fg:#14100a;
   --color-surface-app:#0a0d11;
+  --color-surface-sidebar:#12171d; --sidebar:#12171d; --sidebar-accent:#1b212a;
   --frame:#05070a;
   --color-user-bubble:#171c23;
   --field-bg:#141920;

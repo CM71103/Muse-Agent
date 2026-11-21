@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self' file: muse-preview: http://127.0.0.1:*;"><title>Muse Studio</title><style>
 /* ============================================================================
-   Muse Studio — design system (Terax port: frame/pane model, grayscale-first)
+   Muse Studio: design system (Terax port: frame/pane model, grayscale-first)
    §8 tokens · §9 interaction protocol · vanilla CSS, no build step.
    Layers: 1 tokens → 2 base/protocol → 3 controls → 4 layout regions
            → 5 transcript content → 6 dialogs → 7 responsive/motion.
@@ -13,7 +13,7 @@
 
 /* ---- 1. Design tokens ------------------------------------------------------
    Semantic tokens. Themes override ONLY token values.
-   Fonts: Inter Variable (UI) + JetBrains Mono (mono) — Terax spec. */
+   Fonts: Inter Variable (UI) + JetBrains Mono (mono): Terax spec. */
 @font-face{font-family:'Inter Variable';font-style:normal;font-weight:100 900;font-display:swap;src:url('fonts/inter-latin-wght-normal.woff2') format('woff2-variations')}
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/jetbrains-mono-latin-400-normal.woff2') format('woff2')}
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/jetbrains-mono-latin-700-normal.woff2') format('woff2')}
@@ -49,7 +49,7 @@
   --hero-disc:#ffffff;
   --hero-lime:#80e044;
   --splash-dot:rgba(38,37,31,.13);
-  /* ambient shader layer: DotOrbit (paper-design/shaders) — ember-colored
+  /* ambient shader layer: DotOrbit (paper-design/shaders): ember-colored
      dots orbiting their grid cells. User preset. */
   --shader-opacity:1;
   /* SmokeRing on the hero emblem: white smoke over transparent, user spec */
@@ -80,7 +80,7 @@
   --color-rail-hover:#2a2a2a;
   --color-rail-fg:#f7f7f7;
   --color-rail-logo:#549c22;
-  /* shape — Terax radius scale from one token */
+  /* shape: Terax radius scale from one token */
   --radius:0.625rem;
   --radius-sm:calc(var(--radius) * .6);
   --radius-md:calc(var(--radius) * .8);
@@ -98,7 +98,7 @@
   --shadow-panel:none;
   --shadow-floating:0 4px 12px rgb(0 0 0 / .10),0 16px 40px rgb(0 0 0 / .14);
   --shadow-input-dock:none;
-  /* motion — Terax tokens */
+  /* motion: Terax tokens */
   --dur-fast:160ms;
   --dur-base:240ms;
   --dur-slow:320ms;
@@ -127,7 +127,7 @@
   /* focus protocol: the ONE focus color, consumed by the global rule */
   --ha-focus-color:var(--color-ring);
   --scrollbar-thumb:color-mix(in srgb,var(--color-foreground) 18%,transparent);
-  /* legacy aliases — renderer.js and generated markup may reference these.
+  /* legacy aliases: renderer.js and generated markup may reference these.
      --color-surface was never defined; inline styles read it, so alias it. */
   --color-surface:var(--color-card);
   --bg:var(--color-background);--surface:var(--color-card);--ice:var(--color-foreground);
@@ -147,7 +147,7 @@
 }
 [data-theme="dark"]{
   color-scheme:dark;
-  /* Terax dark — grayscale, tone-up */
+  /* Terax dark: grayscale, tone-up */
   --color-background:#141414;
   --color-foreground:#f7f7f7;
   --color-card:#1d1d1d;
@@ -258,7 +258,7 @@ h1,h2,p{margin-top:0}
 
 /* ---- 3. Control surfaces ---------------------------------------------------
    Rule 2: ONE surface token; variants override only size/layout/typography.
-   Rule 3: hover deepens background only — never border, ring or shadow. */
+   Rule 3: hover deepens background only: never border, ring or shadow. */
 button{
   cursor:pointer;
   background:var(--color-card);
@@ -279,7 +279,7 @@ input,textarea,select{
   transition:background-color .12s ease;
 }
 input:hover,textarea:hover{background-color:var(--color-secondary)}
-/* primary / ghost variants — layout + color intent only */
+/* primary / ghost variants: layout + color intent only */
 .btn-primary,#send,#btn-save,#btn-new{background:var(--color-primary);border-color:var(--color-primary);color:var(--color-primary-fg);font-weight:600}
 .btn-primary:hover,#send:hover,#btn-save:hover,#btn-new:hover{background:color-mix(in srgb,var(--color-primary) 88%,var(--color-primary-fg))}
 .btn-ghost{background:transparent;border-color:transparent;color:var(--color-muted-fg);font-size:12px;padding:6px 10px}
@@ -420,7 +420,7 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .abody{font-size:15px;line-height:1.78}
 .abody p{margin:0 0 15px}
 
-/* Markdown — generous reading rhythm */
+/* Markdown: generous reading rhythm */
 .md p{margin:0 0 15px}
 .md h1,.md h2,.md h3{line-height:1.3;margin:26px 0 11px}
 .md h1{font-size:22px}
@@ -445,7 +445,7 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .tok-kw{color:var(--color-tok-kw)}
 .tok-num{color:var(--color-tok-num)}
 
-/* Tool activity — execution cards (Agent Execution Panel port) */
+/* Tool activity: execution cards (Agent Execution Panel port) */
 .tool-row{font-size:12.5px;color:var(--color-muted-fg);overflow-wrap:anywhere;border:1px solid var(--color-border);border-left:3px solid var(--color-success);border-radius:var(--radius-md);background:var(--color-surface-subtle);padding:0;margin:0}
 .tool-row summary{cursor:pointer;border-radius:var(--radius-md);padding:12px 16px;list-style:none}
 .tool-row summary::-webkit-details-marker{display:none}
@@ -498,7 +498,7 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .dash-item .dash-del{align-self:flex-start;margin-top:4px;font-size:10.5px;padding:1px 8px;color:#8a7663}
 .mc-grid-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
 /* Paper cards: --color-surface is the root-computed paper token (cream in
-   every theme), so ink is pinned here — never inherit the themed foreground. */
+   every theme), so ink is pinned here: never inherit the themed foreground. */
 .mc-card{border:1px solid var(--color-border-soft);background:var(--color-surface);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;color:#4a3a2c}
 .mc-title{margin:0;font-size:13px;color:#38271e}
 .mc-svg{width:100%;height:auto;display:block}
@@ -751,7 +751,7 @@ body.shader-off .hero .heat-layer{display:none}
 .nav-links button:hover{color:var(--color-foreground)}
 .nav-links button:active{transform:translateY(0) scale(.97)}
 .nav-links button[aria-pressed=true]{color:var(--color-foreground);font-weight:650}
-/* Sliding pill behind the active link — one element, --ease-premium spring-out */
+/* Sliding pill behind the active link: one element, --ease-premium spring-out */
 .nav-pill{position:absolute;top:4px;bottom:4px;left:0;width:0;border-radius:var(--radius-sm);background:var(--color-background);box-shadow:inset 0 0 0 1px var(--color-border-soft);transition:transform var(--dur-base) var(--ease-premium),width var(--dur-base) var(--ease-premium);pointer-events:none;z-index:0}
 .navbar .crumb{font-size:17px;letter-spacing:-.5px;max-width:250px;font-weight:600}
 .navbar .right{display:contents}
@@ -780,7 +780,7 @@ main{display:flex;flex-direction:column;background:transparent;border:0;box-shad
 .navbar-panel{flex:1;min-height:0;display:flex;flex-direction:column;border:1px solid var(--glass-border);border-radius:var(--pane-radius);background:var(--glass-fill);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);box-shadow:var(--pane-shadow);overflow:hidden}
 #transcript{max-width:800px;padding:48px 44px;gap:30px}
 #empty{width:100%;padding:7vh 0 35px;max-width:none}#empty .studio-mark{width:52px;height:52px;border-radius:var(--radius-xl);background:var(--color-primary);color:var(--color-primary-fg);display:grid;place-items:center;margin-bottom:26px}#empty .studio-mark::after{content:'✳';font-size:38px}#empty h1{font-size:clamp(32px,3.4vw,44px);font-weight:650;letter-spacing:-1.4px;line-height:1.16;max-width:600px}#empty p{font-size:15px;line-height:1.7;max-width:500px;color:var(--color-muted-fg)}
-/* Starter cards: Terax pane style — card bg, 1px border, lime hover edge */
+/* Starter cards: Terax pane style: card bg, 1px border, lime hover edge */
 .starters{border:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:34px}.starter{min-height:148px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:18px 17px;font-size:14.5px;font-weight:600;background:var(--color-card);color:var(--color-foreground);transition:border-color var(--dur-fast) var(--ease-soft),background-color var(--dur-fast) var(--ease-soft),transform var(--dur-fast) var(--ease-soft)}.starter span{font-size:12px;color:var(--color-muted-fg);font-weight:400}.starter:hover{border-color:color-mix(in srgb,var(--color-primary) 45%,var(--color-border));background:color-mix(in srgb,var(--color-primary) 5%,var(--color-card));transform:translateY(-1px)}.starter:active{transform:translateY(0) scale(.99)}
 footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(--color-surface-subtle);border:1px solid var(--color-input);padding:16px 18px;align-items:flex-end;border-radius:var(--radius-input-dock);transition:border-color var(--dur-fast) var(--ease-soft)}.inputwrap:focus-within{border-color:color-mix(in srgb,var(--color-ring) 60%,transparent)}#send{border:0;border-radius:var(--radius-md);background:var(--color-primary);color:var(--color-primary-fg);font-size:14px;font-weight:600;padding:11px 22px;transition:background-color var(--dur-fast) var(--ease-soft),transform 120ms var(--ease-soft)}#send:hover{background:color-mix(in srgb,var(--color-primary) 88%,var(--color-primary-fg))}#send:active{transform:scale(.96)}
 .composer-meta{font-size:11px;color:var(--color-muted-fg)}.who{font-size:12px}.bubble{border-radius:var(--radius-lg);padding:17px 21px;background:var(--color-user-bubble);color:var(--color-foreground);font-size:15px;line-height:1.7}
@@ -812,7 +812,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
 }
 
 
-/* Project workspaces: clear hierarchy — section headings, breathing room
+/* Project workspaces: clear hierarchy: section headings, breathing room
    between rows, projects and sessions each in their own scroll region. */
 [hidden]{display:none!important}
 .history .brand{padding-bottom:20px}
@@ -892,7 +892,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   #splash .s-fx{ display:none; }
   #splash .s-logo{ opacity:1; }
 }
-</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"><link rel="stylesheet" href="clean-ui.css"><link rel="stylesheet" href="workbench.css"><link rel="stylesheet" href="gallery-themes.css"></head><body data-theme="dark">
+</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"><link rel="stylesheet" href="clean-ui.css"><link rel="stylesheet" href="gallery-themes.css"><link rel="stylesheet" href="workbench.css"></head><body data-theme="dark">
 
 <div class="menubar" role="menubar" aria-label="Muse">
   <div class="menubar-left">
@@ -1244,7 +1244,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
           <label class="pref"><input type="checkbox" id="pref-enter" checked><span data-i18n="settings.enterToSend">Enter to send</span></label>
           <div class="pref" style="flex-direction:column;gap:8px">
             <span style="font-weight:600;font-size:13px">Research &amp; citations</span>
-            <p class="hint" style="margin:0">Muse searches Semantic Scholar, OpenAlex and arXiv when a question needs sources. A key is optional — without one the free pools are used, and they are often rate limited.</p>
+            <p class="hint" style="margin:0">Muse searches Semantic Scholar, OpenAlex and arXiv when a question needs sources. A key is optional: without one the free pools are used, and they are often rate limited.</p>
             <div class="field" style="margin:0">
               <label for="research-s2-key">Semantic Scholar API key</label>
               <input id="research-s2-key" type="password" placeholder="Optional" spellcheck="false" autocomplete="off">
