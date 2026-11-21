@@ -1,0 +1,321 @@
+/* gallery-themes.css - the menu bar, and the appearances that carry a picture.
+ *
+ * Loaded after workbench.css, so it wins on equal specificity. Theme blocks
+ * are aria-scoped (body[data-theme=...]), which is the layering contract the
+ * other theme layers keep: a theme never loses to a later unscoped sheet.
+ *
+ * Three appearances ship here, each with a drawn background instead of a flat
+ * fill:
+ *   win7   - the Windows 7 light-ray blue, aero chrome
+ *   retro  - an amber phosphor terminal with scanlines
+ *   shiva  - ash, saffron and a trident on deep blue-black
+ *
+ * The wallpaper is an inline SVG so the app stays offline-first and carries no
+ * image files. Nothing here is decoration without a job: each theme gives the
+ * app a different room to work in, and the picture is the room.
+ */
+
+/* ---------- the menu bar ---------- */
+/* Reason: a menu bar is the flattest way to expose every command. It sits
+   above the frame, never floats over the work, and carries no shadow. */
+.menubar {
+  position:fixed;
+  inset:0 0 auto 0;
+  height:38px;
+  z-index:90;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:0 10px 0 12px;
+  background:var(--menubar-bg,var(--color-surface-app));
+  border-bottom:1px solid var(--menubar-line,var(--color-border-soft));
+  font-size:12px;
+  color:var(--color-foreground);
+  user-select:none;
+}
+body { box-sizing:border-box; padding-top:38px; }
+/* The canvas gets the app colour; a themed body stays transparent so its
+   wallpaper can show through. */
+html { background:var(--color-surface-app); }
+/* The brand lives in the menu bar now. Repeating it in the sidebar would say
+   the same thing twice and cost a row. */
+.history .brand { display:none; }
+.history .rail-head { justify-content:flex-end; padding-left:0; }
+/* A status chip needs its own foreground, not the accent it sits on. */
+.count-badge { color:var(--color-accent-fg); }
+.menubar-left,.menubar-right { display:flex; align-items:center; gap:2px; min-width:0; }
+.menubar-brand { display:flex; align-items:center; gap:7px; padding-right:10px; }
+.menubar-mark { color:var(--color-primary); font-size:12px; line-height:1; }
+.menubar-name { font-weight:650; letter-spacing:-.1px; }
+.menubar-item {
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:var(--color-foreground);
+  font:inherit;
+  font-size:12px;
+  padding:5px 9px;
+  border-radius:var(--wb-radius-control);
+  cursor:pointer;
+}
+.menubar-item:hover,.menubar-item[aria-expanded="true"] { background:var(--color-surface-subtle); }
+.menubar-item[aria-expanded="true"] { background:var(--color-muted); }
+.menubar-chip {
+  font-size:11px;
+  color:var(--color-muted-fg);
+  max-width:280px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.menubar-icon {
+  appearance:none;
+  display:grid;
+  place-items:center;
+  width:26px;height:26px;
+  border:0;
+  border-radius:var(--wb-radius-control);
+  background:transparent;
+  color:var(--color-muted-fg);
+  cursor:pointer;
+}
+.menubar-icon svg { width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round; }
+.menubar-icon:hover { background:var(--color-surface-subtle); color:var(--color-foreground); }
+/* The dropdown: one flat panel, hairline border, no shadow on top of the app. */
+.menubar-pop {
+  position:fixed;
+  z-index:91;
+  min-width:236px;
+  max-height:min(70vh,560px);
+  overflow:auto;
+  padding:5px;
+  background:var(--color-popover);
+  border:1px solid var(--color-border);
+  border-radius:var(--wb-radius-card);
+  box-shadow:0 12px 32px rgb(0 0 0 / .22);
+}
+.menubar-entry {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  width:100%;
+  text-align:left;
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:var(--color-foreground);
+  font:inherit;
+  font-size:12px;
+  padding:6px 9px;
+  border-radius:var(--wb-radius-control);
+  cursor:pointer;
+}
+.menubar-entry:hover { background:var(--color-surface-subtle); }
+.menubar-entry em { font-style:normal; font-size:10.5px; color:var(--color-muted-fg); }
+.menubar-entry.is-heading {
+  font-size:10px;
+  letter-spacing:.8px;
+  text-transform:uppercase;
+  color:var(--color-muted-fg);
+  cursor:default;
+  padding-top:9px;
+}
+.menubar-entry.is-heading:hover { background:transparent; }
+.menubar-entry[aria-checked="true"]::after { content:'✓'; font-size:11px; color:var(--color-primary); }
+.menubar-entry[aria-checked="true"] { padding-right:26px; position:relative; }
+.menubar-entry[aria-checked="true"] em { margin-left:auto; padding-right:14px; }
+.menubar-sep { height:1px; margin:5px 4px; background:var(--color-border-soft); }
+
+/* The empty screen reads like a greeting, not a pitch. */
+#empty h1 { font-size:clamp(22px,2.2vw,26px); font-weight:550; letter-spacing:-.4px; }
+#empty .hero { width:52px; margin:0 auto 20px; }
+.starters { flex-direction:row; flex-wrap:wrap; justify-content:center; gap:6px; max-width:560px; }
+.starter {
+  gap:8px;
+  padding:6px 12px;
+  border-radius:999px;
+  font-size:11.5px;
+}
+.starter span { font-size:10.5px; }
+
+/* ============================ Windows 7 ============================ */
+/* The Aero era: light beams from the horizon, a glossy blue chrome, and a
+   taskbar-blue accent. It is the one theme in the gallery that is bright, so
+   it earns its place as the "daylight" mode. */
+body[data-theme="win7"] {
+  --color-foreground:#0d1b2a;
+  --color-muted-fg:#42607e;
+  --faint:#7b95b0;
+  --color-background:#eef5fc;
+  --color-card:#f7fbff;
+  --color-popover:#f7fbff;
+  --color-surface-subtle:rgb(12 62 116 / .05);
+  --color-secondary:#dbe9f7; --color-secondary-fg:#0d1b2a;
+  --color-muted:#ddeaf6;
+  --color-accent:#1b75bc; --color-accent-fg:#ffffff;
+  --color-surface-app:#d9e9f8;
+  --frame:#bfd6ea;
+  --color-user-bubble:#ffffff;
+  --field-bg:#ffffff;
+  --color-border:rgb(13 60 110 / .16);
+  --color-border-soft:rgb(13 60 110 / .09);
+  --color-input:rgb(13 60 110 / .22);
+  --color-primary:#1b75bc; --color-primary-fg:#ffffff;
+  --color-brand:#0b3d91;
+  --color-ring:rgb(27 117 188 / .75);
+  --color-success:#2e8b46; --color-info:#1b75bc; --color-destructive:#c0392b;
+  --chart-1:#1b75bc; --chart-2:#3aa06b; --chart-3:#e8b000; --chart-4:#e2711d; --chart-5:#7d5ba6;
+  --glass-fill:rgb(240 248 255 / .82);
+  --glass-border:rgb(255 255 255 / .6);
+  --pane-shadow:0 1px 0 rgb(255 255 255 / .7) inset, 0 6px 20px rgb(8 40 80 / .14);
+  --shadow-floating:0 14px 40px rgb(8 40 80 / .26), 0 0 0 1px rgb(255 255 255 / .55);
+  --hero-ink:#0b3d91; --hero-disc:#ffffff; --hero-lime:#1b75bc;
+  --smoke-front:#1b75bc; --splash-dot:rgb(255 255 255 / .5);
+  --shader-opacity:0; --shader-veil:transparent;
+  --menubar-bg:linear-gradient(180deg,#2f8ade,#1668b4);
+  --menubar-line:rgb(255 255 255 / .28);
+  background:transparent;
+}
+body[data-theme="win7"] .menubar { color:#f2f8ff; text-shadow:0 1px 0 rgb(0 0 0 / .28); }
+body[data-theme="win7"] .menubar-mark { color:#cfe6ff; }
+body[data-theme="win7"] .menubar-chip { color:rgb(240 248 255 / .82); }
+body[data-theme="win7"] .menubar-icon { color:rgb(240 248 255 / .85); }
+body[data-theme="win7"] .menubar-icon:hover { background:rgb(255 255 255 / .16); color:#fff; }
+body[data-theme="win7"] .menubar-item { color:#f2f8ff; }
+body[data-theme="win7"] .menubar-item:hover,
+body[data-theme="win7"] .menubar-item[aria-expanded="true"] { background:rgb(255 255 255 / .18); }
+body[data-theme="win7"] .history {
+  background:linear-gradient(180deg,rgb(233 244 255 / .9),rgb(210 231 249 / .88));
+  border-right:1px solid rgb(255 255 255 / .55);
+}
+body[data-theme="win7"] #workbench { background:rgb(244 250 255 / .82); }
+/* The picture has to reach the working area, so the middle pane goes
+   translucent. The veil under it keeps the text readable. */
+body[data-theme="win7"] .navbar-panel { background:rgb(246 251 255 / .58); }
+body[data-theme="win7"] #composer .inputwrap {
+  background:rgb(255 255 255 / .78);
+  border-color:rgb(255 255 255 / .75);
+  box-shadow:0 1px 0 rgb(255 255 255 / .8) inset, 0 12px 30px -14px rgb(8 40 80 / .4);
+}
+body[data-theme="win7"] .brand-mark { color:#0b3d91; }
+body[data-theme="win7"]::before {
+  display:block;
+  background-image:linear-gradient(rgb(238 247 255 / .62),rgb(198 224 246 / .34)),url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1600'%20height='900'%20viewBox='0%200%201600%20900'%3E%3Cdefs%3E%3CradialGradient%20id='g'%20cx='50%25'%20cy='112%25'%20r='95%25'%3E%3Cstop%20offset='0'%20stop-color='%23cfe9ff'/%3E%3Cstop%20offset='.28'%20stop-color='%23288bd8'/%3E%3Cstop%20offset='.62'%20stop-color='%230d4b9e'/%3E%3Cstop%20offset='1'%20stop-color='%2305203f'/%3E%3C/radialGradient%3E%3ClinearGradient%20id='r'%20x1='0'%20y1='1'%20x2='0'%20y2='0'%3E%3Cstop%20offset='0'%20stop-color='%23eaf6ff'%20stop-opacity='.5'/%3E%3Cstop%20offset='1'%20stop-color='%23eaf6ff'%20stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='1600'%20height='900'%20fill='url(%23g)'/%3E%3Cg%20fill='url(%23r)'%3E%3Cpolygon%20points='600,900%20690,900%20890,30%20815,30'/%3E%3Cpolygon%20points='730,900%20795,900%20935,110%20870,110'/%3E%3Cpolygon%20points='845,900%20910,900%201030,50%20965,50'/%3E%3Cpolygon%20points='950,900%201020,900%201195,140%201120,140'/%3E%3C/g%3E%3Cellipse%20cx='800'%20cy='905'%20rx='840'%20ry='150'%20fill='%23bfe4ff'%20opacity='.13'/%3E%3C/svg%3E");
+  background-size:cover,cover;
+  background-position:center bottom,center bottom;
+}
+
+/* ============================== Retro ============================== */
+/* A phosphor terminal: amber on brown-black, scanlines over everything, a
+   monospace chrome. The type is the theme, so the labels change too. */
+body[data-theme="retro"] {
+  --color-foreground:#ffc267;
+  --color-muted-fg:#b0803a;
+  --faint:#7d5822;
+  --color-background:#150e05;
+  --color-card:#1d1409;
+  --color-popover:#1d1409;
+  --color-surface-subtle:rgb(255 194 103 / .06);
+  --color-secondary:#251a0c; --color-secondary-fg:#ffd79a;
+  --color-muted:#241a0c;
+  --color-accent:#ffb642; --color-accent-fg:#1a1205;
+  --color-surface-app:#0c0803;
+  --frame:#3a2a12;
+  --color-user-bubble:#241a0c;
+  --field-bg:#1d1409;
+  --color-border:rgb(255 182 66 / .26);
+  --color-border-soft:rgb(255 182 66 / .14);
+  --color-input:rgb(255 182 66 / .3);
+  --color-primary:#ffb642; --color-primary-fg:#1a1205;
+  --color-brand:#ffc267;
+  --color-ring:rgb(255 182 66 / .8);
+  --color-success:#9ac97a; --color-info:#e8b000; --color-destructive:#e2711d;
+  --chart-1:#ffb642; --chart-2:#9ac97a; --chart-3:#e8b000; --chart-4:#e2711d; --chart-5:#b98cdb;
+  --glass-fill:rgb(21 14 5 / .92);
+  --glass-border:rgb(255 182 66 / .28);
+  --pane-shadow:inset 0 0 26px rgb(255 150 40 / .06);
+  --shadow-floating:0 0 34px rgb(255 150 40 / .16);
+  --hero-ink:#ffd79a; --hero-disc:#1d1409; --hero-lime:#ffb642;
+  --smoke-front:#ffb642; --splash-dot:rgb(255 182 66 / .1);
+  --shader-opacity:0; --shader-veil:transparent;
+  --menubar-bg:#150e05;
+  --menubar-line:rgb(255 182 66 / .22);
+  background:transparent;
+  font-family:ui-monospace,'Cascadia Mono',Consolas,'Courier New',monospace;
+  letter-spacing:0;
+}
+body[data-theme="retro"] .menubar,
+body[data-theme="retro"] .menubar-item,
+body[data-theme="retro"] .menubar-chip,
+body[data-theme="retro"] .menubar-icon { color:#ffc267; }
+body[data-theme="retro"] .menubar-item:hover,
+body[data-theme="retro"] .menubar-item[aria-expanded="true"] { background:rgb(255 182 66 / .14); }
+body[data-theme="retro"] .menubar-icon:hover { background:rgb(255 182 66 / .14); color:#ffd79a; }
+body[data-theme="retro"] .menubar-mark { color:#ffb642; }
+body[data-theme="retro"] #composer .inputwrap { box-shadow:inset 0 0 30px rgb(255 150 40 / .08); }
+body[data-theme="retro"] .navbar-panel { background:rgb(16 10 3 / .78); }
+body[data-theme="retro"]::before {
+  display:block;
+  background-image:repeating-linear-gradient(0deg,rgb(0 0 0 / .34) 0 1px,transparent 1px 3px),url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1400'%20height='900'%20viewBox='0%200%201400%20900'%3E%3Cdefs%3E%3CradialGradient%20id='v'%20cx='50%25'%20cy='45%25'%20r='72%25'%3E%3Cstop%20offset='0'%20stop-color='%23210f02'/%3E%3Cstop%20offset='.55'%20stop-color='%23120500'/%3E%3Cstop%20offset='1'%20stop-color='%23080300'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect%20width='1400'%20height='900'%20fill='url(%23v)'/%3E%3Cellipse%20cx='700'%20cy='400'%20rx='460'%20ry='300'%20fill='%23ffb642'%20opacity='.07'/%3E%3Cellipse%20cx='700'%20cy='420'%20rx='260'%20ry='170'%20fill='%23ffc267'%20opacity='.06'/%3E%3C/svg%3E");
+  background-size:auto,cover;
+}
+
+/* ============================== Shiva ============================== */
+/* Ash, saffron and a trident. This theme is the quietest one: the picture
+   carries the meaning, the interface stays out of the way. */
+body[data-theme="shiva"] {
+  --color-foreground:#e9e4d9;
+  --color-muted-fg:#9b948a;
+  --faint:#6d665f;
+  --color-background:#0f1318;
+  --color-card:#171c23;
+  --color-popover:#171c23;
+  --color-surface-subtle:rgb(233 228 217 / .045);
+  --color-secondary:#1e242c; --color-secondary-fg:#e9e4d9;
+  --color-muted:#1b212a;
+  --color-accent:#d9a441; --color-accent-fg:#14100a;
+  --color-surface-app:#0a0d11;
+  --frame:#05070a;
+  --color-user-bubble:#171c23;
+  --field-bg:#141920;
+  --color-border:rgb(233 228 217 / .13);
+  --color-border-soft:rgb(233 228 217 / .07);
+  --color-input:rgb(233 228 217 / .18);
+  --color-primary:#d9a441; --color-primary-fg:#14100a;
+  --color-brand:#c9ccd2;
+  --color-ring:rgb(217 164 65 / .8);
+  --color-success:#6fbf8b; --color-info:#6aa9d8; --color-destructive:#d9604f;
+  --chart-1:#d9a441; --chart-2:#6fbf8b; --chart-3:#6aa9d8; --chart-4:#b98cdb; --chart-5:#d9604f;
+  --glass-fill:rgb(12 15 19 / .9);
+  --glass-border:rgb(233 228 217 / .1);
+  --pane-shadow:0 2px 22px rgb(0 0 0 / .5);
+  --shadow-floating:0 18px 50px rgb(0 0 0 / .6), 0 0 0 1px rgb(233 228 217 / .08);
+  --hero-ink:#e9e4d9; --hero-disc:#171c23; --hero-lime:#d9a441;
+  --smoke-front:#d9a441; --splash-dot:rgb(217 164 65 / .1);
+  --shader-opacity:0; --shader-veil:transparent;
+  --menubar-bg:rgb(10 13 17 / .9);
+  --menubar-line:rgb(233 228 217 / .1);
+  background:transparent;
+}
+body[data-theme="shiva"] .menubar-mark { color:#d9a441; }
+body[data-theme="shiva"] .brand-mark { color:#d9a441; }
+body[data-theme="shiva"]::before {
+  display:block;
+  background-image:url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='1600'%20height='900'%20viewBox='0%200%201600%20900'%3E%3Cdefs%3E%3CradialGradient%20id='a'%20cx='50%25'%20cy='42%25'%20r='46%25'%3E%3Cstop%20offset='0'%20stop-color='%23382c12'%20stop-opacity='.85'/%3E%3Cstop%20offset='.45'%20stop-color='%231c2a38'%20stop-opacity='.55'/%3E%3Cstop%20offset='1'%20stop-color='%230a0d11'%20stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect%20width='1600'%20height='900'%20fill='%230a0d11'/%3E%3Crect%20width='1600'%20height='900'%20fill='url(%23a)'/%3E%3Cg%20stroke='%23d8d0bf'%20stroke-width='9'%20fill='none'%20stroke-linecap='round'%20opacity='.17'%3E%3Cpath%20d='M800%20840%20V382'/%3E%3Cpath%20d='M800%20382%20C800%20320%20771%20288%20746%20240'/%3E%3Cpath%20d='M800%20382%20C800%20320%20829%20288%20854%20240'/%3E%3Cpath%20d='M746%20240%20C700%20246%20672%20306%20690%20362'/%3E%3Cpath%20d='M854%20240%20C900%20246%20928%20306%20910%20362'/%3E%3Cpath%20d='M690%20362%20H910'/%3E%3C/g%3E%3Cpath%20d='M800%2096%20q40%2056%200%20112%20q-40%20-56%200%20-112'%20fill='%23e08a3c'%20opacity='.22'/%3E%3Ccircle%20cx='800'%20cy='236'%20r='20'%20fill='%23d9a441'%20opacity='.85'/%3E%3C/svg%3E");
+  background-size:cover;
+  background-position:center 38%;
+}
+/* The trident sits behind the content, so the interface needs a little more
+   separation than the other themes give it. */
+body[data-theme="shiva"] .history,
+body[data-theme="shiva"] #workbench { background:rgb(12 15 20 / .82); }
+body[data-theme="shiva"] .navbar-panel { background:rgb(11 14 19 / .74); }
+
+/* ---------- narrow windows ---------- */
+/* The menu bar keeps its items; the chip and the label are what go first. */
+@media(max-width:720px) {
+  .menubar-chip { display:none; }
+  .menubar-name { display:none; }
+}

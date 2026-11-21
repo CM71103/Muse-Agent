@@ -39,7 +39,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
 | **Attach PDFs and images** | Drop or paste a PDF or image. Text is extracted locally (exact text layer for digital PDFs, Windows OCR for scans and images). Images are sent as pixels only when the selected model can see them; otherwise the extracted text is sent. |
 | **Teach it by grading** | Mark an answer liked or disliked (👍 / 👎, or `/good` and `/bad`). Each grade leaves an explicit marker; the answer style adapts to what you actually reward. |
-| **Make it yours** | Light and Dark follow the affectUI agent-clean language: ink-pill buttons, flat hairline panels, colour used only as data (pixel marks, status pills, live shimmer). Krishna themes are one click away; your choice persists across launches. Adjust glass opacity and toggle the animated shader background. |
+| **Make it yours** | Six appearances, each with its own picture: Light, Dark, Krishna, Windows 7, Retro and Shiva. Pick one from the View menu or Settings; it persists across launches. The light and dark palettes follow the affectUI agent-clean language: ink-pill buttons, flat hairline panels, colour used only as data. |
 
 ### Built for a continuous workflow
 
@@ -129,7 +129,20 @@ A turn reads top to bottom the way it happened: the request as a block with a ru
 
 The composer is one container: the request on top, the controls (attach, Box, Sandbox, the model, Stop, Send) on a row below it. Stop really stops. The model chip names the model you are about to talk to.
 
-Three themes ship: **dark**, **light**, and **krishna** (deep indigo and gold). The light theme is not the dark theme inverted, it is its own palette. Every one of them is checked by the screenshot harness, not by eye.
+A menu bar sits above the frame: **Workspace**, **View**, **Window**. Every command the app has is one click away from there, and the View menu is where the appearance is chosen.
+
+Six appearances ship, each with its own picture rather than a flat fill:
+
+| Appearance | What it is |
+| --- | --- |
+| **Light** | The daylight working palette, its own set of tokens, not an inverted dark theme |
+| **Dark** | The neutral workbench: hairline chrome, one accent, 13px type |
+| **Krishna** | Deep indigo and teal with gold, for long sessions |
+| **Windows 7** | The Aero light rays, glossy blue chrome, the bright one |
+| **Retro** | An amber phosphor terminal: monospace, scanlines, a warm bloom |
+| **Shiva** | Ash, saffron and a trident on deep blue-black |
+
+The pictures are drawn as inline SVG, so the app stays offline and carries no image files. Every appearance is checked by the screenshot harness, not by eye.
 
 The layout rules live in `DESIGN.md` at the repo root, and the rulebook that governs it is in the repository as the antislop skills.
 

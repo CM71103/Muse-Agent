@@ -616,6 +616,9 @@ footer{padding:18px 26px 22px}
 .sw-terax-light span{background:linear-gradient(135deg,#ffffff,#f3f3f3)}
 .sw-terax-dark span{background:linear-gradient(135deg,#1d1d1d,#141414)}
 .sw-krishna span{background:linear-gradient(135deg,#10223f 0 42%,#55d1b4 43% 67%,#efc46d 68%)}
+.sw-win7 span{background:linear-gradient(135deg,#cfe9ff 0 30%,#288bd8 31% 62%,#0d4b9e 63%)}
+.sw-retro span{background:linear-gradient(135deg,#ffd79a 0 38%,#ffb642 39% 70%,#150e05 71%)}
+.sw-shiva span{background:linear-gradient(135deg,#0a0d11 0 40%,#d9a441 41% 63%,#4a6d8c 64%)}
 .swatch[aria-checked="true"]{background:var(--color-accent);border-color:var(--color-primary);color:var(--color-accent-fg);font-weight:600}
 .shortcut{display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--color-border-soft)}
 kbd{background:var(--color-surface-subtle);padding:2px 7px;border:1px solid var(--color-border);border-radius:4px;font-size:11px;font-family:var(--mono)}
@@ -889,7 +892,21 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   #splash .s-fx{ display:none; }
   #splash .s-logo{ opacity:1; }
 }
-</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"><link rel="stylesheet" href="clean-ui.css"><link rel="stylesheet" href="workbench.css"></head><body data-theme="dark">
+</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"><link rel="stylesheet" href="clean-ui.css"><link rel="stylesheet" href="workbench.css"><link rel="stylesheet" href="gallery-themes.css"></head><body data-theme="dark">
+
+<div class="menubar" role="menubar" aria-label="Muse">
+  <div class="menubar-left">
+    <span class="menubar-brand"><span class="menubar-mark" aria-hidden="true">✳</span><span class="menubar-name">Muse</span></span>
+    <button type="button" class="menubar-item" data-menu="workspace" aria-haspopup="menu" aria-expanded="false">Workspace</button>
+    <button type="button" class="menubar-item" data-menu="view" aria-haspopup="menu" aria-expanded="false">View</button>
+    <button type="button" class="menubar-item" data-menu="window" aria-haspopup="menu" aria-expanded="false">Window</button>
+  </div>
+  <div class="menubar-right">
+    <span class="menubar-chip" id="menubar-model" aria-live="polite">Loading model</span>
+    <button type="button" id="btn-command-menubar" class="menubar-icon" aria-label="Search actions" title="Search actions (Ctrl K)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg></button>
+  </div>
+  <div class="menubar-pop" id="menubar-pop" hidden role="menu" aria-label="Menu"></div>
+</div>
 
 <div id="bg-shader" aria-hidden="true"></div>
 
@@ -1212,6 +1229,9 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
               <button type="button" role="radio" aria-checked="false" data-theme-pick="light" class="swatch sw-terax-light"><span aria-hidden="true"></span>Light</button>
               <button type="button" role="radio" aria-checked="false" data-theme-pick="dark" class="swatch sw-terax-dark"><span aria-hidden="true"></span>Dark</button>
               <button type="button" role="radio" aria-checked="true" data-theme-pick="krishna" class="swatch sw-krishna"><span aria-hidden="true"></span>Krishna</button>
+              <button type="button" role="radio" aria-checked="false" data-theme-pick="win7" class="swatch sw-win7"><span aria-hidden="true"></span>Windows 7</button>
+              <button type="button" role="radio" aria-checked="false" data-theme-pick="retro" class="swatch sw-retro"><span aria-hidden="true"></span>Retro</button>
+              <button type="button" role="radio" aria-checked="false" data-theme-pick="shiva" class="swatch sw-shiva"><span aria-hidden="true"></span>Shiva</button>
             </div>
             <label class="pref"><input type="checkbox" id="pref-shader" checked><span>Ambient shader glow (background + emblem heat)</span></label>
             <div class="pref" style="flex-direction:column;gap:8px">

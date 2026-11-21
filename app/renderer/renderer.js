@@ -62,7 +62,7 @@ function renderEmpty() {
   const hero = buildHeroEmblem();
   attachSparkReplay(hero, false);
   const eyebrow = document.createElement('div'); eyebrow.className = 'empty-eyebrow'; eyebrow.textContent = 'Muse';
-  const title = document.createElement('h1'); title.textContent = 'What are we working on?' ; title.style.whiteSpace = 'pre-line';
+  const title = document.createElement('h1'); title.id = 'empty-title'; title.textContent = 'Good to see you. What is next?'; title.style.whiteSpace = 'pre-line';
   const text = document.createElement('p'); text.textContent = 'Think it through, build something, or pick up where you left off.';
   const starters = document.createElement('div'); starters.className = 'starters';
   for (const [label, task, hint] of [
@@ -1727,6 +1727,7 @@ async function refreshStatus() {
   statusCache = cfg;
   modelUI?.sync(cfg.llm || {});
   $('tag-model').textContent = cfg.llm.model || 'no model';
+  const mm = $('menubar-model'); if (mm) mm.textContent = cfg.llm.model || 'no model';
   $('tag-sentinel').textContent = `Safety: ${cfg.sentinel.mode}`;
   $('stat-permissions').textContent = cfg.sentinel.mode === 'accept_edits' ? 'Edits' : cfg.sentinel.mode === 'auto' ? 'Auto' : cfg.sentinel.mode === 'plan' ? 'Plan' : 'Ask';
   $('mode-safety-note').textContent = cfg.sentinel.mode === 'auto' ? 'Auto runs tools and commands without approval prompts.' : cfg.sentinel.mode === 'plan' ? 'Plan mode is read-only. Side effects are blocked.' : cfg.sentinel.mode === 'accept_edits' ? 'Project edits run automatically. Other actions ask.' : 'Tools ask before they act. You stay in control.';
@@ -1753,7 +1754,7 @@ async function refreshStatus() {
       ? `memory ${ms.ready ? 'ready' : 'starting'}${ms.project_id ? ' · project ' + String(ms.project_id).slice(0, 18) : ''}`
       : 'memory disabled: set [memory] enabled = true in config.toml';
   } catch { /* renderer survives a missing memory surface */ }
-  } catch (e) { $('tag-model').textContent = 'Connection unavailable'; $('tag-model').title = String(e.message || e); }
+  } catch (e) { $('tag-model').textContent = 'Connection unavailable'; $('tag-model').title = String(e.message || e); const mm2 = $('menubar-model'); if (mm2) mm2.textContent = 'Connection unavailable'; }
   try {
     const cfg2 = await window.muse.getConfig();
     $('wb-model').textContent = cfg2.llm.model || 'no model';
@@ -1817,7 +1818,7 @@ const modelUI = window.MuseModelPicker.create({
   },
   select: async model => {
     const result = await window.muse.selectModel(model);
-    if (result?.ok) { $('tag-model').textContent = result.model; $('wb-model').textContent = result.model; if (statusCache?.llm) statusCache.llm.model = result.model; }
+    if (result?.ok) { $('tag-model').textContent = result.model; const mm3 = $('menubar-model'); if (mm3) mm3.textContent = result.model; $('wb-model').textContent = result.model; if (statusCache?.llm) statusCache.llm.model = result.model; }
     return result;
   },
   manage: async () => { await openSettings(); modelUI.showSettings(); },
@@ -2471,7 +2472,8 @@ async function refreshWorkbenchMemory() {
   } catch { $('wb-mem').textContent = 'not set'; }
 }
 /* ---------- appearance (persisted beside the config, never web storage) ---------- */
-const THEMES = ['light', 'dark', 'krishna'];
+const THEMES = ['light', 'dark', 'krishna', 'win7', 'retro', 'shiva'];
+const THEME_LABELS = { light: 'Light', dark: 'Dark', krishna: 'Krishna', win7: 'Windows 7', retro: 'Retro', shiva: 'Shiva' };
 function applyTheme(name) {
   if (name === 'light') document.body.removeAttribute('data-theme');
   else document.body.setAttribute('data-theme', name);
@@ -2508,6 +2510,115 @@ function cycleTheme() {
   const next = THEMES[(THEMES.indexOf(currentTheme) + 1) % THEMES.length];
   setTheme(next);
 }
+
+/* ---------- the menu bar ---------- */
+/* A menu bar is the flattest interface a desktop tool can have: every command
+   is one query away and nothing hides behind a gesture. Each entry maps to a
+   function that already exists, so the menu can never drift from the app. */
+const MENUS = {
+  workspace: () => [
+    { label: 'New session', hint: 'Ctrl N', run: () => newSession() },
+    { label: 'Search actions', hint: 'Ctrl K', run: () => openPalette() },
+    { sep: true },
+    { label: 'Attach a folder', run: () => $('btn-project').click() },
+    { label: 'Leave the folder', run: () => $('btn-leave-project').click(), when: () => !$('btn-leave-project').hidden },
+    { sep: true },
+    { label: 'Memory', run: () => openMemory() },
+    { label: 'Boards', run: () => openDashboardView(selectedDashboardId) },
+    { label: 'Visual pages', run: () => openPagesView() },
+    { label: 'Answer style', run: () => showVoiceProfile() },
+    { sep: true },
+    { label: 'Settings', hint: 'Ctrl ,', run: () => openSettings() },
+  ],
+  view: () => [
+    { label: 'Appearance', heading: true },
+    ...THEMES.map((t) => ({
+      label: THEME_LABELS[t] || t,
+      run: () => setTheme(t),
+      checked: t === currentTheme,
+    })),
+    { sep: true },
+    { label: 'Right panel', run: () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), checked: !$('workbench').classList.contains('collapsed') },
+    { label: 'Focus mode', run: () => toggleFocus(), checked: document.body.classList.contains('focus-mode') },
+    { sep: true },
+    { label: 'Export transcript', hint: 'Ctrl ⇧ E', run: () => exportTranscript() },
+  ],
+  window: () => [
+    { label: 'Reload window', run: () => window.muse?.windowReload?.() },
+    { label: 'Developer tools', run: () => window.muse?.windowDevTools?.() },
+    { sep: true },
+    { label: 'Zoom in', run: () => window.muse?.windowZoom?.('in') },
+    { label: 'Zoom out', run: () => window.muse?.windowZoom?.('out') },
+    { label: 'Reset zoom', run: () => window.muse?.windowZoom?.('reset') },
+  ],
+};
+const menubarPop = $('menubar-pop');
+let openMenu = null;
+function closeMenubar() {
+  menubarPop.hidden = true;
+  menubarPop.textContent = '';
+  for (const b of document.querySelectorAll('.menubar-item')) b.setAttribute('aria-expanded', 'false');
+  openMenu = null;
+}
+function buildMenubar(menu) {
+  menubarPop.textContent = '';
+  for (const item of MENUS[menu]()) {
+    if (item.sep) {
+      const hr = document.createElement('div');
+      hr.className = 'menubar-sep';
+      hr.setAttribute('role', 'separator');
+      menubarPop.append(hr);
+      continue;
+    }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'menubar-entry';
+    b.setAttribute('role', 'menuitem');
+    if (item.heading) b.classList.add('is-heading');
+    if (item.checked) b.setAttribute('aria-checked', 'true');
+    const text = document.createElement('span');
+    text.textContent = item.label;
+    b.append(text);
+    if (item.hint) { const h = document.createElement('em'); h.textContent = item.hint; b.append(h); }
+    b.addEventListener('click', () => { closeMenubar(); item.run(); });
+    menubarPop.append(b);
+  }
+  menubarPop.hidden = false;
+  const btn = document.querySelector(`.menubar-item[data-menu="${menu}"]`);
+  if (btn) {
+    btn.setAttribute('aria-expanded', 'true');
+    const r = btn.getBoundingClientRect();
+    menubarPop.style.left = `${Math.round(r.left)}px`;
+    menubarPop.style.top = `${Math.round(r.bottom + 6)}px`;
+  }
+}
+for (const b of document.querySelectorAll('.menubar-item')) {
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const menu = b.dataset.menu;
+    if (openMenu === menu) { closeMenubar(); return; }
+    openMenu = menu;
+    buildMenubar(menu);
+  });
+  b.addEventListener('mouseenter', () => { if (openMenu && openMenu !== b.dataset.menu) { openMenu = b.dataset.menu; buildMenubar(openMenu); } });
+}
+window.addEventListener('click', (e) => { if (openMenu && !e.target?.closest?.('.menubar')) closeMenubar(); });
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openMenu) { closeMenubar(); } });
+try { $('btn-command-menubar')?.addEventListener('click', openPalette); } catch {}
+
+/* ---------- the greeting ---------- */
+/* The empty screen knows who is sitting at it. The name comes from the OS
+   account and stays on this machine. */
+let userName = '';
+try {
+  window.muse?.getWho?.().then((r) => {
+    if (r && r.ok && r.name) {
+      userName = r.name;
+      const t = document.getElementById('empty-title');
+      if (t) t.textContent = `Good to see you, ${r.name}. What is next?`;
+    }
+  }).catch(() => {});
+} catch {}
 function exportTranscript() {
   if (!transcriptMessages.length) { addSysNote('Nothing to export yet. Start a conversation first.'); return; }
   const text = '# Muse transcript\n\n' + transcriptMessages.map(m => `## ${m.role === 'user' ? 'You' : 'Muse'}\n\n${m.text}`).join('\n\n');

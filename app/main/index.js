@@ -2102,6 +2102,36 @@ ipcMain.handle('design:site:bounds', (e, rect) => {
   designSiteView.setVisible(true);
   return { ok: true };
 });
+// Who is at the keyboard: the first part of the OS account name, used for the
+// greeting on the empty screen. Local only, never sent anywhere.
+ipcMain.handle('app:who', (e) => {
+  requireTrusted(e);
+  try {
+    const raw = String(os.userInfo().username || '').split(/[\\. _-]/)[0] || '';
+    const name = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
+    return { ok: true, name };
+  } catch { return { ok: true, name: '' }; }
+});
+// Window level commands, so the menu bar can drive the real window.
+ipcMain.handle('window:reload', (e) => {
+  requireTrusted(e);
+  try { mainWindow?.reload(); return { ok: true }; } catch { return { ok: false }; }
+});
+ipcMain.handle('window:devtools', (e) => {
+  requireTrusted(e);
+  try { mainWindow?.webContents.toggleDevTools(); return { ok: true }; } catch { return { ok: false }; }
+});
+ipcMain.handle('window:zoom', (e, dir) => {
+  requireTrusted(e);
+  try {
+    const wc = mainWindow?.webContents;
+    if (!wc) return { ok: false };
+    const current = wc.getZoomLevel();
+    const next = dir === 'in' ? current + 0.5 : dir === 'out' ? Math.max(-5, current - 0.5) : 0;
+    wc.setZoomLevel(next);
+    return { ok: true, level: next };
+  } catch { return { ok: false }; }
+});
 // Appearance preference (theme). Lives beside the config as a tiny JSON file:
 // the renderer never touches web storage (privacy invariant pinned by tests).
 ipcMain.handle('appearance:get', (e) => {

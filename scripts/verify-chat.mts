@@ -200,6 +200,23 @@ app.whenReady().then(async()=>{try{
  await js("setTheme('krishna')");await pause(500);await shot('theme-krishna');
  await js("setTheme('light')");await pause(500);await shot('theme-light');
  await js("setTheme('dark')");await pause(500);await shot('theme-dark');
+ await js("setTheme('win7')");await pause(500);await shot('theme-win7');
+ await js("setTheme('retro')");await pause(500);await shot('theme-retro');
+ await js("setTheme('shiva')");await pause(500);await shot('theme-shiva');
+ await js("setTheme('dark')");await pause(400);
+ // the welcome screen carries the picture, so it is checked per appearance
+ await js("document.getElementById('transcript').innerHTML='';renderEmpty()");await pause(400);
+ await js("setTheme('shiva')");await pause(500);await shot('empty-shiva');
+ await js("setTheme('win7')");await pause(500);await shot('empty-win7');
+ await js("setTheme('retro')");await pause(500);await shot('empty-retro');
+ await js("setTheme('dark')");await pause(400);
+ // the menu bar opens, lists the appearances and closes again
+ await js("document.querySelector('.menubar-item[data-menu=view]').click()");await pause(300);await shot('menu-view');
+ assert.equal(await js("document.querySelectorAll('#menubar-pop .menubar-entry').length>4"),true,'the View menu must list the appearances');
+ assert.equal(await js("document.querySelector('#menubar-pop').hidden"),false,'the menu must open');
+ await js("document.querySelector('.menubar-item[data-menu=workspace]').click()");await pause(250);await shot('menu-workspace');
+ await js("document.body.click()");await pause(150);
+ assert.equal(await js("document.querySelector('#menubar-pop').hidden"),true,'clicking away must close the menu');
  assert.equal(await js("window.muse.getAppearance().then(r=>r.theme)"),'dark','theme choice must reach the persistent store');
  await js("openDashboardView('d1')");await pause(500);await shot('dashboards');
  assert.equal(await js("document.querySelector('[data-nav=dashboards]').getAttribute('aria-pressed')"),'true','nav pill state must follow the Dashboards view');
@@ -208,10 +225,10 @@ app.whenReady().then(async()=>{try{
  await js("document.getElementById('mainlog').scrollTop=2200");await pause(300);await shot('dashboards-table');
  assert.deepEqual(errors,[],'Renderer console/load errors');console.log('PASS: chat preview '+output);win.destroy();app.exit(0);
 }catch(error){console.error(error);if(win)win.destroy();app.exit(1)}});
-setTimeout(()=>app.exit(1),25000).unref();
+setTimeout(()=>app.exit(1),55000).unref();
 `);
 try {
   const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE;
-  const result = spawnSync(require('electron'), [path.join(temp, 'verify.cjs')], { cwd: root, env, stdio: 'inherit', timeout: 30000, windowsHide: true });
+  const result = spawnSync(require('electron'), [path.join(temp, 'verify.cjs')], { cwd: root, env, stdio: 'inherit', timeout: 70000, windowsHide: true });
   if (result.error || result.status !== 0) throw result.error || new Error('Chat verification failed');
 } finally { fs.rmSync(temp, { recursive: true, force: true }); }
