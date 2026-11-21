@@ -1,0 +1,71 @@
+# Muse Agent - notes for Claude Code
+
+The repository guide lives in `AGENTS.md` (read it; it is the short version of
+this file). The antislop rulebooks below are the filter for UI, copy,
+accessibility and code comments; `DESIGN.md` at the repo root is the direction.
+
+Same rules as for any other agent here:
+- the renderer never touches web storage, the main process owns persistence
+- secrets only in the OS vault, never in `config.toml` and never in a transcript
+- `npm test` is the whole suite; the pinned contracts are listed in `AGENTS.md`
+
+<!-- antislop:start -->
+## antislop
+For UI, copy, people, mobile layout, or code comments work, read these installed skill files directly (use these paths even if a same-named global skill exists):
+- Core filter, always on: `antislop`: `.agents/skills/antislop/SKILL.md`
+- UI / visual: `antislop-ui`: `.agents/skills/antislop-ui/SKILL.md`
+- Copy & text: `antislop-copywriting`: `.agents/skills/antislop-copywriting/SKILL.md`
+- People: `antislop-human`: `.agents/skills/antislop-human/SKILL.md`
+- Mobile / responsive: `antislop-layoutmobile`: `.agents/skills/antislop-layoutmobile/SKILL.md`
+- Code comments: `antislop-code`: `.agents/skills/antislop-code/SKILL.md`
+Before starting, follow the core's "Two Usage Modes" section in strict order: explicit session instruction first, then global preference, then ask. A session instruction always wins. For a resolved mode, say `antislop active: <mode> (session override).` or `antislop active: <mode> (global preference).` once before presenting findings or making edits, using the actual mode and source. Acknowledging the user's request without naming the source does not replace this notice.
+Only an explicit choice of antislop during or after selects a session mode. A request to review, audit, or avoid file edits does not select a mode; read the global preference in that case. Another skill's mode does not select antislop's mode.
+If the mode is unresolved, ask during/after and end the response; wait for the answer before any UI review, planning, or concept. For read-only tasks, put the active-mode notice only at the start of the final answer, never in progress messages. For editing tasks, announce before the first edit and omit it from the final answer.
+To update antislop later: `npx antislop-ai --update`, or run `npx antislop-ai` and pick Overwrite them.
+<!-- antislop:end -->
+
+---
+
+# Working in this repository
+
+Muse Agent is an Electron app (main process owns persistence, renderer never
+touches web storage) plus a Node harness that every entry point shares.
+
+## Read this before touching UI or copy
+`DESIGN.md` at the repo root is the **direction** (identity, tokens, mood).
+The antislop rulebooks above are the **filter**. Read both before designing;
+antislop replaces neither. The `antislop` core skill's "Two Usage Modes"
+section decides whether the rules are applied while you work (`during`) or as
+an audit afterwards (`after`) - resolve it in the order the skill states, and
+say which mode is active and where it came from.
+
+## Commands
+- `npm test` - the whole suite (492+ tests, `node --test` over
+  `app/harness/test`, `app/renderer/test`, `scripts/test`). No watch mode.
+- `npm run build:renderer` - rebuilds the renderer bundles (bun).
+- `npm run dist` - Windows installer + portable exe.
+- `node scripts/verify-chat.mts` / `verify-design.mts` / `verify-settings.mts` -
+  offscreen Electron visual checks; they write PNGs to `dist/*-preview/`.
+
+## Shape of the code
+- `app/main/` - Electron main: windows, IPC, the agent lifecycle, the vault.
+- `app/harness/` - the agent: prompt, tools, sentinel, memory, design, research.
+- `app/memory/` - the memory layer: store, adapters, embedding.
+- `app/renderer/` - the UI (plain JS + CSS, bundled by `scripts/build-renderer.mts`).
+- `app/design/` - the Design Studio registries: `design-systems`, `design-templates`,
+  `skills`, `craft`.
+
+## Contracts that tests pin (do not drift them silently)
+- `app/harness/test/policy.test.js` - the tool registry list.
+- `app/harness/test/context.test.js` - the system prompt shape and character budget.
+- `app/harness/test/memory-turn-lifecycle.test.ts` - the `agent:send` argument order.
+- `app/harness/test/design-panel.test.ts` - the design registry ids.
+- `app/harness/test/voice.test.ts` - `voice.md` carries style metrics only, never
+  quotes or topics from the user's chat history.
+
+## Rules that are not negotiable
+- Secrets live in the OS vault (`credentials.enc` via `safeStorage`), never in
+  `config.toml`, never in a transcript. Never take an API key through chat.
+- The renderer never reads or writes web storage.
+- Every tool touches the filesystem or the network through the sentinel; an
+  unknown tool fails closed.

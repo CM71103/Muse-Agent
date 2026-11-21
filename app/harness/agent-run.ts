@@ -10,13 +10,31 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   // without rebuilding (and losing) the rest of the system prompt.
   const VOICE_START = '# Muse answer style (learned locally from this user\'s preferences)';
   const readVoice = () => { try { return require('./voice').voiceGuide(); } catch { return ''; } };
+  // The antislop rulebook, when the user puts it in force. It lives behind its
+  // own marker at the tail of the system message, so switching it on or off
+  // rewrites one block instead of rebuilding the prompt. A restored session
+  // has the block but not the runtime state, so the selection is recovered
+  // from the text: the rules survive a restart.
+  const ANTI_START = '# Antislop rules in force for this session';
+  const readAnti = () => {
+    try {
+      const anti = require('./antislop');
+      const groups = this._antislopGroups === undefined
+        ? anti.groupsFromGuide((this.history && this.history[0] && this.history[0].content) || '')
+        : this._antislopGroups;
+      return anti.guide(groups);
+    } catch { return ''; }
+  };
   if (!this.history.length) {
     const design = this.cwdOverride ? designContext(this.cwdOverride) : null;
     const systemExtra = [opts.systemExtra || '', design?.text || ''].filter(Boolean).join('\n\n');
     const base = systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard'), this.toolMap.has('visual_render'), this.toolMap.has('critique'), this.toolMap.has('search_papers'), this.toolMap.has('preview_run'));
     const voiceGuide = readVoice();
+    const antiGuide = readAnti();
     this._voiceGuideApplied = voiceGuide;
-    this.history.push({ role: 'system', content: voiceGuide ? `${base}\n\n${VOICE_START}\n${voiceGuide}` : base });
+    this._antiGuideApplied = antiGuide;
+    const tail = [voiceGuide ? `${VOICE_START}\n${voiceGuide}` : '', antiGuide].filter(Boolean).join('\n\n');
+    this.history.push({ role: 'system', content: tail ? `${base}\n\n${tail}` : base });
   } else if (this.history[0] && this.history[0].role === 'system' && typeof this.history[0].content === 'string') {
     // A grade changes the learned style (the adaptive apply rewrites the
     // guide). The system message lives at history[0] for the whole session,
@@ -24,10 +42,15 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     // apply to THIS turn, and whatever else the system prompt carries
     // (project instructions, permission mode) is left untouched.
     const voiceGuide = readVoice();
-    if (voiceGuide !== this._voiceGuideApplied) {
-      const head = this.history[0].content.split(VOICE_START)[0].replace(/\s+$/, '');
-      this.history[0].content = voiceGuide ? `${head}\n\n${VOICE_START}\n${voiceGuide}` : head;
+    const antiGuide = readAnti();
+    if (voiceGuide !== this._voiceGuideApplied || antiGuide !== this._antiGuideApplied) {
+      // Everything before the voice block, and then before the antislop block:
+      // both are written last, so the head is what came before them.
+      const head = this.history[0].content.split(VOICE_START)[0].split(ANTI_START)[0].replace(/\s+$/, '');
+      const tail = [voiceGuide ? `${VOICE_START}\n${voiceGuide}` : '', antiGuide].filter(Boolean).join('\n\n');
+      this.history[0].content = tail ? `${head}\n\n${tail}` : head;
       this._voiceGuideApplied = voiceGuide;
+      this._antiGuideApplied = antiGuide;
     }
   }
   if (userText !== null) {

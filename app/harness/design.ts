@@ -29,8 +29,16 @@ const GUIDELINES_FILES = ['GUIDELINES.md', 'guidelines.md'];
 const ARTIFACT_KINDS = new Set(['html', 'svg', 'deck', 'markdown', 'react-component', 'mini-app', 'document']);
 const ARTIFACT_RENDERERS = new Set(['html', 'markdown', 'svg', 'iframe-url']);
 const MAX_FILE = 16000;
-const MAX_TOTAL = 32000;
+// The design context is one chunk of the system prompt. It was sized for short
+// registry entries; a full rulebook (antislop's core is ~54k characters) has to
+// fit whole, because a truncated rulebook is a rulebook with holes in it.
+const MAX_TOTAL = 96000;
+// Per-entry cap, by registry kind: a skill can be a whole rulebook, a design
+// system or a template is a token sheet and stays short.
+const MAX_REGISTRY_TEXT_BY_KIND: Record<string, number> = { skills: 64000 };
 const MAX_REGISTRY_TEXT = 12000;
+// The cap that applies to one registry kind.
+function capFor(kind: string): number { return MAX_REGISTRY_TEXT_BY_KIND[kind] || MAX_REGISTRY_TEXT; }
 const PROJECT_FILE_LIMIT = 2000;
 const PROJECT_FILE_IGNORES = new Set(['.git', 'node_modules', '.dart_tool', '.idea', '.vscode', 'build', 'dist', 'coverage', '.cache', '.next', '.turbo']);
 
@@ -151,7 +159,7 @@ function listRegistry(projectDir: string | null, kind: string) {
         winner.shadowedSources.push(root.source);
         continue;
       }
-      const text = safeRead(entryPath, MAX_REGISTRY_TEXT);
+      const text = safeRead(entryPath, capFor(kind));
       if (text === null && kind !== 'craft') continue;
       const { meta } = frontMatter(text || '');
       const id = String(candidate.id).slice(0, 120);
@@ -188,7 +196,7 @@ function readRegistryFile(projectDir: string | null, kind: string, id: string, r
   const fallback = kind === 'craft' ? `${id}.md` : ENTRY_FILE[kind];
   const target = path.resolve(entry.dir, relative || entry.file || fallback);
   if (target !== path.resolve(entry.dir) && !target.startsWith(entry.dir + path.sep)) throw new Error('That registry file is outside the entry folder.');
-  const text = safeRead(target, MAX_REGISTRY_TEXT * 2);
+  const text = safeRead(target, Math.max(MAX_REGISTRY_TEXT * 2, capFor(kind)));
   if (text === null) throw new Error('That registry file could not be read (missing or too large).');
   return { id, kind, source: entry.source, file: path.relative(entry.dir, target).split(path.sep).join('/'), text };
 }
@@ -430,7 +438,7 @@ function designContext(projectDir: string | null): { active: boolean; text: stri
   const activeSkillId = projectJson?.skill_id;
   if (activeSkillId) {
     const entry = skills.find(skill => skill.id === activeSkillId);
-    const text = entry ? safeRead(path.join(entry.dir, ENTRY_FILE.skills), MAX_REGISTRY_TEXT) : null;
+    const text = entry ? safeRead(path.join(entry.dir, ENTRY_FILE.skills), capFor('skills')) : null;
     if (text && total + text.length <= MAX_TOTAL) take(`Active skill (${entry.id} / ${entry.source}):\n${text}`);
   } else if (skills.length) {
     take(`Available skills: ${skills.slice(0, 24).map(skill => skill.id).join(', ')}. Set one with design_configure to load its instructions.`);

@@ -1041,6 +1041,15 @@ async function submit(textOverride) {
     await runResearchBrief(researchCmd[1].trim());
     return true;
   }
+  // /antislop [core|ui|copy|human|mobile|code|all|off] puts the design
+  // rulebook in force for the session (or takes it off again).
+  const antiCmd = /^\/antislop\b\s*(.*)$/i.exec(text);
+  if (antiCmd) {
+    input.value = '';
+    autosize();
+    await applyAntislopRules(antiCmd[1].trim());
+    return true;
+  }
   turnErrorsDisplayed = new Set();
   input.value = '';
   autosize();
@@ -2679,7 +2688,7 @@ $('project-create').addEventListener('submit', async event => {
   } catch (error) { $('project-create-error').textContent = error.message || 'Could not create project'; }
   finally { save.disabled = $('btn-project-create-cancel').disabled = false; save.textContent = 'Create project'; }
 });
-const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Open visual pages', () => openPagesView(), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Research a topic (brief)', () => { closePalette(); input.value = '/research '; input.focus(); autosize(); }, ''], ['Re-index memory for the current embedding model', () => { closePalette(); reindexMemory(); }, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
+const commands = [['New session', newSession, 'Ctrl N'], ['Open settings', openSettings, 'Ctrl ,'], ['Open memory', openMemory, ''], ['Toggle focus mode', toggleFocus, ''], ['Export transcript as Markdown', exportTranscript, 'Ctrl ⇧ E'], ['Focus composer', () => input.focus(), ''], ['Cycle appearance', cycleTheme, ''], ['Appearance: Light', () => setTheme('light'), ''], ['Appearance: Dark', () => setTheme('dark'), ''], ['Appearance: Krishna', () => setTheme('krishna'), ''], ['Toggle right panel', () => setWorkbenchCollapsed(!$('workbench').classList.contains('collapsed')), ''], ['Open activity panel', () => { setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); }, ''], ['Open dashboards', () => openDashboardView(selectedDashboardId), ''], ['Open visual pages', () => openPagesView(), ''], ['Add SQLite data source', addSqliteDataSource, ''], ['Show answer-style profile', showVoiceProfile, ''], ['Learn my style from all local chats', learnMyStyle, ''], ['Recalibrate answer style', recalibrateVoice, ''], ['Reset answer-style profile', resetVoiceProfile, ''], ['Research a topic (brief)', () => { closePalette(); input.value = '/research '; input.focus(); autosize(); }, ''], ['Apply the design rulebook (antislop)', () => { closePalette(); input.value = '/antislop '; input.focus(); autosize(); }, ''], ['Re-index memory for the current embedding model', () => { closePalette(); reindexMemory(); }, ''], ['Show answer feedback', showAnswerFeedback, ''], ['Reset answer feedback', resetAnswerFeedback, '']];
 let paletteReturnFocus = null;
 function closePalette() { $('palette').classList.remove('active'); if (paletteReturnFocus) paletteReturnFocus.focus(); }
 function renderCommands() {
@@ -2721,6 +2730,31 @@ window.addEventListener('keydown', e => {
   if (!dialog && e.shiftKey && e.key.toLowerCase() === 'e') { e.preventDefault(); exportTranscript(); }
 });
 
+
+/* ---------- antislop rules (/antislop [group|off]) ---------- */
+const ANTISLOP_LABELS = {
+  'antislop': 'core filter',
+  'antislop-ui': 'UI / visual',
+  'antislop-copywriting': 'copy & text',
+  'antislop-human': 'people & accessibility',
+  'antislop-layoutmobile': 'layout & mobile',
+  'antislop-code': 'code comments',
+};
+
+async function applyAntislopRules(spec) {
+  if (busy || loadingSession) { addSysNote('Finish the current task before changing the rules.', true); return; }
+  try {
+    const res = await window.muse.antislopApply(spec);
+    if (!res || !res.ok) { addSysNote(`could not change the rules: ${String(res && res.error || 'unknown error')}`, true); return; }
+    const groups = res.groups || [];
+    if (!groups.length) {
+      addSysNote('antislop rules off - the next answer is unfiltered', false, 'mem');
+      return;
+    }
+    const names = groups.map((id) => ANTISLOP_LABELS[id] || id);
+    addSysNote(`antislop rules in force: ${names.join(' + ')} - they apply to everything you produce from here on`, false, 'mem');
+  } catch (e) { reportError(e); }
+}
 
 /* ---------- research orchestrator (/research <topic>) ---------- */
 const RESEARCH_STAGE_TEXT = {

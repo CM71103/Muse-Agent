@@ -51,6 +51,7 @@ A local-first desktop AI agent for understanding projects, working with files, a
 - **Self-healing history:** tool calls interrupted by a crash are repaired before the next request, so long sessions stay protocol-valid.
 - **Honest accounting:** the activity panel reports real provider token usage and tool-error counts per session — estimates are marked, never presented as exact.
 - **Visible delegation:** child-agent completion does not prematurely finish the parent agent's running state.
+- **A design rulebook that ships with it:** the antislop rulebooks (40 rules, a purpose test for every visual decision, a liveliness bar) are bundled, usable in the Design Studio as a skill and in chat with `/antislop`.
 - **Desktop presence:** tray controls and notifications surface work and approval requests.
 - **Update notifications:** Muse checks GitHub Releases and points you to available updates; it does not silently replace the running app.
 
@@ -159,7 +160,7 @@ Roots are scanned **project → personal → bundled**, and the first hit for an
 %MUSE_HOME%\design\            (or ~\.muse-agent\design\ by default)
 ```
 
-Create it once and drop in `design-systems\my-brand\DESIGN.md` to have it offered in every project. Bundled defaults ship with the app: two design systems, three templates, two skills, and two craft rule sets.
+Create it once and drop in `design-systems\my-brand\DESIGN.md` to have it offered in every project. Bundled defaults ship with the app: two design systems, three templates, eight skills (six of them the antislop rulebooks, see below), and two craft rule sets.
 
 ### What the agent can do
 
@@ -185,6 +186,26 @@ Two execution shapes are supported:
 - **Inline artifact** — a runtime that answers with a single `<artifact identifier="page.html" title="…">…</artifact>` block has that block parsed and materialized into the project automatically, with the manifest written for it. Block identifiers are sanitized the same way, so `../` cannot escape the folder.
 
 A project that is also a runnable web app keeps its own framework: **Run project** starts its `dev`/`start`/`serve` script and streams the live server into the canvas instead of a static file.
+
+## The design rulebook that ships with Muse (antislop)
+
+Muse carries the **antislop** rulebooks: the filter that stops generated UI and copy from coming out generic. Forty rules in three tiers, a purpose test for every visual decision (what does this technique serve?), and a liveliness bar, so the result is not just clean but specific. Six rulebooks travel with the app — the core filter, UI/visual, copy & text, people & accessibility (WCAG 2.2), layout & mobile, and code comments.
+
+Two ways to put them to work:
+
+- **In the Design Studio** they are ordinary skills. Choose `antislop` (or `antislop-ui`) as the project's skill and every artifact the agent builds in that project is filtered by those rules.
+- **In chat**, `/antislop` puts a rulebook in force for the session: the rules are written into the session's system message, so everything produced afterwards follows them, and they survive a restart.
+
+```text
+/antislop          the core filter
+/antislop ui       + the UI and visual rules
+/antislop all      every rulebook
+/antislop off      take them off again
+```
+
+The rules are a filter, not a style guide — they never replace a project's own `DESIGN.md`, which is where the direction lives.
+
+Upstream: [anti-slop](https://github.com/miqdadbadjuber/anti-slop) by Miqdad Badjuber (MIT), vendored under `app/design/skills/antislop*/`.
 
 ## Attach PDFs and images (local OCR)
 

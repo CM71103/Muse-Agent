@@ -58,6 +58,8 @@ const api={
   {chartId:'c5',columns:['month','revenue'],rows:[{month:'jan',revenue:120},{month:'feb',revenue:180},{month:'mar',revenue:150}],truncated:false}]})};
 for(const name of ['onAgentEvent','onApprovalRequest','onApprovalResolved','onApprovalExpired','onSessionReset','onQuestion','onLearningStatus'])api[name]=()=>()=>{};
 api.cancel=async()=>({ok:true});
+api.antislopSkills=async()=>({ok:true,skills:[{id:'antislop',title:'core filter',chars:53730,available:true}],active:[]});
+api.antislopApply=async groups=>({ok:true,groups:['antislop','antislop-ui'],chars:84650,skills:[]});
 api.researchBrief=async payload=>{
   const stages=['plan','search','read','draft','critique','revise','done'];
   for(const stage of stages){briefListener({stage,data:{ok:true,count:4,chars:2200,score:8,total:4,read:4,query:'routing memory',found:9}});}
@@ -125,6 +127,13 @@ app.whenReady().then(async()=>{try{
  await pause(250);
  assert.equal(await js("document.getElementById('btn-cancel-turn').textContent.indexOf('Stopping')===-1"),true,'the button is restored when the run ends');
  assert.equal(await js("document.getElementById('btn-cancel-turn').disabled"),false,'the stop button is usable for the next turn');
+ // /antislop puts the rulebook in force for the session
+ await js("input.value='/antislop ui'");
+ await js("submit('/antislop ui')");
+ await pause(400);
+ assert.equal(await js("document.body.textContent.indexOf('antislop rules in force')>=0"),true,'the rules are reported as in force');
+ assert.equal(await js("document.body.textContent.indexOf('UI / visual')>=0"),true,'the active rulebooks are named');
+ await shot('antislop');
  // queue + undo chips (top-level renderer functions) must render with controls
  await js("renderQueueChips([{commandId:'q1',position:1,text:'refactor the parser and update the tests'},{commandId:'q2',position:2,text:'repackage the build'}])");
  await js("addUndoChip({runId:'run-fixture',files:['app/main/index.js','app/renderer/renderer.js']})");

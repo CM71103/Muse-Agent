@@ -199,6 +199,22 @@ class Agent {
 
   get cancelRequested() { return this._cancelRequested; }
 
+  // Put the antislop rulebook in force (or take it off). The selection lives
+  // on the agent; the block itself is written into the system message on the
+  // next run, and it carries the selection, so a restored session keeps it.
+  setAntislop(groups) {
+    this._antislopGroups = Array.isArray(groups) ? groups.slice() : [];
+    return this._antislopGroups;
+  }
+
+  get antislopGroups() {
+    if (Array.isArray(this._antislopGroups)) return this._antislopGroups.slice();
+    try {
+      const anti = require('./antislop');
+      return anti.groupsFromGuide((this.history && this.history[0] && this.history[0].content) || '');
+    } catch { return []; }
+  }
+
   _beginAbort() { this._abort = new AbortController(); return this._abort; }
 
   _endAbort() { this._abort = null; }

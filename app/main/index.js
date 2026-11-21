@@ -1559,6 +1559,25 @@ ipcMain.handle('path:reveal', async (e, target) => {
   } catch (error) { return { ok: false, error: String(error && error.message || error) }; }
 });
 
+// The antislop rulebook Muse carries: what can be switched on, and the
+// switch. The rules live in the system message of the running session, so
+// they apply to every message from here on and survive a restart.
+ipcMain.handle('antislop:skills', async (e) => {
+  requireTrusted(e);
+  const anti = require('../harness/antislop');
+  return { ok: true, skills: anti.listSkills(), active: agent ? agent.antislopGroups : [] };
+});
+ipcMain.handle('antislop:apply', async (e, groups) => {
+  requireTrusted(e);
+  const anti = require('../harness/antislop');
+  if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
+  const chosen = Array.isArray(groups) ? groups : anti.resolveGroups(String(groups || ''));
+  agent.setAntislop(chosen);
+  await agent.persist();
+  const guide = anti.guide(chosen);
+  return { ok: true, groups: chosen, chars: guide.length, skills: anti.listSkills() };
+});
+
 ipcMain.handle('research:status', async (e) => {
   requireTrusted(e);
   const cfg = secureConfig();

@@ -54,6 +54,8 @@ contextBridge.exposeInMainWorld('muse', {
   dashData: (id) => ipcRenderer.invoke('dashboards:data', id),
   dashDelete: (id) => ipcRenderer.invoke('dashboards:delete', id),
   researchStatus: () => ipcRenderer.invoke('research:status'),
+  antislopSkills: () => ipcRenderer.invoke('antislop:skills'),
+  antislopApply: (groups) => ipcRenderer.invoke('antislop:apply', groups),
   researchSave: (patch) => ipcRenderer.invoke('research:save', patch),
   researchBrief: (payload) => ipcRenderer.invoke('research:brief', payload),
   memoryReindex: () => ipcRenderer.invoke('memory:reindex'),
