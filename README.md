@@ -10,6 +10,8 @@ Muse reads your folders, runs commands, builds live dashboards, writes cited res
 
 ![Muse Agent workspace: a menu bar across the top, conversations and projects on the left, a turn with its steps in the middle, and the agent inspector on the right](docs/images/muse-workspace.png)
 
+![Muse Agent in six screens: the welcome screen, a turn with its steps, the approval gate, the menu bar, the Shiva appearance, and a live dashboard](docs/images/demo.gif)
+
 > **What leaves your machine:** the model requests you trigger, and nothing else. A remote provider receives the conversation plus whatever files, tool results and recalled memories the turn needed. Point Muse at a local model server and inference stays on the device too.
 
 ---
