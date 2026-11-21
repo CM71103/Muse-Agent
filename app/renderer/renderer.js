@@ -54,14 +54,14 @@ function reveal(el, fromY) {
   else el.classList.add('reveal-in');
   return el;
 }
-function resetTranscript() { showThinking(false); clearStreamingMessage(); subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; renderEmpty(); }
+function resetTranscript() { closeStepGroup(); showThinking(false); clearStreamingMessage(); subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; renderEmpty(); }
 function renderEmpty() {
   if (projectHomeVisible && activeProjectId) { renderProjectHome(); return; }
   if (transcript.children.length) return;
   const box = document.createElement('section'); box.id = 'empty';
   const hero = buildHeroEmblem();
   attachSparkReplay(hero, false);
-  const eyebrow = document.createElement('div'); eyebrow.className = 'empty-eyebrow'; eyebrow.textContent = 'A little spark. A clear next step.';
+  const eyebrow = document.createElement('div'); eyebrow.className = 'empty-eyebrow'; eyebrow.textContent = 'Muse';
   const title = document.createElement('h1'); title.textContent = 'What are we working on?' ; title.style.whiteSpace = 'pre-line';
   const text = document.createElement('p'); text.textContent = 'Think it through, build something, or pick up where you left off.';
   const starters = document.createElement('div'); starters.className = 'starters';
@@ -70,7 +70,8 @@ function renderEmpty() {
     ['Make a plan', 'Help me turn an idea into a practical implementation plan.', 'Think it through'],
     ['Review my work', 'Help me review a change. Ask which files to inspect first.', 'A fresh perspective']
   ]) {
-    const b = document.createElement('button'); b.className = 'starter'; b.append(document.createTextNode(label));
+    const b = document.createElement('button'); b.className = 'starter';
+    const strong = document.createElement('strong'); strong.textContent = label; b.append(strong);
     const small = document.createElement('span'); small.textContent = hint; b.append(small);
     b.addEventListener('click', () => { if (!busy && !loadingSession) { input.value = task; autosize(); input.focus(); } }); starters.append(b);
   }
@@ -321,6 +322,7 @@ function addMsg(role, text) {
   } else {
     body.textContent = text;
   }
+  closeStepGroup();
   div.append(who, body);
   if (role === 'assistant') div.append(ratingRow());
   transcript.append(div);
@@ -572,7 +574,66 @@ function renderMarkdown(root, text) {
 // Execution cards share the existing call-id map with transcript lifecycle handling.
 const openCards = new Map();
 const activityUI = window.MuseActivity.create({ transcript, openCards, clearEmpty, reveal, scrollDown });
-function addToolRow(event) { activityUI.add(event); }
+/* ---------- the steps of one turn ----------
+ * The tools a turn ran belong together: one block with a count reads as one
+ * piece of work, where one card per tool reads as a pile. The block is
+ * closed when the next message arrives, so each turn keeps its own steps. */
+let stepGroupEl = null;
+let stepCount = 0;
+
+function closeStepGroup() { stepGroupEl = null; stepCount = 0; }
+
+function openStepGroup() {
+  if (stepGroupEl && stepGroupEl.isConnected) return stepGroupEl;
+  const group = document.createElement('div');
+  group.className = 'turn-steps';
+  group.dataset.collapsed = '0';
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'turn-steps-head';
+  head.setAttribute('aria-expanded', 'true');
+  const chevron = document.createElement('span');
+  chevron.className = 'turn-steps-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = '⌄';
+  const label = document.createElement('span');
+  label.className = 'turn-steps-label';
+  label.textContent = 'Worked for 1 step';
+  head.append(chevron, label);
+  const body = document.createElement('div');
+  body.className = 'turn-steps-body';
+  group.append(head, body);
+  head.addEventListener('click', () => {
+    const collapsed = group.dataset.collapsed === '1';
+    group.dataset.collapsed = collapsed ? '0' : '1';
+    head.setAttribute('aria-expanded', String(collapsed));
+  });
+  transcript.append(group);
+  stepGroupEl = group;
+  stepCount = 0;
+  return group;
+}
+
+function addStep(card) {
+  const group = openStepGroup();
+  const body = group.querySelector('.turn-steps-body');
+  if (!body) return;
+  body.append(card);
+  stepCount++;
+  const label = group.querySelector('.turn-steps-label');
+  if (label) label.textContent = `Worked for ${stepCount} step${stepCount === 1 ? '' : 's'}`;
+}
+
+// Run an append and move whatever it added into the current step group.
+function captureStep(add) {
+  const before = transcript.lastElementChild;
+  try { add(); } catch (e) { reportError(e); return; }
+  const after = transcript.lastElementChild;
+  if (!after || after === before) return;
+  if (after.classList.contains('activity-card') || after.classList.contains('subagent-card') || after.classList.contains('tool-row')) addStep(after);
+}
+
+function addToolRow(event) { captureStep(() => activityUI.add(event)); }
 function addDeniedRow(name, reason) { activityUI.denied(name, reason); }
 
 function addSysNote(text, warn, cls) {
@@ -760,8 +821,8 @@ window.muse.onApprovalResolved((result) => {
   composer.style.display = 'flex';
   $('btn-allow').disabled = $('btn-deny').disabled = false;
   addSysNote(result.decision === 'allow'
-    ? 'permission mode changed — request approved by the current policy'
-    : 'permission mode changed — request blocked by the current policy', result.decision === 'deny');
+    ? 'permission mode changed: request approved by the current policy'
+    : 'permission mode changed: request blocked by the current policy', result.decision === 'deny');
   // Resolving approval does not finish the turn; terminal agent events own busy.
 });
 
@@ -771,7 +832,7 @@ window.muse.onApprovalExpired(() => {
   currentApproval = null;
   approvalBox.classList.remove('active');
   composer.style.display = 'flex';
-  addSysNote('approval timed out — request denied automatically', true);
+  addSysNote('approval timed out: request denied automatically', true);
   if (busy) setBusy(false);
 });
 
@@ -824,7 +885,7 @@ async function answerQuestion(answer, cancelled) {
   composer.style.display = 'flex';
   try { await window.muse.answerQuestion(q.id, cancelled ? '' : (answer || ''), !!cancelled); }
   catch (e) { reportError(e); }
-  if (cancelled) addSysNote('question skipped — the agent continues without it');
+  if (cancelled) addSysNote('question skipped: the agent continues without it');
 }
 $('question-answer').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); answerQuestion($('question-answer').value.trim()); }
@@ -875,8 +936,8 @@ async function gradeLatestAnswer(rating) {
     if (!res || !res.ok) { addSysNote(String(res && res.error || 'nothing to grade yet'), true); return; }
     const s = res.summary || {};
     const note = res.policy && res.policy.applied
-      ? `answer ${rating === 1 ? 'liked' : 'disliked'} — answer style adjusted from ${s.liked} liked / ${s.disliked} disliked`
-      : `answer ${rating === 1 ? 'liked' : 'disliked'} (${s.liked} liked · ${s.disliked} disliked) — a few more grades and the style adapts`;
+      ? `answer ${rating === 1 ? 'liked' : 'disliked'}: answer style adjusted from ${s.liked} liked / ${s.disliked} disliked`
+      : `answer ${rating === 1 ? 'liked' : 'disliked'} (${s.liked} liked · ${s.disliked} disliked): a few more grades and the style adapts`;
     addSysNote(note, false, 'mem');
   } catch (e) { reportError(e); }
 }
@@ -945,7 +1006,7 @@ function attachChip(a) {
   const el = document.createElement('div');
   el.className = 'attach-chip';
   el.dataset.kind = a.kind || 'image';
-  el.title = a.error ? `${a.name} — ${a.error}` : `${a.name} — text extracted locally (${a.text_method === 'ocr' ? 'OCR' : 'text layer'})`;
+  el.title = a.error ? `${a.name}: ${a.error}` : `${a.name}: text extracted locally (${a.text_method === 'ocr' ? 'OCR' : 'text layer'})`;
   const icon = document.createElement('span');
   icon.className = 'attach-kind';
   icon.textContent = a.kind === 'pdf' ? 'PDF' : 'IMG';
@@ -973,7 +1034,7 @@ function renderAttachmentStrip() {
   if (pendingAttachments.length && attachModelCaps && !attachModelCaps.vision) {
     const note = document.createElement('span');
     note.className = 'attach-note';
-    note.textContent = `${attachModelCaps.model || 'this model'} cannot see images — text extracted locally is sent instead`;
+    note.textContent = `${attachModelCaps.model || 'this model'} cannot see images: text extracted locally is sent instead`;
     strip.append(note);
   }
 }
@@ -1085,7 +1146,7 @@ async function submit(textOverride) {
         addSysNote(userFacingAgentError(error), true);
       }
     }
-    else if (res.cancelled) addSysNote('task cancelled — partial progress kept');
+    else if (res.cancelled) addSysNote('task cancelled: partial progress kept');
   } catch (e) { reportError(e); }
   finally {
     showThinking(false); setBusy(false);
@@ -1186,7 +1247,7 @@ async function renderDashboardsView() {
   home.id = 'dashboards-home'; home.className = 'dashboards-home';
   const h = document.createElement('h1'); h.textContent = 'Dashboards';
   const hint = document.createElement('p'); hint.className = 'dash-hint';
-  hint.textContent = 'Ask Muse to build one (e.g. “create a dashboard of orders by region”). Each chart is a live SQL query — open a dashboard any time to re-run the numbers.';
+  hint.textContent = 'Ask Muse to build one (e.g. “create a dashboard of orders by region”). Each chart is a live SQL query: open a dashboard any time to re-run the numbers.';
   home.append(h, hint);
   if (!list.length) {
     const n = document.createElement('p'); n.className = 'dash-hint';
@@ -1256,7 +1317,7 @@ async function renderPagesView() {
   home.id = 'pages-home'; home.className = 'dashboards-home';
   const h = document.createElement('h1'); h.textContent = 'Visual pages';
   const hint = document.createElement('p'); hint.className = 'dash-hint';
-  hint.textContent = 'Self-contained HTML pages Muse rendered — diagrams, reviews, recaps. Each lives in its project beside its .src.html source; re-render the source to revise it.';
+  hint.textContent = 'Self-contained HTML pages Muse rendered: diagrams, reviews, recaps. Each lives in its project beside its .src.html source; re-render the source to revise it.';
   home.append(h, hint);
   if (!list.length) {
     const n = document.createElement('p'); n.className = 'dash-hint';
@@ -1343,7 +1404,7 @@ function addDashboardChip(result) {
   btn.className = 'q-btn';
   btn.textContent = 'open';
   btn.addEventListener('click', () => openDashboardView(result.id));
-  el.append(label, btn);
+  el.append(main, btn);
   transcript.append(el);
   reveal(el, 8);
   scrollDown();
@@ -1390,7 +1451,7 @@ async function addSqliteDataSource() {
     const res = await window.muse.datasourcesAddSqlite();
     if (!res || res.cancelled) return;
     if (!res.ok) { addSysNote('data source could not be registered: ' + String(res.error || 'unknown error'), true); return; }
-    addSysNote(`data source registered: ${res.connection.name}${res.healthy ? ' — ready' : ' — warning: ' + String(res.error || 'could not open')}`, !res.healthy, 'mem');
+    addSysNote(`data source registered: ${res.connection.name}${res.healthy ? ' : ready' : ' : warning: ' + String(res.error || 'could not open')}`, !res.healthy, 'mem');
   } catch (e) { reportError(e); }
 }
 
@@ -1456,7 +1517,7 @@ async function learnMyStyle() {
         '',
         likedRules.length
           ? `Your most-liked answers (${res.liked.count} accepted answers compared against the rest):\n\n${likedRules.map(r => '- ' + r).join('\n')}`
-          : (res.liked && res.liked.note ? res.liked.note : 'Your accepted answers look like your usual style — nothing to change yet.'),
+          : (res.liked && res.liked.note ? res.liked.note : 'Your accepted answers look like your usual style: nothing to change yet.'),
         '',
         'Muse now answers in that shape. Grade any answer with the thumbs to sharpen it further.',
       ].join('\n'));
@@ -1476,19 +1537,19 @@ async function showVoiceProfile() {
   try {
     const st = await window.muse.voiceStatus();
     if (!st || !st.calibrated) {
-      addSysNote('no answer-style profile yet — press “Learn my style” in the sidebar to read every local AI chat on this machine', false, 'mem');
+      addSysNote('no answer-style profile yet: press “Learn my style” in the sidebar to read every local AI chat on this machine', false, 'mem');
       return;
     }
     const rules = (st.guide || '').split('\n').filter(l => l.startsWith('- ')).map(l => l.slice(2));
     const liked = st.liked && st.liked.count ? ` · ${st.liked.count} answers you accepted most` : '';
-    addMsg('assistant', `**Answer-style profile** — learned locally from ${st.messages} messages in your previous AI conversations${liked} (style metrics only, no content kept).\n\n${rules.map(r => '- ' + r).join('\n')}`);
+    addMsg('assistant', `**Answer-style profile**: learned locally from ${st.messages} messages in your previous AI conversations${liked} (style metrics only, no content kept).\n\n${rules.map(r => '- ' + r).join('\n')}`);
   } catch (e) { reportError(e); }
 }
 async function recalibrateVoice() {
   try {
     const res = await window.muse.voiceCalibrate();
     addSysNote(res && res.ok
-      ? `answer style relearned from ${res.messages} local messages${res.liked && res.liked.count ? ` — ${res.liked.count} answers you accepted most shaped the rules` : ''}`
+      ? `answer style relearned from ${res.messages} local messages${res.liked && res.liked.count ? `: ${res.liked.count} answers you accepted most shaped the rules` : ''}`
       : `could not learn from local chats: ${String(res && res.error || 'no conversation history found')}`, !(res && res.ok), 'mem');
     await refreshVoiceStatus();
   } catch (e) { reportError(e); }
@@ -1496,8 +1557,8 @@ async function recalibrateVoice() {
 async function showAnswerFeedback() {
   try {
     const s = await window.muse.feedbackSummary();
-    if (!s || !s.total) { addSysNote('no answers graded yet — use 👍 / 👎 under an answer, or /good and /bad', false, 'mem'); return; }
-    const lines = [`**Answer feedback** — ${s.liked} liked · ${s.disliked} disliked`, ''];
+    if (!s || !s.total) { addSysNote('no answers graded yet: use 👍 / 👎 under an answer, or /good and /bad', false, 'mem'); return; }
+    const lines = [`**Answer feedback**: ${s.liked} liked · ${s.disliked} disliked`, ''];
     for (const m of s.markers || []) {
       const t = m.traits || {};
       lines.push(`${m.rating === 1 ? '👍 liked' : '👎 disliked'} · ${t.length}, ${t.shape}, ${t.stance} · ${m.words} words`);
@@ -1508,41 +1569,49 @@ async function showAnswerFeedback() {
 async function resetAnswerFeedback() {
   try {
     await window.muse.feedbackReset();
-    addSysNote('answer feedback cleared — the adaptive style rules were removed', false, 'mem');
+    addSysNote('answer feedback cleared: the adaptive style rules were removed', false, 'mem');
   } catch (e) { reportError(e); }
 }
 async function resetVoiceProfile() {
   try {
     await window.muse.voiceReset();
-    addSysNote('answer-style profile reset — Muse uses its default voice', false, 'mem');
+    addSysNote('answer-style profile reset: Muse uses its default voice', false, 'mem');
   } catch (e) { reportError(e); }
 }
 
 /* ---------- run checkpoint undo chip ---------- */
 function addUndoChip(checkpoint) {
+  // A turn that changed files says so on its own row, with the file names
+  // and one action: a card, not a chat bubble.
   const el = document.createElement('div');
-  el.className = 'sysnote action-chip';
-  const label = document.createElement('span');
-  label.className = 'q-label';
+  el.className = 'files-changed';
+  const main = document.createElement('div');
+  main.className = 'fc-main';
   const n = checkpoint.files.length;
-  label.textContent = `${n} file${n === 1 ? '' : 's'} changed — can be undone (file edits only)`;
+  const title = document.createElement('div');
+  title.className = 'fc-title';
+  title.textContent = `${n} file${n === 1 ? '' : 's'} changed`;
+  const list = document.createElement('div');
+  list.className = 'fc-list';
+  list.textContent = checkpoint.files.slice(0, 3).join(' · ') + (n > 3 ? ` +${n - 3} more` : '');
+  main.append(title, list);
   const btn = document.createElement('button');
-  btn.className = 'q-btn';
-  btn.textContent = 'undo';
+  btn.textContent = 'Undo';
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     try {
       const res = await window.muse.checkpointUndo(checkpoint.runId);
       if (res && res.ok) {
-        label.textContent = `undo: ${res.restored.length} restored${res.skipped.length ? `, ${res.skipped.length} left as is (changed since)` : ''}`;
+        title.textContent = `undo: ${res.restored.length} restored${res.skipped.length ? `, ${res.skipped.length} left as is (changed since)` : ''}`;
+        list.textContent = '';
         btn.remove();
       } else {
-        label.textContent = `undo failed: ${String(res && res.error || 'unknown error')}`;
+        title.textContent = `undo failed: ${String(res && res.error || 'unknown error')}`;
         btn.disabled = false;
       }
     } catch (e) { btn.disabled = false; reportError(e); }
   });
-  el.append(label, btn);
+  el.append(main, btn);
   transcript.append(el);
   reveal(el, 8);
   scrollDown();
@@ -1596,7 +1665,7 @@ function renderSessions() {
   for (const s of list) {
     const li = document.createElement('div'); li.className = 'sess' + (s.id === activeSessionId ? ' active' : '');
     const t = document.createElement('button'); t.className = 't'; t.textContent = s.title || 'Untitled';
-    t.title = `${s.title || 'Untitled'} — ${s.turns || 0} turn(s)`;
+    t.title = `${s.title || 'Untitled'}: ${s.turns || 0} turn(s)`;
     if (s.id === activeSessionId) t.setAttribute('aria-current', 'true');
     t.addEventListener('click', () => { closeMobileHistory(); loadSession(s); });
     const m = document.createElement('span'); m.className = 'when'; m.textContent = relTimeOf(s);
@@ -1682,7 +1751,7 @@ async function refreshStatus() {
     $('pip-mem').classList.toggle('on', on);
     $('pip-mem').title = ms && ms.enabled
       ? `memory ${ms.ready ? 'ready' : 'starting'}${ms.project_id ? ' · project ' + String(ms.project_id).slice(0, 18) : ''}`
-      : 'memory disabled — set [memory] enabled = true in config.toml';
+      : 'memory disabled: set [memory] enabled = true in config.toml';
   } catch { /* renderer survives a missing memory surface */ }
   } catch (e) { $('tag-model').textContent = 'Connection unavailable'; $('tag-model').title = String(e.message || e); }
   try {
@@ -1708,7 +1777,7 @@ $('mode-toggle').addEventListener('click', guarded(async () => {
   const next = MODES[(MODES.indexOf(cur) + 1) % MODES.length];
   const res = await window.muse.setMode(next);
   if (res && res.ok) {
-    if (!busy) addSysNote(`permission mode → ${next}${next === 'plan' ? ' — side effects blocked; ask me to plan instead of act' : next === 'auto' ? ' — all tools and commands run without approval; deny rules still apply' : next === 'accept_edits' ? ' — writes inside the project folder auto-approve' : ' — every side effect asks'}`);
+    if (!busy) addSysNote(`permission mode → ${next}${next === 'plan' ? ' : side effects blocked; ask me to plan instead of act' : next === 'auto' ? ' : all tools and commands run without approval; deny rules still apply' : next === 'accept_edits' ? ' : writes inside the project folder auto-approve' : ' : every side effect asks'}`);
     refreshStatus();
   }
 }));
@@ -1896,7 +1965,7 @@ $('btn-save').addEventListener('click', async () => {
   }
   modelUI.saved(); saveButtonState('saved');
   const emb = res.embed_model ? ` · embed ${res.embed_model}${res.embed_base_url ? ' @ ' + res.embed_base_url : ''}` : '';
-  addSysNote(`settings saved — now using ${res.model}${emb}`);
+  addSysNote(`settings saved: now using ${res.model}${emb}`);
   refreshStatus();
   } catch (e) {
     err.textContent = `Save failed: ${e.message || e}`;
@@ -1921,7 +1990,7 @@ async function openMemory() {
   try {
     const st = await window.muse.memoryStatus();
     sub.textContent = !st.enabled
-      ? 'disabled — enable [memory] in config.toml'
+      ? 'disabled: enable [memory] in config.toml'
       : !st.ready ? `layer not attached: ${st.error || 'unknown error'}`
       : `project ${String(st.project_id).slice(0, 24)} · ${st.evidence_version || 'baseline-v1'} · ${Object.keys(st.health && st.health.memories || {}).length || 0} records`;
     if (st.error) {
@@ -1980,7 +2049,7 @@ async function openMemory() {
     if (!rows.length) {
       const d = document.createElement('div');
       d.className = 'mem-empty';
-      d.textContent = 'nothing stored yet — what you do in sessions lands here as retrievable records.';
+      d.textContent = 'nothing stored yet: what you do in sessions lands here as retrievable records.';
       $('mem-rows').append(d);
       return;
     }
@@ -2044,7 +2113,7 @@ async function openMemory() {
 
 /* ---------- health metrics + policy toggles (memory drawer) ---------- */
 
-function fmtPct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
+function fmtPct(x) { return x == null ? 'not measured' : Math.round(x * 100) + '%'; }
 
 function renderHealth(st) {
   const sub = $('mem-status');
@@ -2059,9 +2128,9 @@ function renderHealth(st) {
     d.append(s, document.createTextNode(' ' + val));
     return d;
   };
-  const util = h.utilization == null ? '—' : fmtPct(h.utilization) + ` (${h.utilization_turns || 0} turns)`;
+  const util = h.utilization == null ? 'not measured' : fmtPct(h.utilization) + ` (${h.utilization_turns || 0} turns)`;
   box.append(line('utilization', util));
-  box.append(line('c_∅ share', h.c_empty_share == null ? '—' : fmtPct(h.c_empty_share) + ` (${h.requests_packed || 0}/${h.requests_total || 0} packed)`));
+  box.append(line('c_∅ share', h.c_empty_share == null ? 'not measured' : fmtPct(h.c_empty_share) + ` (${h.requests_packed || 0}/${h.requests_total || 0} packed)`));
   const cap = h.daily_token_cap == null ? 'off' : String(h.daily_token_cap);
   const today = h.usage_today ? `${h.usage_today.embed_tokens + h.usage_today.llm_tokens}` : '0';
   box.append(line('tokens today', `${today} / ${cap} (embed ${h.usage_today ? h.usage_today.embed_tokens : 0}, llm ${h.usage_today ? h.usage_today.llm_tokens : 0})`));
@@ -2122,7 +2191,7 @@ function renderFlagToggles(st) {
     b.title = 'Flag change starts a new evidence version; disabling restores baseline serving (nothing deleted).';
     b.addEventListener('click', async () => {
       const r = await window.muse.memoryFlags({ [k]: !flags[k] });
-      if (r.ok) { addSysNote(`memory: ${disp} ${!flags[k] ? 'enabled' : 'disabled'} — evidence version ${r.evidence_version}`, false, 'mem'); openMemory(); }
+      if (r.ok) { addSysNote(`memory: ${disp} ${!flags[k] ? 'enabled' : 'disabled'}: evidence version ${r.evidence_version}`, false, 'mem'); openMemory(); }
       else sub.textContent = r.error || 'flag change refused';
     });
     row.append(b);
@@ -2192,7 +2261,7 @@ function wbUpdateDetails() {
   $('wb-tools').textContent = String(wbCounters.tools);
   $('wb-tokens').textContent = sessionUsage.total_tokens
     ? (sessionUsage.approximate ? '≈' : '') + fmtTok(sessionUsage.prompt_tokens) + ' in · ' + fmtTok(sessionUsage.completion_tokens) + ' out'
-    : '—';
+    : 'not measured';
   $('wb-errors').textContent = String(sessionToolErrors);
   $('wb-session').textContent = activeSessionId ? (crumbTitle || t('wb.savedSession', 'Saved session')) : t('wb.new', 'New');
   updateFeedbackRow();
@@ -2205,9 +2274,9 @@ async function updateFeedbackRow() {
   if (!el) return;
   try {
     const s = await window.muse.feedbackSummary();
-    el.textContent = s && s.total ? `${s.liked} liked · ${s.disliked} disliked` : '—';
+    el.textContent = s && s.total ? `${s.liked} liked · ${s.disliked} disliked` : 'not set';
     if (s && s.total) el.title = 'Grades recorded for the adaptive answer style';
-  } catch { el.textContent = '—'; }
+  } catch { el.textContent = 'not set'; }
 }
 for (const name of ['activity', 'memory', 'details']) {
   $('wb-tab-' + name).addEventListener('click', () => {
@@ -2365,14 +2434,14 @@ function openModelPop() {
   if (!modelPop || !modelPop.hidden) return;
   const cfg = statusCache || {};
   const llm = cfg.llm || {};
-  const pop = (v) => (v == null || v === '' ? '—' : String(v));
+  const pop = (v) => (v == null || v === '' ? 'not set' : String(v));
   const mpModel = $('mp-model'); if (mpModel) mpModel.textContent = pop(llm.model);
   const mpUrl = $('mp-url'); if (mpUrl) mpUrl.textContent = pop(llm.base_url);
   const mpKey = $('mp-key'); if (mpKey) mpKey.textContent = llm.has_key ? 'configured' : 'missing';
-  const mpSent = $('mp-sentinel'); if (mpSent) mpSent.textContent = cfg.sentinel ? pop(cfg.sentinel.mode) : '—';
+  const mpSent = $('mp-sentinel'); if (mpSent) mpSent.textContent = cfg.sentinel ? pop(cfg.sentinel.mode) : 'not set';
   const mpMem = $('mp-mem'); if (mpMem) mpMem.textContent = statusMem
     ? (statusMem.enabled ? (statusMem.ready ? 'ready' + (statusMem.project_id ? ' · ' + String(statusMem.project_id).slice(0, 10) : '') : 'starting') : 'disabled')
-    : '—';
+    : 'not set';
   const anchor = $('tag-model');
   if (anchor && typeof anchor.getBoundingClientRect === 'function') {
     const r = anchor.getBoundingClientRect();
@@ -2388,7 +2457,7 @@ const tm = $('tag-model');
 if (tm) tm.addEventListener('click', () => { modelPop && modelPop.hidden ? openModelPop() : closeModelPop(); });
 
 /* ---------- tooltips: enrich actionable chrome with data-tip ---------- */
-const TIPS = [['btn-project', 'Attach a working folder — reads inside it are automatic'], ['btn-leave-project', 'Detach the current project folder'], ['btn-workbench-toggle', 'Show or hide the right panel'], ['btn-focus', 'Distraction-free conversation view'], ['btn-export', 'Save the transcript as Markdown'], ['btn-command', 'Command palette — every action, one query'], ['btn-memory', 'Memory scopes, evidence and health'], ['btn-settings', 'Connection, workspace and shortcuts'], ['mode-toggle', 'Permission mode: ask → accept-edits → plan → auto'], ['btn-new', 'Start a fresh conversation'], ['send', 'Send message'], ['wb-close', 'Collapse the right panel']];
+const TIPS = [['btn-project', 'Attach a working folder: reads inside it are automatic'], ['btn-leave-project', 'Detach the current project folder'], ['btn-workbench-toggle', 'Show or hide the right panel'], ['btn-focus', 'Distraction-free conversation view'], ['btn-export', 'Save the transcript as Markdown'], ['btn-command', 'Command palette: every action, one query'], ['btn-memory', 'Memory scopes, evidence and health'], ['btn-settings', 'Connection, workspace and shortcuts'], ['mode-toggle', 'Permission mode: ask → accept-edits → plan → auto'], ['btn-new', 'Start a fresh conversation'], ['send', 'Send message'], ['wb-close', 'Collapse the right panel']];
 for (const [id, tip] of TIPS) { const el = document.getElementById(id); if (el) el.setAttribute('data-tip', tip); }
 
 $('wb-open-mem').addEventListener('click', openMemory);
@@ -2398,8 +2467,8 @@ async function refreshWorkbenchMemory() {
     const on = !!(st && st.enabled);
     $('wb-mem').textContent = on ? (st.ready ? 'Ready' : 'Starting') : 'Disabled';
     $('wb-memstat').textContent = on ? (st.ready ? 'Ready' : 'Starting') : 'Disabled';
-    $('wb-memcount').textContent = st && st.health && st.health.memories ? String(Object.keys(st.health.memories).length) : '—';
-  } catch { $('wb-mem').textContent = '—'; }
+    $('wb-memcount').textContent = st && st.health && st.health.memories ? String(Object.keys(st.health.memories).length) : 'not set';
+  } catch { $('wb-mem').textContent = 'not set'; }
 }
 /* ---------- appearance (persisted beside the config, never web storage) ---------- */
 const THEMES = ['light', 'dark', 'krishna'];
@@ -2485,7 +2554,7 @@ async function pickProject() {
   if (!res || (!res.ok && res.error !== 'cancelled')) { addSysNote(`project: ${res && res.error || 'could not set folder'}`, true); return; }
   if (res.ok) {
     wbEvent('project: ' + (res.project || 'none'));
-    addSysNote(`project set: ${res.project} — reads inside it are automatic`);
+    addSysNote(`project set: ${res.project}: reads inside it are automatic`);
   }
   refreshProject();
 }
@@ -2500,7 +2569,7 @@ async function leaveProject() {
     if (!res || !res.ok) throw new Error(res && res.error || 'Could not leave project');
     await newSession();
     await refreshProject();
-    wbEvent('normal chat — no project selected');
+    wbEvent('normal chat: no project selected');
   } catch (e) { reportError(e); }
 }
 $('btn-leave-project').addEventListener('click', leaveProject);
@@ -3275,7 +3344,7 @@ async function renderMcpList() {
     row.style.cssText = 'align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap';
     const left = document.createElement('span');
     left.style.cssText = 'font-weight:600;font-size:13px';
-    left.textContent = `${s.name}${s.enabled ? '' : ' (disabled)'} — ${s.command} ${s.args.join(' ')}`.trim();
+    left.textContent = `${s.name}${s.enabled ? '' : ' (disabled)'}: ${s.command} ${s.args.join(' ')}`.trim();
     const st = document.createElement('span');
     st.style.cssText = 'color:var(--color-muted-fg);font-size:12px';
     st.textContent = s.enabled ? (s.running ? `connected · ${s.tools} tools` : 'not connected (starts next turn/restart)') : 'off';
@@ -3334,7 +3403,7 @@ $('btn-mcp-save').addEventListener('click', async () => {
       enabled: true,
     });
     if (!r.ok) { err.textContent = r.error; return; }
-    addSysNote(`mcp: ${$('f-mcp-name').value.trim()} saved — reconnecting`);
+    addSysNote(`mcp: ${$('f-mcp-name').value.trim()} saved: reconnecting`);
     renderMcpList();
   } catch (e) { err.textContent = `Save failed: ${e.message || e}`; }
   finally { btn.disabled = false; }

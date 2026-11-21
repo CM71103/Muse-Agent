@@ -106,7 +106,8 @@ app.whenReady().then(async()=>{try{
  await js("document.querySelector('.project-tree-toggle')?.click()");await shot('sidebar-projects');
  assert.equal(await js("document.querySelectorAll('.msg').length>=2"),true,'transcript should hold both turns');
  assert.equal(await js("document.querySelectorAll('.activity-card').length>=1"),true,'tool card should render');
- await js("setTheme('light')");await shot('conversation-light');
+ await js("setTheme('light')");await pause(700);
+ await shot('conversation-light');
  await js("setTheme('dark')");
  win.setContentSize(420,780);await pause(250);await shot('narrow');
  win.setContentSize(1280,860);await pause(250);
@@ -127,6 +128,22 @@ app.whenReady().then(async()=>{try{
  await pause(250);
  assert.equal(await js("document.getElementById('btn-cancel-turn').textContent.indexOf('Stopping')===-1"),true,'the button is restored when the run ends');
  assert.equal(await js("document.getElementById('btn-cancel-turn').disabled"),false,'the stop button is usable for the next turn');
+ // the steps of one turn belong together: one block with a count
+ await js("addToolRow({id:'t2',name:'read_file',args:{path:'README.md'}})");
+ await pause(200);
+ await js("addToolRow({id:'t3',name:'list_dir',args:{path:'app'}})");
+ await pause(200);
+ assert.equal(await js("document.querySelectorAll('.turn-steps').length>=2"),true,'each turn keeps its own step block');
+ assert.equal(await js("[...document.querySelectorAll('.turn-steps')].pop().querySelectorAll('.activity-card').length===2"),true,'the steps of one turn share one block');
+ assert.equal(await js("([...document.querySelectorAll('.turn-steps-label')].pop().textContent||'').indexOf('2 steps')>=0"),true,'the block counts the steps');
+ // the files-changed card
+ await js("addUndoChip({runId:'run-1',files:['app/harness/agent.js','app/renderer/renderer.js']})");
+ await pause(200);
+ assert.equal(await js("document.querySelectorAll('.files-changed').length===1"),true,'the changed files get their own card');
+ assert.equal(await js("(document.querySelector('.files-changed .fc-title')?.textContent||'').indexOf('2 files changed')>=0"),true,'the card names the count');
+ assert.equal(await js("(document.querySelector('.files-changed .fc-list')?.textContent||'').indexOf('agent.js')>=0"),true,'the card names the files');
+ await js("document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");
+ await pause(250);await shot('turn-steps');
  // /antislop puts the rulebook in force for the session
  await js("input.value='/antislop ui'");
  await js("submit('/antislop ui')");
@@ -176,7 +193,7 @@ app.whenReady().then(async()=>{try{
  assert.equal(await js("!!document.querySelector('.msg-rate .rate-btn svg')"),true,'rating control uses line icons');
  await js("(()=>{const r=document.querySelector('.msg-rate');r.dataset.rated='1';r.querySelector('.rate-state').textContent='Liked';r.querySelectorAll('.rate-btn')[0].setAttribute('aria-pressed','true');r.style.opacity=1;})()");
  await pause(200);await shot('rating-graded');
- await js("setTheme('light')");await pause(400);
+ await js("setTheme('light')");await pause(700);
  await js("(()=>{const r=document.querySelector('.msg-rate');r.style.opacity=1;})()");
  await pause(200);await shot('rating-light');
  await js("setTheme('dark')");await pause(300);

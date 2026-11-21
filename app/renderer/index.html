@@ -889,7 +889,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   #splash .s-fx{ display:none; }
   #splash .s-logo{ opacity:1; }
 }
-</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"><link rel="stylesheet" href="clean-ui.css"></head><body data-theme="dark">
+</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"><link rel="stylesheet" href="clean-ui.css"><link rel="stylesheet" href="workbench.css"></head><body data-theme="dark">
 
 <div id="bg-shader" aria-hidden="true"></div>
 
@@ -1001,7 +1001,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <button id="nav-projects" aria-pressed="false" data-nav="projects" data-tip="Project spaces · Alt 2">Projects</button>
       <button id="nav-activity" aria-pressed="false" data-nav="activity" aria-controls="workbench" data-tip="Live agent activity · Alt 3">Activity</button>
       <button id="nav-memory" aria-pressed="false" data-nav="memory" data-tip="Memory scopes · Alt 4">Memory</button>
-      <button id="nav-dashboards" aria-pressed="false" data-nav="dashboards" data-tip="Live dashboards · ask Muse to build one">Dashboards</button>
+      <button id="nav-dashboards" aria-pressed="false" data-nav="dashboards" data-tip="Live dashboards · ask Muse to build one">Boards</button>
       <button id="nav-pages" aria-pressed="false" data-nav="pages" data-tip="Visual pages rendered by Muse">Pages</button>
     </div>
     <div class="navbar-side right">
@@ -1019,11 +1019,11 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   </nav>
   <div id="model-pop" hidden role="dialog" aria-label="Model details">
     <h4>Model context</h4>
-    <div class="row"><span>Model</span><b id="mp-model">—</b></div>
-    <div class="row"><span>Endpoint</span><b id="mp-url">—</b></div>
-    <div class="row"><span>API key</span><b id="mp-key">—</b></div>
-    <div class="row"><span>Safety mode</span><b id="mp-sentinel">—</b></div>
-    <div class="row"><span>Memory</span><b id="mp-mem">—</b></div>
+    <div class="row"><span>Model</span><b id="mp-model">Not set</b></div>
+    <div class="row"><span>Endpoint</span><b id="mp-url">Not set</b></div>
+    <div class="row"><span>API key</span><b id="mp-key">Not set</b></div>
+    <div class="row"><span>Safety mode</span><b id="mp-sentinel">Not set</b></div>
+    <div class="row"><span>Memory</span><b id="mp-mem">Not set</b></div>
   </div>
   <div class="navbar-panel">
   <div id="mainlog"><div id="transcript" role="log" aria-label="Conversation" aria-live="polite"></div></div>
@@ -1083,14 +1083,14 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
         <div class="wb-heat-legend"><i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><span>less → more</span></div>
       </div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.status">Status</div><div id="wb-status" class="wb-v" data-i18n="wb.idle">Idle</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.model">Model</div><div id="wb-model" class="wb-v">—</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.safetyMode">Safety mode</div><div id="wb-sentinel" class="wb-v">—</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="pips.memory">Memory</div><div id="wb-mem" class="wb-v">—</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.model">Model</div><div id="wb-model" class="wb-v">Not set</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.safetyMode">Safety mode</div><div id="wb-sentinel" class="wb-v">Not set</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="pips.memory">Memory</div><div id="wb-mem" class="wb-v">Not set</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.activity">Activity</div><div id="wb-log" class="wb-log" aria-live="polite"></div></div>
     </section>
     <section id="wb-panel-memory" role="tabpanel" aria-labelledby="wb-tab-memory" hidden>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.memLayer">Memory layer</div><div id="wb-memstat" class="wb-v">—</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.memRecords">Records in scope</div><div id="wb-memcount" class="wb-v">—</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.memLayer">Memory layer</div><div id="wb-memstat" class="wb-v">Not set</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.memRecords">Records in scope</div><div id="wb-memcount" class="wb-v">Not set</div></div>
       <p class="wb-hint" data-i18n="wb.memHint">Open the full Memory drawer for records, quarantine review, export and policy flags.</p>
       <button id="wb-open-mem" class="wb-btn" data-i18n="wb.openMemDrawer">Open Memory drawer</button>
     </section>
@@ -1098,8 +1098,8 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <div class="wb-section"><div class="wb-k" data-i18n="wb.session">Session</div><div id="wb-session" class="wb-v" data-i18n="wb.new">New</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.messages">Messages</div><div id="wb-msgs" class="wb-v">0</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.toolCalls">Tool calls</div><div id="wb-tools" class="wb-v">0</div></div>
-      <div class="wb-section"><div class="wb-k">Tokens</div><div id="wb-tokens" class="wb-v">—</div></div>
-      <div class="wb-section"><div class="wb-k">Answer feedback</div><div id="wb-feedback" class="wb-v">—</div></div>
+      <div class="wb-section"><div class="wb-k">Tokens</div><div id="wb-tokens" class="wb-v">Not set</div></div>
+      <div class="wb-section"><div class="wb-k">Answer feedback</div><div id="wb-feedback" class="wb-v">Not set</div></div>
       <div class="wb-section"><div class="wb-k">Tool errors</div><div id="wb-errors" class="wb-v">0</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.shortcuts">Shortcuts</div>
         <div class="shortcut"><span data-i18n="wb.scCommands">Commands</span><kbd>Ctrl K</kbd></div>
@@ -1174,12 +1174,12 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
           <div class="field">
             <label for="f-embed-base" data-i18n="settings.embedUrl">Embeddings URL</label>
             <input id="f-embed-base" data-i18n-placeholder="settings.embedUrlPlaceholder" placeholder="same as chat base URL" spellcheck="false">
-            <div class="hint" data-i18n="settings.embedUrlHint">e.g. https://api.openai.com/v1 — leave empty to reuse the chat endpoint.</div>
+            <div class="hint" data-i18n="settings.embedUrlHint">e.g. https://api.openai.com/v1: leave empty to reuse the chat endpoint.</div>
           </div>
           <div class="field">
             <label for="f-embed-model" data-i18n="settings.embedModel">Embedding model</label>
             <input id="f-embed-model" data-i18n-placeholder="settings.embedModelPlaceholder" placeholder="text-embedding-3-small" spellcheck="false">
-            <div class="hint" data-i18n="settings.embedModelHint">Pick an embedding model your provider actually serves — not every endpoint lists them.</div>
+            <div class="hint" data-i18n="settings.embedModelHint">Pick an embedding model your provider actually serves: not every endpoint lists them.</div>
           </div>
           <div class="field">
             <label for="f-embed-key" data-i18n="settings.embedKey">Embeddings API key</label>
@@ -1253,7 +1253,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
           <div class="field">
             <label for="f-mcp-name">Server name</label>
             <input id="f-mcp-name" placeholder="docs" spellcheck="false" maxlength="32">
-            <div class="hint">letters / digits / . - _ — also the tool prefix: mcp__&lt;name&gt;__&lt;tool&gt;</div>
+            <div class="hint">letters / digits / . - _: also the tool prefix: mcp__&lt;name&gt;__&lt;tool&gt;</div>
           </div>
           <div class="field">
             <label for="f-mcp-command">Command</label>

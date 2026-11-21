@@ -73,7 +73,17 @@ function create(hooks: Hooks) {
       }
       const info = describe(event.name, event.args || {});
       const row = node('div', 'tool-row activity-card');
-      const details = document.createElement('details'); details.open = !event.restored;
+      const details = document.createElement('details');
+      // A running step shows its output; a finished one folds away to a line.
+      // The user's own choice is remembered, so a step somebody opened stays
+      // open.
+      details.open = !event.restored;
+      let touched = false;
+      details.addEventListener('toggle', () => {
+        if (details.dataset.userToggled) return;
+        if (row.getAttribute('data-state') === 'running') return;
+        touched = true;
+      });
       const summary = document.createElement('summary');
       const head = node('div', 'tr-head');
       const title = node('div', 'activity-title'); title.append(node('strong', 'tname', info.title), node('span', 'activity-tool-name', `${info.category} · ${event.name}`));
@@ -96,7 +106,11 @@ function create(hooks: Hooks) {
         status.textContent = failed ? 'Failed' : event.restored ? 'Restored' : 'Completed';
         duration.textContent = event.restored ? '' : ((Date.now() - started) / 1000).toFixed(1) + 's';
         output.replaceChildren(section('Output', outputOf(resultEvent.result)));
-        // Preserve the user's expanded/collapsed choice when the result arrives.
+        // Preserve the user's expanded/collapsed choice when the result
+        // arrives: a step nobody touched folds itself away, so the turn
+        // reads as a short list of what happened rather than a stack of
+        // open cards.
+        if (!touched) details.open = false;
         hooks.scrollDown();
       };
       if (event.result !== undefined) finish(event);
