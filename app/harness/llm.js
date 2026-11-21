@@ -179,7 +179,7 @@ class LlmClient {
       // mid-word). Transient → chat() retries; chat() keeps the partial only
       // after the last attempt so nothing is lost to permanently quiet relays.
       if (!choice.finish_reason && opts.onDelta) {
-        const err = new Error(`The model stream was cut off mid-reply (model: ${this.cfg.model}) — ${String(msg.content || '').length} chars received.`);
+        const err = new Error(`The model stream was cut off mid-reply (model: ${this.cfg.model}): ${String(msg.content || '').length} chars received.`);
         err.code = 'STREAM_TRUNCATED';
         err.transient = true;
         err.partial = { message: msg, usage: data.usage || { total_tokens: 0 }, truncated: true };

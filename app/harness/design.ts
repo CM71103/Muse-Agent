@@ -454,7 +454,7 @@ function designContext(projectDir: string | null): { active: boolean; text: stri
   }
 
   if (templates.length) {
-    take(`Design templates available: ${templates.slice(0, 24).map(template => `${template.id}${template.description ? ` — ${template.description}` : ''}${template.guidelinesFile ? ' (has guidelines)' : ''}`).join(' | ')}. Apply one with design_scaffold before building when the request matches a template.`);
+    take(`Design templates available: ${templates.slice(0, 24).map(template => `${template.id}${template.description ? `: ${template.description}` : ''}${template.guidelinesFile ? ' (has guidelines)' : ''}`).join(' | ')}. Apply one with design_scaffold before building when the request matches a template.`);
   }
 
   // Template spec: the guidelines of the template in use are a context file,
@@ -466,7 +466,7 @@ function designContext(projectDir: string | null): { active: boolean; text: stri
     ? safeRead(path.join(activeTemplate.dir, activeTemplate.guidelinesFile), MAX_REGISTRY_TEXT)
     : safeRead(path.join(projectDir, 'GUIDELINES.md'), MAX_REGISTRY_TEXT);
   if (guidelinesText && total + guidelinesText.length <= MAX_TOTAL) {
-    take(`Template guidelines${activeTemplate ? ` (${activeTemplate.id})` : ''} — these override your own defaults for this project:\n${guidelinesText}`);
+    take(`Template guidelines${activeTemplate ? ` (${activeTemplate.id})`: ''}: these override your own defaults for this project:\n${guidelinesText}`);
   }
 
   parts.push(artifactContract());

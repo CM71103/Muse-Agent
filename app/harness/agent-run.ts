@@ -101,7 +101,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
       } else if (!reason) this._lastEmbedNotice = null;
     } catch (error) {
       memoryContext = null;
-      this.events({ type: 'error', text: `memory: requestContext failed — proceeding without memory (${(error as Error).message})` });
+      this.events({ type: 'error', text: `memory: requestContext failed: proceeding without memory (${(error as Error).message})` });
     }
   }
   const restoreMemory = () => {
@@ -136,7 +136,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
           const message = String((error as Error).message || error);
           if (!/MEMORY_REPACK_REQUIRED|retry turn to repack/.test(message) || repack >= 2
               || this._cancelRequested || !this.memory || userText === null) throw error;
-          this.events({ type: 'info', text: 'memory: context changed before send — repacking and retrying' });
+          this.events({ type: 'info', text: 'memory: context changed before send: repacking and retrying' });
           if (memoryContext?.turn_id) {
             try { this.memory.failTurn(memoryContext.turn_id, 'unknown', 'memory_repack_required'); } catch { /* stale turn cleanup is best-effort */ }
           }
@@ -181,7 +181,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
           // name:'synthetic' marks live-loop scaffolding; agent.restore() drops
           // these so a restored session never shows them as real user turns.
           this.history.push({ role: 'user', name: 'synthetic', content: 'Continue exactly where you stopped. Do not repeat any part of your previous output, do not restate the task, just continue the code/text seamlessly from the exact cut point.' });
-          this.events({ type: 'info', text: `output hit the token limit — continuing (${continuations}/5)` });
+          this.events({ type: 'info', text: `output hit the token limit: continuing (${continuations}/5)` });
           response = await send();
           const next = canonOf(response);
           if (!next.text) break;

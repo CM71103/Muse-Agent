@@ -9,4 +9,4 @@ files: index.html
 
 Sections, in order: header with one nav and the primary CTA · hero (headline ≤ 8 words, one supporting sentence, one CTA, one visual) · three proof points · feature detail with real copy · pricing tiers · FAQ as `details/summary` · footer.
 
-Keep the copy honest and specific — no invented customer counts or awards. Replace every bracketed placeholder before finishing.
+Keep the copy honest and specific: no invented customer counts or awards. Replace every bracketed placeholder before finishing.

@@ -203,7 +203,7 @@ class Sentinel {
       : isCritique
         ? 'critique spends a review model call under your key'
         : isMcp
-        ? 'MCP tool requires approval (dynamic server tool — conservative default)'
+        ? 'MCP tool requires approval (dynamic server tool: conservative default)'
         : 'subagent spawn consumes LLM turns under your key; child tool calls gate separately';
     if (this.mode === 'plan') {
       // Plan mode: read-only. Every side effect denied outright (no prompt).

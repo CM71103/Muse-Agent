@@ -119,7 +119,7 @@ class MemoryLayer {
       return explicitId;
     }
     if (strategy !== 'auto') {
-      throw new Error('memory: project_id_strategy=manual requires explicit projectId — ' +
+      throw new Error('memory: project_id_strategy=manual requires explicit projectId: ' +
         'surface the selection prompt, never fall back silently (spec §3).');
     }
     if (cwd === null) return null; // desktop: no selected folder, no implicit app scope

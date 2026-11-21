@@ -27,12 +27,12 @@ function mkSubagentTool(opts = {}) {
       'Run a focused subtask in a fresh child agent loop with its own context window. ' +
       'Use for parallelizable/independent subtasks (research, file surveys, multi-file analysis) ' +
       'to keep your own context small. The child returns a final summary text to you. ' +
-      'The child shares your tools, project folder, and approval gates — side-effect tools ' +
+      'The child shares your tools, project folder, and approval gates: side-effect tools ' +
       'follow the active permission mode and run without approval in Auto. Cannot be nested (child cannot spawn children).',
     parameters: {
       type: 'object',
       properties: {
-        task: { type: 'string', description: 'Complete, self-contained instructions for the child agent. The child sees ONLY this text — include all paths/context it needs.' },
+        task: { type: 'string', description: 'Complete, self-contained instructions for the child agent. The child sees ONLY this text: include all paths/context it needs.' },
         max_turns: { type: 'number', description: `Optional child turn budget, default 12, cap ${opts.maxTurnsCap || 24}` },
       },
       required: ['task'],

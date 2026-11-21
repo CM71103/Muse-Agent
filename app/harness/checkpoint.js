@@ -93,8 +93,8 @@ function undo(runId) {
     let cur = null;
     try { cur = hashOf(fs.readFileSync(e.path)); } catch { /* currently missing */ }
     const untouched = e.afterHash === null ? cur === null : cur === e.afterHash;
-    if (!untouched) { skipped.push({ path: e.path, reason: 'modified after the run — left as is' }); continue; }
-    if (e.skipped) { skipped.push({ path: e.path, reason: 'too large to snapshot — left as is' }); continue; }
+    if (!untouched) { skipped.push({ path: e.path, reason: 'modified after the run: left as is' }); continue; }
+    if (e.skipped) { skipped.push({ path: e.path, reason: 'too large to snapshot: left as is' }); continue; }
     if (!e.existed) {
       if (cur !== null) { fs.unlinkSync(e.path); restored.push({ path: e.path, action: 'deleted (created by the run)' }); }
       continue;

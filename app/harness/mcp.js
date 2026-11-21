@@ -217,9 +217,9 @@ async function startMcpServers(cfg, log = () => {}) {
   const names = mcp.servers.slice(0, SERVERS_CAP);
   const servers = (mcp.server || {});
   for (const name of names) {
-    if (registry._external.has(name)) { log(`mcp server "${name}" is reserved by a connected integration — skipped`); continue; }
+    if (registry._external.has(name)) { log(`mcp server "${name}" is reserved by a connected integration: skipped`); continue; }
     const scfg = servers[name];
-    if (!scfg || !scfg.command) { log(`mcp server "${name}" missing [mcp.server.${name}] command — skipped`); continue; }
+    if (!scfg || !scfg.command) { log(`mcp server "${name}" missing [mcp.server.${name}] command: skipped`); continue; }
     const client = new McpStdioClient(name, scfg);
     try {
       await client.initialize();

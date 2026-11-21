@@ -127,7 +127,7 @@ function create(hooks: Hooks) {
       const info = describe(name); const row = node('div','tool-row activity-card denied');row.setAttribute('data-state','denied');
       const header = node('div','tr-head'); const title=node('div','activity-title');title.append(node('strong','tname',info.title),node('span','activity-tool-name',name));
       header.append(node('span','activity-icon','◇'),title,node('span','activity-state','Denied'));
-      row.append(header,node('p','activity-denial',`Request denied — ${reason || 'Permission was not granted.'}`));
+      row.append(header,node('p','activity-denial',`Request denied: ${reason || 'Permission was not granted.'}`));
       hooks.transcript.append(row);hooks.reveal(row,8);hooks.scrollDown();
     },
   };

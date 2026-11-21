@@ -135,7 +135,7 @@ function withConnection(args, fn) {
   const id = args && typeof args.connection === 'string' ? args.connection : '';
   if (!id) return fail('bad_args', 'connection id is required (from list_data_sources)');
   const conn = getConnection(id);
-  if (!conn) return fail('connection_not_found', `no data source with id "${id}" — ids come from list_data_sources`);
+  if (!conn) return fail('connection_not_found', `no data source with id "${id}": ids come from list_data_sources`);
   try { return fn(conn); }
   catch (e) { return fail(e.code || 'query_failed', e.message); }
 }
@@ -155,7 +155,7 @@ function dataTools() {
           id: c.id, name: c.name, type: c.type,
           detail: c.type === 'sqlite' ? (c.config && c.config.file) || '' : '',
         }));
-        return { ok: true, connections, ...(connections.length ? {} : { note: 'no data sources registered yet — the user can add one from the command palette' }) };
+        return { ok: true, connections, ...(connections.length ? {} : { note: 'no data sources registered yet: the user can add one from the command palette' }) };
       },
     },
     {

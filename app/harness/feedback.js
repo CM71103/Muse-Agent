@@ -114,7 +114,7 @@ function favoured(markers, pick) {
 
 const RULES = {
   length: {
-    short: 'Short replies: keep answers tight — a few sentences unless asked for detail.',
+    short: 'Short replies: keep answers tight: a few sentences unless asked for detail.',
     medium: 'Moderate replies: a few short paragraphs, nothing padded.',
     long: 'Thorough replies: structure them with headings and details.',
   },
@@ -122,7 +122,7 @@ const RULES = {
     list: 'Prefer bullet lists when there are three or more items.',
     prose: 'Plain prose reads better for this user than lists.',
     headed: 'Use short headings to structure longer answers.',
-    code: 'Show the code prominently — the code is the answer.',
+    code: 'Show the code prominently: the code is the answer.',
   },
   stance: {
     direct: 'Answer directly: recommendation first, caveats only when they matter.',
@@ -130,7 +130,7 @@ const RULES = {
   },
   closer: {
     recap: 'Close with a one-line recap or the concrete next step.',
-    'no-recap': 'Do not add a recap or a closing pleasantry — end with the answer.',
+    'no-recap': 'Do not add a recap or a closing pleasantry: end with the answer.',
   },
   emoji: {
     emoji: 'An occasional emoji is welcome.',

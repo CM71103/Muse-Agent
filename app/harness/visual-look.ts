@@ -17,7 +17,7 @@ const NONE = { skipped: '', problems: [], sheets: [], errors: [], widths: {} };
 
 async function lookAt(file) {
   if (!service) {
-    return { ...NONE, skipped: 'no capture host in this runtime (headless run) — the page was rendered but not visually checked. Open it in a browser yourself.' };
+    return { ...NONE, skipped: 'no capture host in this runtime (headless run): the page was rendered but not visually checked. Open it in a browser yourself.' };
   }
   try {
     return await service.lookAt(String(file));

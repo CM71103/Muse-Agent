@@ -139,7 +139,7 @@ async function fetchJson(url, { ctx, cfg }) {
         }
         if (retry.status !== 429) return { ok: false, error: `upstream returned HTTP ${retry.status}`, code: 'UPSTREAM' };
       }
-      return { ok: false, error: 'the scholarly index rate limit was hit — wait a moment, add an API key, or rely on the preprint index', code: 'RATE_LIMITED' };
+      return { ok: false, error: 'the scholarly index rate limit was hit: wait a moment, add an API key, or rely on the preprint index', code: 'RATE_LIMITED' };
     }
     if (res.status === 404) return { ok: false, error: 'not found', code: 'NOT_FOUND' };
     if (!res.ok) return { ok: false, error: `upstream returned HTTP ${res.status}`, code: 'UPSTREAM' };
@@ -454,14 +454,14 @@ function renderResults(results, backend, note) {
   const lines = [];
   for (const paper of results) {
     const meta = [paper.year || 'n.d.', paper.venue, paper.citations ? `${paper.citations} cites` : ''].filter(Boolean).join(' · ');
-    lines.push(`[${paper.id}] ${paper.title} — ${paper.authors} (${meta})`);
+    lines.push(`[${paper.id}] ${paper.title}: ${paper.authors} (${meta})`);
     const takeaway = firstSentence(paper.abstract);
     if (takeaway) lines.push(`   ${takeaway}`);
     if (paper.url) lines.push(`   ${paper.url}`);
   }
   let text = lines.join('\n');
   if (text.length > MAX_LIST_CHARS) text = text.slice(0, MAX_LIST_CHARS - 1).trimEnd() + '…';
-  return `Sources (${backend}) — ${results.length} result${results.length === 1 ? '' : 's'}${note ? ` — ${note}` : ''}:\n${text}\nPick the ones that matter and call read_paper for their full abstracts, then cite_source for the ones you use.`;
+  return `Sources (${backend}): ${results.length} result${results.length === 1 ? '': 's'}${note ? ` — ${note}`: ''}:\n${text}\nPick the ones that matter and call read_paper for their full abstracts, then cite_source for the ones you use.`;
 }
 
 // --- citation store --------------------------------------------------------
@@ -504,8 +504,8 @@ function renderStore(store) {
   const sources = Array.isArray(store.sources) ? store.sources : [];
   if (!sources.length) return 'No sources recorded for this artifact yet.';
   const lines = sources.map(s => {
-    const bits = [`[${s.id}] ${s.title || 'untitled'}`, s.year || '', s.venue || ''].filter(Boolean).join(' — ');
-    return `${bits}\n   claim: ${s.claim || '(not stated)'}${s.quote ? `\n   quote: ${s.quote}` : ''}`;
+    const bits = [`[${s.id}] ${s.title || 'untitled'}`, s.year || '', s.venue || ''].filter(Boolean).join(': ');
+    return `${bits}\n   claim: ${s.claim || '(not stated)'}${s.quote ? `\n   quote: ${s.quote}`: ''}`;
   });
   let text = lines.join('\n');
   if (text.length > MAX_DETAIL_CHARS) text = text.slice(0, MAX_DETAIL_CHARS - 1).trimEnd() + '…';
@@ -534,7 +534,7 @@ function mkResearchTools() {
     async run(args, ctx) {
       const res = await searchPapers(args.query, { ...args, cfg: ctx.cfg }, ctx);
       if (!res.ok) return { ok: false, error: res.error, code: res.code };
-      if (!res.results.length) return { ok: false, error: 'no matching papers — try a broader query or fewer filters', code: 'EMPTY' };
+      if (!res.results.length) return { ok: false, error: 'no matching papers: try a broader query or fewer filters', code: 'EMPTY' };
       return { ok: true, text: renderResults(res.results, res.backend, res.yearNote), count: res.results.length };
     },
   };
@@ -555,7 +555,7 @@ function mkResearchTools() {
       const papers = await readPapers(ids, ctx);
       const blocks = papers.map(paper => {
         if (paper.missing) return `[${paper.id}] unavailable (no index has this record right now)`;
-        return `[${paper.id}] ${paper.title}\n   ${paper.authors} · ${paper.year || 'n.d.'} · ${paper.venue || 'unknown venue'} · ${paper.citations} cites\n   ${paper.abstract || '(no abstract available in the index — take the metadata and the link, not a guess)'}\n   ${paper.url}`;
+        return `[${paper.id}] ${paper.title}\n   ${paper.authors} · ${paper.year || 'n.d.'} · ${paper.venue || 'unknown venue'} · ${paper.citations} cites\n   ${paper.abstract || '(no abstract available in the index: take the metadata and the link, not a guess)'}\n   ${paper.url}`;
       });
       let text = blocks.join('\n\n');
       if (text.length > MAX_DETAIL_CHARS) text = text.slice(0, MAX_DETAIL_CHARS - 1).trimEnd() + '…';

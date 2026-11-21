@@ -17,7 +17,7 @@ module.exports = {
         for (const m of messages) {
           if (!m || !Array.isArray(m.content)) continue;
           const kept = m.content.filter((p: any) => p && p.type !== 'image_url');
-          m.content = kept.length ? kept : [{ type: 'text', text: '[image omitted — the selected model cannot see images]' }];
+          m.content = kept.length ? kept : [{ type: 'text', text: '[image omitted: the selected model cannot see images]' }];
         }
       }
     } catch { /* capability check is best-effort */ }

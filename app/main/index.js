@@ -138,7 +138,7 @@ require('../harness/preview-tools.ts').configurePreviewService({
     return {
       ok: true,
       ...after,
-      note: `Managed preview at ${after.url} — shown in the Design Studio canvas, which refreshes within about a second of any file change. action=stop ends it; nothing is left running in a terminal.`,
+      note: `Managed preview at ${after.url}: shown in the Design Studio canvas, which refreshes within about a second of any file change. action=stop ends it; nothing is left running in a terminal.`,
     };
   },
   stop: () => webPreviewService.stop(),
@@ -413,7 +413,7 @@ function buildTray() {
 
 function updateTray() {
   if (!tray || tray.isDestroyed()) return;
-  const label = agentBusy ? 'Muse — working…' : 'Muse — idle';
+  const label = agentBusy ? 'Muse: working…' : 'Muse: idle';
   const cancelState = agentBusy ? 'enabled' : 'disabled';
   tray.setContextMenu(Menu.buildFromTemplate([
     { label, enabled: false },
@@ -652,7 +652,7 @@ function startUpdateChecks() {
     const cur = app.getVersion ? app.getVersion() : require('../harness/version');
     const res = await checkUpdate(cur);
     if (!res.update) return;
-    send('agent-event', { type: 'info', text: `update available: v${res.latest} — click the notification or see ${res.url}` });
+    send('agent-event', { type: 'info', text: `update available: v${res.latest}: click the notification or see ${res.url}` });
     try {
       if (Notification.isSupported()) {
         const n = new Notification({ title: `Muse Agent ${res.latest} available`, body: 'Click to open the download page.' });
@@ -681,7 +681,7 @@ function autoCalibrateVoice() {
         if (!res || !res.ok) return;
         send('agent-event', {
           type: 'info',
-          text: `answer style learned locally from ${res.messages} messages in your previous AI conversations (ChatGPT/Claude/Codex/Cline/Muse)${res.liked && res.liked.count ? ` — including ${res.liked.count} answers you accepted most` : ''}. "Learn my style" in the sidebar re-reads every local chat on demand.`,
+          text: `answer style learned locally from ${res.messages} messages in your previous AI conversations (ChatGPT/Claude/Codex/Cline/Muse)${res.liked && res.liked.count ? `: including ${res.liked.count} answers you accepted most`: ''}. "Learn my style" in the sidebar re-reads every local chat on demand.`,
         });
       }).catch(() => { /* calibration must never disturb the app */ });
     } catch { /* calibration must never disturb the app */ }
@@ -1229,7 +1229,7 @@ ipcMain.handle('feedback:summary', (e) => {
 ipcMain.handle('feedback:reset', (e) => {
   requireTrusted(e);
   const res = require('../harness/feedback').reset();
-  send('agent-event', { type: 'info', text: 'answer feedback cleared — the adaptive style rules were removed' });
+  send('agent-event', { type: 'info', text: 'answer feedback cleared: the adaptive style rules were removed' });
   return res;
 });
 
@@ -1256,7 +1256,7 @@ async function ingestAttachmentPaths(paths) {
     else errors.push({ path: p, error: res.error });
   }
   for (const a of out) send('agent-event', { type: 'info', text:
-    `attached ${a.name} — ${a.kind === 'pdf' ? `${a.pages || '?'} page(s), text extracted${a.text_method === 'ocr' ? ' by OCR' : ''}` : `text extracted by OCR${a.engine ? ` (${a.engine})` : ''}`}${a.error ? ` — ${a.error}` : ''}` });
+    `attached ${a.name}: ${a.kind === 'pdf' ? `${a.pages || '?'} page(s), text extracted${a.text_method === 'ocr' ? ' by OCR' : ''}`: `text extracted by OCR${a.engine ? ` (${a.engine})` : ''}`}${a.error ? `: ${a.error}`: ''}` });
   return { ok: true, attachments: out, errors };
 }
 
@@ -1452,7 +1452,7 @@ ipcMain.handle('sessions:load', async (e, id) => {
     if (agent.interruptedRun) {
       send('agent-event', {
         type: 'info',
-        text: `previous run was interrupted (crash or quit) — its context is preserved; resend the task to continue`,
+        text: `previous run was interrupted (crash or quit): its context is preserved; resend the task to continue`,
       });
     }
     // replay the restored transcript into the renderer

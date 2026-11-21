@@ -99,7 +99,7 @@ function reviewerCfg(cfg) {
 function criticSystemPrompt(axes, hasStyle) {
   const axisList = axes.map(a => `- ${a}`).join('\n');
   return [
-    'You are a strict but fair reviewer. You never write the deliverable yourself — you review it and hand back concrete fixes.',
+    'You are a strict but fair reviewer. You never write the deliverable yourself: you review it and hand back concrete fixes.',
     '',
     'Score each axis from 0 (broken) to 10 (excellent):',
     axisList,
@@ -133,7 +133,7 @@ async function reviewText(cfg, text, opts = {}) {
   const userMsg = [
     `GOAL the piece must satisfy:\n${goal}`,
     '',
-    `DRAFT TO REVIEW${truncated ? ` (truncated to the first ${MAX_CHARS} chars)` : ''}:`,
+    `DRAFT TO REVIEW${truncated ? ` (truncated to the first ${MAX_CHARS} chars)`: ''}:`,
     '---',
     body,
     '---',
@@ -163,7 +163,7 @@ function mkCritiqueTool() {
     description:
       'Review a draft against explicit axes and get back a score, ranked weaknesses and concrete fixes. ' +
       'Use it on long or important output (reports, plans, summaries, code explanations, docs) before calling the work done. ' +
-      'Apply the fixes, then critique again only if the score is still low — stop when the score stops improving. ' +
+      'Apply the fixes, then critique again only if the score is still low: stop when the score stops improving. ' +
       'Never use it on trivial replies: it costs a model call.',
     parameters: {
       type: 'object',

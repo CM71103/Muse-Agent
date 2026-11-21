@@ -15,9 +15,9 @@ These rules outrank your defaults for this project.
 
 ## State
 - Loading, empty and error are three different screens and all three must exist. The error screen offers retry next to the message.
-- The empty state says what would appear here and how to make it appear ("No orders in the last 30 days — widen the date range").
+- The empty state says what would appear here and how to make it appear ("No orders in the last 30 days: widen the date range").
 
 ## Scale
 - Sortable columns get a visible affordance and an announced direction.
 - Pagination shows "41–60 of 318", never just page numbers.
-- Row actions sit in the last column, revealed on hover or focus — never hidden from keyboard users.
+- Row actions sit in the last column, revealed on hover or focus, never hidden from keyboard users.

@@ -14,7 +14,7 @@ These rules outrank your defaults for this project.
 
 ## Evidence
 - Every number on a slide is traceable to the material that was given. No invented statistics, no aspirational charts.
-- A chart without a legible axis label is not a chart — label the units and the period.
+- A chart without a legible axis label is not a chart: label the units and the period.
 
 ## Delivery
 - Slide numbers except on the title slide. Progress must be visible at a glance.

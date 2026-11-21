@@ -120,7 +120,7 @@ function likedProfile(messages) {
   const profile = { count: liked.length, baseline: baseline.count, rules: [], note: '' };
   if (liked.length < MIN_LIKED || baseline.count < 20) {
     profile.note = liked.length < MIN_LIKED
-      ? `only ${liked.length} accepted answers found — keep chatting to sharpen this`
+      ? `only ${liked.length} accepted answers found: keep chatting to sharpen this`
       : 'not enough answers overall to compare against';
     return profile;
   }
@@ -128,24 +128,24 @@ function likedProfile(messages) {
   const rules = [];
   const deltas = {};
   if (L.medianWords && baseline.medianWords) {
-    if (L.medianWords <= baseline.medianWords * 0.8) { deltas.length = 'shorter'; rules.push(`The answers you accept are shorter than your average — aim for about ${round10(L.medianWords)} words, then stop.`); }
-    else if (L.medianWords >= baseline.medianWords * 1.25) { deltas.length = 'longer'; rules.push(`The answers you accept run long (about ${round10(L.medianWords)} words) — give the real detail instead of a teaser.`); }
+    if (L.medianWords <= baseline.medianWords * 0.8) { deltas.length = 'shorter'; rules.push(`The answers you accept are shorter than your average: aim for about ${round10(L.medianWords)} words, then stop.`); }
+    else if (L.medianWords >= baseline.medianWords * 1.25) { deltas.length = 'longer'; rules.push(`The answers you accept run long (about ${round10(L.medianWords)} words): give the real detail instead of a teaser.`); }
   }
-  if (baseline.recapRate >= 0.15 && L.recapRate <= baseline.recapRate * 0.5) { deltas.recap = 'none'; rules.push('The answers you accept skip the recap and the closing pleasantry — end on the answer itself.'); }
+  if (baseline.recapRate >= 0.15 && L.recapRate <= baseline.recapRate * 0.5) { deltas.recap = 'none'; rules.push('The answers you accept skip the recap and the closing pleasantry: end on the answer itself.'); }
   else if (L.recapRate >= Math.min(0.5, baseline.recapRate + 0.2)) { deltas.recap = 'yes'; rules.push('The answers you accept close with a one-line recap or the concrete next step.'); }
-  if (baseline.endQuestionRate >= 0.15 && L.endQuestionRate <= baseline.endQuestionRate * 0.5) { deltas.question = 'no'; rules.push('Do not end with a question — state the answer and stop.'); }
+  if (baseline.endQuestionRate >= 0.15 && L.endQuestionRate <= baseline.endQuestionRate * 0.5) { deltas.question = 'no'; rules.push('Do not end with a question: state the answer and stop.'); }
   if (baseline.hedgeRate >= 0.15 && L.hedgeRate <= baseline.hedgeRate * 0.5) { deltas.hedge = 'less'; rules.push('Less hedging in the answers you accept: recommend one path, then note the caveat.'); }
-  if (baseline.listRate >= 0.15 && L.listRate >= baseline.listRate + 0.15) { deltas.list = 'more'; rules.push('The answers you accept are list-shaped — bullets beat paragraphs.'); }
+  if (baseline.listRate >= 0.15 && L.listRate >= baseline.listRate + 0.15) { deltas.list = 'more'; rules.push('The answers you accept are list-shaped: bullets beat paragraphs.'); }
   if (baseline.codeRate >= 0.1 && L.codeRate >= baseline.codeRate + 0.15) { deltas.code = 'more'; rules.push('The answers you accept show the actual command or code, not only a description of it.'); }
   if (baseline.headerRate >= 0.15 && L.headerRate >= baseline.headerRate + 0.15) { deltas.header = 'more'; rules.push('The answers you accept use short headings to structure longer replies.'); }
   if (baseline.emojiRate >= 0.08 && L.emojiRate <= baseline.emojiRate * 0.4) { deltas.emoji = 'none'; rules.push('The answers you accept carry no emoji.'); }
-  if (baseline.openerRate >= 0.12 && L.openerRate <= baseline.openerRate * 0.5) { deltas.opener = 'none'; rules.push('Skip the pleasantry opener ("Sure", "Absolutely", "Great question") — start with the answer.'); }
+  if (baseline.openerRate >= 0.12 && L.openerRate <= baseline.openerRate * 0.5) { deltas.opener = 'none'; rules.push('Skip the pleasantry opener ("Sure", "Absolutely", "Great question"): start with the answer.'); }
   profile.rules = rules;
   profile.deltas = deltas;
   profile.features = L;
   profile.note = rules.length
     ? `${liked.length} accepted answers compared with ${baseline.count} answers overall`
-    : `${liked.length} accepted answers — they look like your usual style, nothing to change yet`;
+    : `${liked.length} accepted answers: they look like your usual style, nothing to change yet`;
   return profile;
 }
 
@@ -171,28 +171,28 @@ function renderGuide(features, report, liked) {
 
   // length — skipped when the likable answers already say something different
   const lengthDelta = liked && liked.deltas ? liked.deltas.length : null;
-  if (!lengthDelta && a.medianWords && a.medianWords < 90) rules.push(`Keep replies short and direct — around ${Math.max(30, Math.round(a.medianWords / 10) * 10)} words when the task allows; expand only when asked.`);
-  else if (!lengthDelta && a.medianWords < 220) rules.push(`Keep replies moderate — a few short paragraphs (previous median ≈ ${Math.round(a.medianWords / 10) * 10} words); pad nothing.`);
-  else if (!lengthDelta && a.medianWords) rules.push(`Thorough replies match this user's history (previous median ≈ ${Math.round(a.medianWords / 10) * 10} words) — structure them, don't ramble.`);
+  if (!lengthDelta && a.medianWords && a.medianWords < 90) rules.push(`Keep replies short and direct: around ${Math.max(30, Math.round(a.medianWords / 10) * 10)} words when the task allows; expand only when asked.`);
+  else if (!lengthDelta && a.medianWords < 220) rules.push(`Keep replies moderate: a few short paragraphs (previous median ≈ ${Math.round(a.medianWords / 10) * 10} words); pad nothing.`);
+  else if (!lengthDelta && a.medianWords) rules.push(`Thorough replies match this user's history (previous median ≈ ${Math.round(a.medianWords / 10) * 10} words): structure them, don't ramble.`);
 
   // structure
-  if (a.listRate >= 0.35) rules.push('Use bullet lists whenever there are 3 or more items — this user reads lists well.');
+  if (a.listRate >= 0.35) rules.push('Use bullet lists whenever there are 3 or more items: this user reads lists well.');
   if (a.headerRate >= 0.25) rules.push('Short headings structure longer answers for this user.');
   if (a.codeRate >= 0.25) rules.push('Show code in fenced blocks with a one-line intro; the code carries the answer.');
-  else if (a.codeRate <= 0.05 && a.count > 20) rules.push('Mostly prose answers — include code only when the task is code.');
+  else if (a.codeRate <= 0.05 && a.count > 20) rules.push('Mostly prose answers: include code only when the task is code.');
 
   // tone
-  if (a.hedgeRate <= 0.25 && a.count > 20) rules.push('Answer directly first. Skip disclaimers, hedging, and "it depends" openers — give the recommendation, then the caveat if truly needed.');
+  if (a.hedgeRate <= 0.25 && a.count > 20) rules.push('Answer directly first. Skip disclaimers, hedging, and "it depends" openers: give the recommendation, then the caveat if truly needed.');
   if (a.emojiRate <= 0.02 && a.count > 20) rules.push('No emoji.');
   else if (a.emojiRate >= 0.08) rules.push('Occasional emoji is welcome and familiar to this user.');
   if (a.recapRate >= 0.25) rules.push('Close with a one-line recap or the concrete next step.');
 
   // user register
   if (u.count > 10) {
-    if (u.lowercaseStartRate >= 0.5) rules.push("The user writes casually (lowercase, contractions) — mirror that register: conversational, not formal.");
-    else rules.push('The user writes in clean sentences — keep the tone polished and warm.');
-    if (u.medianWords && u.medianWords < 25) rules.push('The user asks in short bursts — infer the obvious context and ask a question only when truly stuck.');
-    if (u.emojiRate <= 0.02 && u.count > 20) rules.push('The user does not use emoji — none in replies either.');
+    if (u.lowercaseStartRate >= 0.5) rules.push("The user writes casually (lowercase, contractions): mirror that register: conversational, not formal.");
+    else rules.push('The user writes in clean sentences: keep the tone polished and warm.');
+    if (u.medianWords && u.medianWords < 25) rules.push('The user asks in short bursts: infer the obvious context and ask a question only when truly stuck.');
+    if (u.emojiRate <= 0.02 && u.count > 20) rules.push('The user does not use emoji: none in replies either.');
   }
 
   const reportLine = report && report.roots && report.roots.length
@@ -200,7 +200,7 @@ function renderGuide(features, report, liked) {
     : '';
   return [
     '# Answer style (learned locally from this user\'s previous AI conversations)',
-    '# Style metrics only — no conversation content is stored in this guide.',
+    '# Style metrics only: no conversation content is stored in this guide.',
     ...rules.map(r => `- ${r}`),
     reportLine ? `\n<!-- ${reportLine} -->` : '',
   ].filter(Boolean).join('\n');
@@ -250,7 +250,7 @@ function composeGuide() {
   if (adaptive.applied && adaptive.rules.length) {
     sections.push([
       '# Answer style (adjusted by your own feedback in this app)',
-      '# Derived from the answers you graded — liked answers shaped these rules,',
+      '# Derived from the answers you graded: liked answers shaped these rules,',
       '# disliked answers ruled the opposite out.',
       ...adaptive.rules.map(r => `- ${r}`),
       adaptive.reason ? `\n<!-- ${adaptive.reason} -->` : '',

@@ -164,14 +164,14 @@ function mkVisualTools(options = {}) {
       try { text = fs.readFileSync(kitFile('references', file), 'utf8'); } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
       return {
         ok: true, doc: name,
-        content: text.length > MAX_DOC ? `${text.slice(0, MAX_DOC)}\n… (truncated; ${text.length} chars total — ask for the rest only if needed)` : text,
+        content: text.length > MAX_DOC ? `${text.slice(0, MAX_DOC)}\n… (truncated; ${text.length} chars total: ask for the rest only if needed)` : text,
       };
     },
   };
 
   const render = {
     name: 'visual_render',
-    description: 'Render a visual explanation page to one self-contained HTML page (diagrams, architecture, comparisons, data tables, reviews, recaps). First write the source <name>.src.html with write_file (tags: visual_kit_docs), then call with path. The renderer inlines the shared design system, expands the data tags, renders Mermaid, and checks the page. On errors nothing is written: fix exactly the lines it names (small edits only — never rewrite the whole page) and call again. On success the page is written beside its source and a browser pass reports visual problems (text overlap, labels under 12 px, sideways scrolling) with up to three contact-sheet screenshots of the result. A terminal table of 4+ rows or 3+ columns should become a page. Ask the user first unless they asked for a visual.',
+    description: 'Render a visual explanation page to one self-contained HTML page (diagrams, architecture, comparisons, data tables, reviews, recaps). First write the source <name>.src.html with write_file (tags: visual_kit_docs), then call with path. The renderer inlines the shared design system, expands the data tags, renders Mermaid, and checks the page. On errors nothing is written: fix exactly the lines it names (small edits only: never rewrite the whole page) and call again. On success the page is written beside its source and a browser pass reports visual problems (text overlap, labels under 12 px, sideways scrolling) with up to three contact-sheet screenshots of the result. A terminal table of 4+ rows or 3+ columns should become a page. Ask the user first unless they asked for a visual.',
     parameters: {
       type: 'object',
       properties: {
@@ -242,7 +242,7 @@ function mkVisualTools(options = {}) {
               });
               out.note += ' Published to the Design Studio canvas.';
             } else {
-              out.note += ' (publish: not a Design Studio project — canvas publish skipped.)';
+              out.note += ' (publish: not a Design Studio project: canvas publish skipped.)';
             }
           } catch (e) { out.note += ` (publish failed: ${String(e && e.message || e)})`; }
         }
@@ -264,7 +264,7 @@ function mkVisualTools(options = {}) {
               for (const sheet of looked.sheets.slice(0, MAX_SHEETS)) {
                 try {
                   const buf = Buffer.isBuffer(sheet.png) ? sheet.png : Buffer.from(sheet.png);
-                  const sheetPath = sheet.path || `${pageFile.replace(/\.html?$/i, '')}.sheet${images.length ? `-${images.length + 1}` : ''}.png`;
+                  const sheetPath = sheet.path || `${pageFile.replace(/\.html?$/i, '')}.sheet${images.length ? `-${images.length + 1}`: ''}.png`;
                   if (ctx.checkpoint) { try { await ctx.checkpoint.recordFile(sheetPath); } catch {} }
                   await fsp.writeFile(sheetPath, buf);
                   writtenSheets.push(sheetPath);
@@ -274,7 +274,7 @@ function mkVisualTools(options = {}) {
               if (images.length) out.images = images;
             }
             out.check = (out.problems || []).length
-              ? `${out.problems.length} visual problem(s) — fix them in ${path.basename(sourceFile)} and render again`
+              ? `${out.problems.length} visual problem(s): fix them in ${path.basename(sourceFile)} and render again`
               : 'passed';
           }
         }
@@ -299,7 +299,7 @@ function mkVisualTools(options = {}) {
 
   const pagesTool = {
     name: 'list_visual_pages',
-    description: 'List the visual pages rendered before (title, project, page file, report, check). Use this before drawing a new page to reuse or update an existing one: its .src.html source sits beside the page — write_file the edits and call visual_render with that path.',
+    description: 'List the visual pages rendered before (title, project, page file, report, check). Use this before drawing a new page to reuse or update an existing one: its .src.html source sits beside the page: write_file the edits and call visual_render with that path.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     scope: 'project', sideEffect: false,
     async run() {

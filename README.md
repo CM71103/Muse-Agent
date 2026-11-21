@@ -24,32 +24,32 @@ A local-first desktop AI agent for understanding projects, working with files, a
 | **Read and change files** | Explore directories, inspect source, and write changes through the agent's tools. |
 | **Run commands** | Execute shell commands and inspect readable output, completion status, and duration. |
 | **Query your data** | Register SQLite databases as read-only data sources; the agent explores schemas and runs capped, single-statement SELECTs. |
-| **Build live dashboards** | Ask for a dashboard in plain English — one SQL query per chart, re-run every time you open it. Bar, line, area, pie, stat, and table charts. |
-| **Explain visually** | Ask for a diagram, comparison, review, or recap — Muse writes one self-contained HTML page (hand-drawn flows, charts, step-by-step replays) and checks its own layout in a browser before handing it over, instead of ASCII art. |
+| **Build live dashboards** | Ask for a dashboard in plain English. One SQL query per chart, re-run every time you open it. Bar, line, area, pie, stat, and table charts. |
+| **Explain visually** | Ask for a diagram, comparison, review, or recap, and Muse writes one self-contained HTML page (hand-drawn flows, charts, step-by-step replays) and checks its own layout in a browser before handing it over, instead of ASCII art. |
 | **Choose your models** | Search available models in Settings, select the ones visible in chat, and switch from the composer. |
 | **Delegate work** | Follow subagents through individual cards with their task, activity, status, and result. |
 | **Recall useful context** | Enable project-scoped memory backed by SQLite and embeddings, with feedback and memory-management controls. |
-| **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Codex, Cline, Muse sessions) — locally, style metrics only. |
-| **Research with citations** | Search Semantic Scholar, OpenAlex and arXiv, read the papers that matter, and record every source with the claim it supports — so answers about research, benchmarks or prior art are grounded, not remembered. |
-| **Full research briefs** | `/research <topic>` runs the whole pipeline — plan, search, read, draft, review, revise — and leaves a cited brief plus its citation map on disk. |
-| **Review its own work** | Before long output is handed over, a reviewer pass scores the draft against explicit axes and returns ranked fixes — the agent applies them and stops when the score stops improving. |
+| **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Codex, Cline, Muse sessions), locally: style metrics only. |
+| **Research with citations** | Search Semantic Scholar, OpenAlex and arXiv, read the papers that matter, and record every source with the claim it supports, so answers about research, benchmarks or prior art are grounded, not remembered. |
+| **Full research briefs** | `/research <topic>` runs the whole pipeline (plan, search, read, draft, review, revise) and leaves a cited brief plus its citation map on disk. |
+| **Review its own work** | Before long output is handed over, a reviewer pass scores the draft against explicit axes and returns ranked fixes. The agent applies them and stops when the score stops improving. |
 | **Learn my style** | One click in the sidebar re-reads every local chat, finds the answers you accepted, and teaches Muse the difference between those and your average answer. |
 | **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
-| **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works — reorder them, jump the line, or cancel one. |
+| **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works: reorder them, jump the line, or cancel one. |
 | **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
-| **Attach PDFs and images** | Drop or paste a PDF or image — text is extracted locally (exact text layer for digital PDFs, Windows OCR for scans and images). Images are sent as pixels only when the selected model can see them; otherwise the extracted text is sent. |
+| **Attach PDFs and images** | Drop or paste a PDF or image. Text is extracted locally (exact text layer for digital PDFs, Windows OCR for scans and images). Images are sent as pixels only when the selected model can see them; otherwise the extracted text is sent. |
 | **Teach it by grading** | Mark an answer liked or disliked (👍 / 👎, or `/good` and `/bad`). Each grade leaves an explicit marker; the answer style adapts to what you actually reward. |
-| **Make it yours** | Light and Dark follow the affectUI agent-clean language — ink-pill buttons, flat hairline panels, colour used only as data (pixel marks, status pills, live shimmer). Krishna themes are one click away; your choice persists across launches. Adjust glass opacity and toggle the animated shader background. |
+| **Make it yours** | Light and Dark follow the affectUI agent-clean language: ink-pill buttons, flat hairline panels, colour used only as data (pixel marks, status pills, live shimmer). Krishna themes are one click away; your choice persists across launches. Adjust glass opacity and toggle the animated shader background. |
 
 ### Built for a continuous workflow
 
 - **Readable activity:** commands and results have their own cards, with Copy buttons and expandable request details.
 - **Long conversations:** automatic context compaction summarizes older history; `/compact` requests compaction explicitly.
 - **Persistent sessions:** reopen previous conversations from the sidebar or project workspace.
-- **Queue and steer:** send follow-ups while the agent runs — they queue in order with reorder, run-now (steer), and cancel controls on each chip.
-- **Crash-safe runs:** every run writes durable receipts to its session; if the app dies mid-run, reopening the session surfaces the interrupted work with its context intact. Sends are idempotent — a retried command never executes twice.
+- **Queue and steer:** send follow-ups while the agent runs; they queue in order with reorder, run-now (steer), and cancel controls on each chip.
+- **Crash-safe runs:** every run writes durable receipts to its session; if the app dies mid-run, reopening the session surfaces the interrupted work with its context intact. Sends are idempotent: a retried command never executes twice.
 - **Self-healing history:** tool calls interrupted by a crash are repaired before the next request, so long sessions stay protocol-valid.
-- **Honest accounting:** the activity panel reports real provider token usage and tool-error counts per session — estimates are marked, never presented as exact.
+- **Honest accounting:** the activity panel reports real provider token usage and tool-error counts per session. Estimates are marked, never presented as exact.
 - **Visible delegation:** child-agent completion does not prematurely finish the parent agent's running state.
 - **A design rulebook that ships with it:** the antislop rulebooks (40 rules, a purpose test for every visual decision, a liveliness bar) are bundled, usable in the Design Studio as a skill and in chat with `/antislop`.
 - **Desktop presence:** tray controls and notifications surface work and approval requests.
@@ -121,11 +121,23 @@ Review the changes in this folder and identify likely bugs.
 Make a plan for adding search to this application before editing files.
 ```
 
+## The interface
+
+Muse is a workbench, not a website. The window is one frame with three regions: a sidebar for sessions and projects, the workspace in the middle, and an inspector on the right that shows what the agent is doing right now. Panels are separated by hairlines, not by floating cards, so nothing looks like a page.
+
+A turn reads top to bottom the way it happened: the request as a block with a rule down its left edge, the tools of that turn collected under one **Worked for N steps** disclosure, the answer as plain text under a small MUSE label, and, when files changed, a card naming them with one **Undo** action. A tool that finished folds itself to a single line, a tool that is still running stays open.
+
+The composer is one container: the request on top, the controls (attach, Box, Sandbox, the model, Stop, Send) on a row below it. Stop really stops. The model chip names the model you are about to talk to.
+
+Three themes ship: **dark**, **light**, and **krishna** (deep indigo and gold). The light theme is not the dark theme inverted, it is its own palette. Every one of them is checked by the screenshot harness, not by eye.
+
+The layout rules live in `DESIGN.md` at the repo root, and the rulebook that governs it is in the repository as the antislop skills.
+
 ## Design Studio workspace
 
 ### Template guidelines (the spec that travels with the template)
 
-A design template says *what* to build; its optional `GUIDELINES.md` says *the rules the result must satisfy* — honesty rules, legibility limits, responsive breakpoints, density caps, required states. The guidelines file lives inside the template folder, so it ships with the template, gets copied into the project when the template is scaffolded, and is injected into the agent's context as a spec whenever that template is the one in use. These rules outrank Muse's defaults for that project.
+A design template says *what* to build; its optional `GUIDELINES.md` says *the rules the result must satisfy*: honesty rules, legibility limits, responsive breakpoints, density caps, required states. The guidelines file lives inside the template folder, so it ships with the template, gets copied into the project when the template is scaffolded, and is injected into the agent's context as a spec whenever that template is the one in use. These rules outrank Muse's defaults for that project.
 
 The three bundled templates ship with guidelines:
 
@@ -137,7 +149,7 @@ The three bundled templates ship with guidelines:
 
 Add your own: drop a `GUIDELINES.md` next to the `TEMPLATE.md` in any template folder (project, personal `~/.muse-agent/design/`, or a custom registry root).
 
-**Design** in the sidebar opens the Design Studio: a project folder, the design knowledge that shapes it, a live preview canvas, and the same conversation you use in chat. Everything is local — a project is an ordinary folder that Muse can also open in your editor.
+**Design** in the sidebar opens the Design Studio: a project folder, the design knowledge that shapes it, a live preview canvas, and the same conversation you use in chat. Everything is local: a project is an ordinary folder that Muse can also open in your editor.
 
 ![Muse Agent Design Studio with a centered artboard on a dotted canvas, file tabs, and a floating tool rail](docs/images/muse-design-studio.png)
 
@@ -174,7 +186,7 @@ When the selected folder is a Design Studio project, five extra tools appear for
 | `design_scaffold` | Copy a template's starter files into the project, keeping existing files | Write |
 | `design_artifact` | Validate and publish `.od/artifact.json` for the canvas | Write |
 
-Selection changes take effect on the next model call — the live system prompt block is rewritten, so you do not need to start a new session.
+Selection changes take effect on the next model call. The live system prompt block is rewritten, so you do not need to start a new session.
 
 ### Artifacts and preview
 
@@ -182,14 +194,14 @@ The canvas renders the project's artifact: the manifest at `.od/artifact.json` i
 
 Two execution shapes are supported:
 
-- **Filesystem** — the agent writes real files, then calls `design_artifact`.
-- **Inline artifact** — a runtime that answers with a single `<artifact identifier="page.html" title="…">…</artifact>` block has that block parsed and materialized into the project automatically, with the manifest written for it. Block identifiers are sanitized the same way, so `../` cannot escape the folder.
+- **Filesystem**: the agent writes real files, then calls `design_artifact`.
+- **Inline artifact**: a runtime that answers with a single `<artifact identifier="page.html" title="…">…</artifact>` block has that block parsed and materialized into the project automatically, with the manifest written for it. Block identifiers are sanitized the same way, so `../` cannot escape the folder.
 
 A project that is also a runnable web app keeps its own framework: **Run project** starts its `dev`/`start`/`serve` script and streams the live server into the canvas instead of a static file.
 
 ## The design rulebook that ships with Muse (antislop)
 
-Muse carries the **antislop** rulebooks: the filter that stops generated UI and copy from coming out generic. Forty rules in three tiers, a purpose test for every visual decision (what does this technique serve?), and a liveliness bar, so the result is not just clean but specific. Six rulebooks travel with the app — the core filter, UI/visual, copy & text, people & accessibility (WCAG 2.2), layout & mobile, and code comments.
+Muse carries the **antislop** rulebooks: the filter that stops generated UI and copy from coming out generic. Forty rules in three tiers, a purpose test for every visual decision (what does this technique serve?), and a liveliness bar, so the result is not just clean but specific. Six rulebooks travel with the app: the core filter, UI/visual, copy & text, people & accessibility (WCAG 2.2), layout & mobile, and code comments.
 
 Two ways to put them to work:
 
@@ -203,7 +215,7 @@ Two ways to put them to work:
 /antislop off      take them off again
 ```
 
-The rules are a filter, not a style guide — they never replace a project's own `DESIGN.md`, which is where the direction lives.
+The rules are a filter, not a style guide. They never replace a project's own `DESIGN.md`, which is where the direction lives.
 
 Upstream: [anti-slop](https://github.com/miqdadbadjuber/anti-slop) by Miqdad Badjuber (MIT), vendored under `app/design/skills/antislop*/`.
 
@@ -211,7 +223,7 @@ Upstream: [anti-slop](https://github.com/miqdadbadjuber/anti-slop) by Miqdad Bad
 
 Attach a file with the paperclip in the composer, by dragging it onto the conversation, or by pasting it from the clipboard.
 
-**How a file becomes text — all on your machine, nothing uploaded:**
+**How a file becomes text (all on your machine, nothing uploaded):**
 
 | File | What happens |
 | --- | --- |
@@ -219,7 +231,7 @@ Attach a file with the paperclip in the composer, by dragging it onto the conver
 | **Scanned PDF** | Pages are rendered by Windows and read with the built-in Windows OCR engine (offline, no install, no service). |
 | **Image** | Read locally with the same Windows OCR engine; the result is plain text you can search, quote and act on. |
 
-**Images go to the model as pixels only when it can see them.** Muse knows the capabilities of the selected model: with a vision-capable model (GPT-4o/4.1/5, Claude 3/4, Gemini, Qwen-VL, Llama Vision, InternVL, …) the image itself is sent, together with the local OCR transcript so exact numbers survive. With a text-only model the pixels are withheld and only the locally extracted text is sent — and the composer says so plainly instead of failing quietly.
+**Images go to the model as pixels only when it can see them.** Muse knows the capabilities of the selected model: with a vision-capable model (GPT-4o/4.1/5, Claude 3/4, Gemini, Qwen-VL, Llama Vision, InternVL, …) the image itself is sent, together with the local OCR transcript so exact numbers survive. With a text-only model the pixels are withheld and only the locally extracted text is sent, and the composer says so plainly instead of failing quietly.
 
 The model picker marks the models that can see images (`sees images`). Overrides live in `config.toml`:
 
@@ -237,23 +249,23 @@ Muse can answer questions from your own data and turn them into dashboards that 
 
 ### Data sources
 
-Register a SQLite database from the command palette (**Add SQLite data source**) or through chat. Connections live in a local registry and are read-only **at the driver level** — the agent physically cannot write, alter, or run multi-statement SQL against them. Queries are single SELECTs, capped per caller (200 rows for exploration, 10,000 for dashboard views).
+Register a SQLite database from the command palette (**Add SQLite data source**) or through chat. Connections live in a local registry and are read-only **at the driver level**: the agent physically cannot write, alter, or run multi-statement SQL against them. Queries are single SELECTs, capped per caller (200 rows for exploration, 10,000 for dashboard views).
 
 | Tool | What it does |
 | --- | --- |
 | `list_data_sources` | Shows registered connections with ids the agent passes to the other tools. |
-| `sqlite_tables` | Schema exploration — tables, views, and columns before writing SQL. |
+| `sqlite_tables` | Schema exploration: tables, views, and columns before writing SQL. |
 | `sqlite_run_sql` | One read-only SELECT returning `{columns, rows, truncated}`. |
 
 ### Dashboards
 
 ![Muse Agent live dashboard with bar, area, and pie charts rendered on paper cards](docs/images/muse-dashboards.png)
 
-Ask in plain English — *“make a dashboard of orders by region with a bar chart and a pie chart”*. Each chart is one SQL query stored **as a query, not as data**; opening a dashboard re-runs every chart through the guarded runner, so numbers are always current.
+Ask in plain English: *“make a dashboard of orders by region with a bar chart and a pie chart”*. Each chart is one SQL query stored **as a query, not as data**; opening a dashboard re-runs every chart through the guarded runner, so numbers are always current.
 
 - Six chart types rendered locally as SVG (no chart-library dependency): bar, line, area, pie, stat, and table.
 - **Edit one chart, keep the rest:** “make the second chart a line chart” replaces just that chart.
-- A failed query becomes an error card on that chart — it never breaks the dashboard.
+- A failed query becomes an error card on that chart. It never breaks the dashboard.
 - Dashboards appear in the **Dashboards** tab and as an “open” chip in the conversation that created them.
 
 ## Permission modes
@@ -277,7 +289,7 @@ Subagents share the parent's live permission policy, while keeping separate mode
 
 ## Answer feedback the agent learns from
 
-Every answer you grade becomes an **explicit marker** — a local, append-only record that the answer was liked or disliked, together with the objective traits of that answer (length, shape, stance, closer, emoji) and its word count.
+Every answer you grade becomes an **explicit marker**: a local, append-only record that the answer was liked or disliked, together with the objective traits of that answer (length, shape, stance, closer, emoji) and its word count.
 
 **How to grade**
 
@@ -286,9 +298,9 @@ Every answer you grade becomes an **explicit marker** — a local, append-only r
 
 **What happens then**
 
-1. The marker is written to `~/.muse-agent/feedback.jsonl` — inspectable, yours, never uploaded.
+1. The marker is written to `~/.muse-agent/feedback.jsonl`: inspectable, yours, never uploaded.
 2. The **adaptive apply** turns those markers into style rules: 3 liked short answers plus 2 disliked hedged ones means *"keep answers tight"* and *"answer directly"*.
-3. The rules join the answer-style guide that goes into the system prompt, so **the very next answer** already matches — the style block is refreshed in place inside the live session, not only in the next one.
+3. The rules join the answer-style guide that goes into the system prompt, so **the very next answer** already matches; the style block is refreshed in place inside the live session, not only in the next one.
 
 The policy is deliberately conservative: a rule needs at least **two** liked samples and a **margin of two** over the disliked ones, so one bad day never flips your agent's voice. Contradictory grades produce no rule at all.
 
@@ -333,15 +345,15 @@ The CLI needs `MUSE_LLM_API_KEY` exported (a terminal cannot read the app's OS-e
 
 The model's training data has a cut-off, so Muse can be wrong about what the state of the art *is*. Three tools make it check instead of guess:
 
-- **`search_papers`** — searches **OpenAlex**, **Semantic Scholar** and **arXiv**; returns a compact ranked list: title, authors, year, venue, citation count, a one-line takeaway and an id
-- **`read_paper`** — full record for the hits that matter (abstract, DOI/arXiv id, link)
-- **`cite_source`** — records the source against the artifact you are writing: the paper id, title, year, url, **the exact claim it supports** and a short quote → `~/.muse-agent/research/artifacts/<name>/sources.json`
+- **`search_papers`**: searches **OpenAlex**, **Semantic Scholar** and **arXiv**; returns a compact ranked list: title, authors, year, venue, citation count, a one-line takeaway and an id
+- **`read_paper`**: full record for the hits that matter (abstract, DOI/arXiv id, link)
+- **`cite_source`**: records the source against the artifact you are writing: the paper id, title, year, url, **the exact claim it supports** and a short quote → `~/.muse-agent/research/artifacts/<name>/sources.json`
 
 That last file is the citation map. It says what the answer is based on, and it survives the session.
 
 **No key required.** OpenAlex works keyless and leads the search; Semantic Scholar is consulted too; arXiv adds preprints. Upstream responses are cached for a day, so repeated searches cost nothing.
 
-**Adding a key (optional).** The shared free pools are often rate limited, so a key makes search reliable. Paste it in **Settings → Workspace → Research & citations** — the main process writes it straight into the **OS credential store** (Windows DPAPI / macOS Keychain), exactly like the chat key: it never sits in `config.toml`, never in the renderer, and never in the transcript. Muse reports only *whether* a key is saved.
+**Adding a key (optional).** The shared free pools are often rate limited, so a key makes search reliable. Paste it in **Settings → Workspace → Research & citations**. The main process writes it straight into the **OS credential store** (Windows DPAPI / macOS Keychain), exactly like the chat key: it never sits in `config.toml`, never in the renderer, and never in the transcript. Muse reports only *whether* a key is saved.
 
 ```toml
 [research]
@@ -350,9 +362,9 @@ cache_ttl_hours = 24
 openalex_mailto = ""       # optional, polite pool
 ```
 
-A rate limited index is retried once patiently before Muse falls back to the preprint index — and if every index is throttled, it says so instead of pretending the search was empty.
+A rate limited index is retried once patiently before Muse falls back to the preprint index, and if every index is throttled, it says so instead of pretending the search was empty.
 
-**Honest by construction:** results carry their **year**, so stale sources are visible; where an index has no real abstract, Muse says so instead of inventing one; upstream failures come back as `{ok:false, code}` (`RATE_LIMITED`, `BLOCKED`, `NETWORK`, `EMPTY`) rather than as a fake empty result. Network access goes through the same egress allowlist and private-address guard as `web_fetch`, and the research tools are network class — they ask in Ask mode.
+**Honest by construction:** results carry their **year**, so stale sources are visible; where an index has no real abstract, Muse says so instead of inventing one; upstream failures come back as `{ok:false, code}` (`RATE_LIMITED`, `BLOCKED`, `NETWORK`, `EMPTY`) rather than as a fake empty result. Network access goes through the same egress allowlist and private-address guard as `web_fetch`, and the research tools are network class: they ask in Ask mode.
 
 ```toml
 [research]
@@ -363,13 +375,13 @@ openalex_mailto = ""       # optional, for the polite pool
 
 ## A review pass before "done"
 
-Long answers go through a reviewer before you see them. Muse's `critique` tool scores a draft against explicit axes (correctness, completeness, clarity, conciseness, tone fit — the last one checked against your learned style) and returns ranked weaknesses with concrete fixes. The agent applies them, and critiques again only if the score is still low — it stops as soon as the score stops improving, so drafts don't churn for the sake of a number.
+Long answers go through a reviewer before you see them. Muse's `critique` tool scores a draft against explicit axes (correctness, completeness, clarity, conciseness, tone fit, the last one checked against your learned style) and returns ranked weaknesses with concrete fixes. The agent applies them, and critiques again only if the score is still low. It stops as soon as the score stops improving, so drafts don't churn for the sake of a number.
 
 The reviewer is read-class: it changes nothing and only spends a model call, so it is treated like a subagent spawn (asked in Ask mode, automatic in Auto mode).
 
-**Every review is archived.** Pass a stable artifact label (the same slug each round) and Muse keeps the whole trail in `~/.muse-agent/reviews/<artifact>/` — `review_v1.json`, `review_v2.json`, plus a `history.json` with the score of each round. That is how the agent knows whether the score is actually climbing and when to stop instead of churning the draft.
+**Every review is archived.** Pass a stable artifact label (the same slug each round) and Muse keeps the whole trail in `~/.muse-agent/reviews/<artifact>/`: `review_v1.json`, `review_v2.json`, plus a `history.json` with the score of each round. That is how the agent knows whether the score is actually climbing and when to stop instead of churning the draft.
 
-You can point the reviewer at a different model than the one that writes — handy if you want a stronger model judging the work:
+You can point the reviewer at a different model than the one that writes, handy if you want a stronger model judging the work:
 
 ```toml
 [llm]
@@ -379,7 +391,7 @@ review_model = "gpt-5"      # optional; empty = same model as the writer
 
 ## Answer style that matches you (vibe calibration)
 
-Muse does not start as a stranger. On first run it looks for AI conversations that already exist on your machine — a ChatGPT data export (`conversations.json` in Downloads/Documents/Desktop), ChatGPT desktop or web caches, Claude Code transcripts (`~/.claude/projects`), Codex rollouts (`~/.codex/sessions`, zstd-compressed), Cline transcripts (`~/.cline/data/sessions`) and Muse's own sessions — and measures **how you like answers**: their length, structure, use of lists and code, directness, and your register.
+Muse does not start as a stranger. On first run it looks for AI conversations that already exist on your machine: a ChatGPT data export (`conversations.json` in Downloads/Documents/Desktop), ChatGPT desktop or web caches, Claude Code transcripts (`~/.claude/projects`), Codex rollouts (`~/.codex/sessions`, zstd-compressed), Cline transcripts (`~/.cline/data/sessions`) and Muse's own sessions, and measures **how you like answers**: their length, structure, use of lists and code, directness, and your register.
 
 The result is an answer-style guide in `~/.muse-agent/voice.md` that joins the system prompt, so Muse answers in the voice you already know from message one.
 
@@ -387,13 +399,13 @@ The result is an answer-style guide in `~/.muse-agent/voice.md` that joins the s
 
 The sidebar carries a **Learn my style** button (also in the command palette). One click:
 
-1. re-reads **every** AI chat on the machine — Claude, Codex, Cline, Muse, plus a ChatGPT export if you dropped one in Downloads;
-2. finds the answers you **accepted** — the ones followed by your own *"ok"*, *"thanks"*, *"works"* — and compares them with your average answer;
-3. writes the difference into the guide as explicit rules ("the answers you accept run long — give the real detail instead of a teaser"), and tells you what it found.
+1. re-reads **every** AI chat on the machine (Claude, Codex, Cline, Muse, plus a ChatGPT export if you dropped one in Downloads);
+2. finds the answers you **accepted** (the ones followed by your own *"ok"*, *"thanks"*, *"works"*) and compares them with your average answer;
+3. writes the difference into the guide as explicit rules ("the answers you accept run long, so give the real detail instead of a teaser"), and tells you what it found.
 
 Where the liked answers disagree with your average, the liked answers win. The scan runs in a worker thread, so the window never freezes, and the rail shows what is currently known (`5,767 messages · 21 liked`).
 
-- **Local and private:** analysis runs on your machine and the guide stores style metrics and rules only — never quotes, topics, or conversation content (pinned by tests).
+- **Local and private:** analysis runs on your machine and the guide stores style metrics and rules only, never quotes, topics, or conversation content (pinned by tests).
 - **Automatic:** first run calibrates itself in the background and tells you what it found.
 - **You stay in charge:** the command palette has **Show answer-style profile**, **Learn my style from all local chats**, **Recalibrate answer style**, and **Reset answer-style profile**.
 - **Best results:** a ChatGPT data export (Settings → Data controls → Export data) placed anywhere in Downloads gives the richest signal.
@@ -580,7 +592,7 @@ gh release create "v$version" `
 
 `electron-updater` is configured with the `github` provider (`resources/app-update.yml`), so the installer, its block map, and `latest.yml` must all be release assets with those exact names; the portable build alone leaves installed apps unable to update.
 
-Use a new version and tag for each new release — `latest.yml` for a version that is already installed is ignored. Build and verify the matching executables before uploading them.
+Use a new version and tag for each new release. `latest.yml` for a version that is already installed is ignored. Build and verify the matching executables before uploading them.
 
 ## Troubleshooting
 
@@ -621,4 +633,4 @@ For development, start with `bun run start`. Run `bun run test` for code changes
 
 ## License
 
-**MIT** — see [LICENSE](LICENSE) and [package.json](package.json).
+**MIT**. See [LICENSE](LICENSE) and [package.json](package.json).

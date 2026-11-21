@@ -55,7 +55,7 @@ test('a template without guidelines does not inject a spec block', () => {
   const ctx = design.designContext(dir);
   assert.ok(ctx && ctx.active);
   assert.ok(!/Template guidelines/.test(ctx.text), 'no guidelines block without a spec file');
-  assert.match(ctx.text, /plain — no spec/, 'the template is still listed');
+  assert.match(ctx.text, /plain: no spec/, 'the template is still listed');
 });
 
 test('applying a template materializes its guidelines into the project', () => {

@@ -75,7 +75,7 @@ async function stagePlan(cfg, { topic, goal }, { onStage, signal, clientFactory 
   const client = clientFor(cfg, { clientFactory });
   const raw = await ask(client, {
     system: PLAN_SYSTEM,
-    user: `Topic: ${topic}\n${goal ? `The reader's goal: ${goal}\n` : ''}Plan the brief. The queries must be real search queries a scholar would type.`,
+    user: `Topic: ${topic}\n${goal ? `The reader's goal: ${goal}\n`: ''}Plan the brief. The queries must be real search queries a scholar would type.`,
     signal,
   });
   const parsed = extractJson(raw) || {};
@@ -157,7 +157,7 @@ Rules:
 
 function draftPrompt(plan, notes) {
   const blocks = notes.map((n, i) => [
-    `[${i + 1}] ${n.title} (${n.year || 'n.d.'}, ${n.venue || 'unknown venue'}) — ${n.authors || 'unknown authors'}`,
+    `[${i + 1}] ${n.title} (${n.year || 'n.d.'}, ${n.venue || 'unknown venue'}): ${n.authors || 'unknown authors'}`,
     n.abstract_missing ? '  (no abstract available in the index)' : (n.points || []).map(p => `  - ${p}`).join('\n'),
     n.relevance ? `  relevance: ${n.relevance}` : '',
   ].filter(Boolean).join('\n')).join('\n\n');
@@ -184,7 +184,7 @@ function referencesFrom(notes) {
   return notes.map((n, i) => {
     const year = n.year || 'n.d.';
     const venue = n.venue ? `, ${n.venue}` : '';
-    const link = n.url ? ` — ${n.url}` : '';
+    const link = n.url ? `: ${n.url}` : '';
     return `[${i + 1}] ${n.title}. ${n.authors || 'Unknown authors'}. ${year}${venue}.${link}`;
   }).join('\n');
 }
@@ -335,7 +335,7 @@ async function runBrief(cfg, options = {}) {
     title: topic,
     year: null,
     url: briefPath,
-    claim: `Research brief: ${topic}${score !== null ? ` (review ${score}/10)` : ''}`,
+    claim: `Research brief: ${topic}${score !== null ? ` (review ${score}/10)`: ''}`,
   });
   mark('done', 'done', { score, chars: brief.length });
   onStage('done', { score, briefPath, sources: notes.length });

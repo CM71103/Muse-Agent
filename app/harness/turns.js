@@ -57,14 +57,14 @@ function assembleAttachments(agent, raw, commandId) {
           // The pixels go to the model AND the local OCR transcript comes
           // along: exact strings (numbers, IDs) survive even when the model
           // reads them imperfectly.
-          textBits.push(`[attached image: ${img.name}${meta.text ? ' — local text extraction follows' : ''}]${meta.text ? `\n${meta.text}` : ''}`);
+          textBits.push(`[attached image: ${img.name}${meta.text ? ': local text extraction follows': ''}]${meta.text ? `\n${meta.text}`: ''}`);
           continue;
         }
       }
       dropped.push(meta.name);
       if (meta.text) textBits.push(`[attached image (text extracted locally): ${meta.name}]\n${meta.text}`);
     } else if (meta.text) {
-      textBits.push(`[attached file: ${meta.name}${meta.pages ? ` (${meta.pages} page${meta.pages === 1 ? '' : 's'})` : ''}]\n${meta.text}`);
+      textBits.push(`[attached file: ${meta.name}${meta.pages ? ` (${meta.pages} page${meta.pages === 1 ? '' : 's'})`: ''}]\n${meta.text}`);
     }
   }
 
@@ -76,7 +76,7 @@ function assembleAttachments(agent, raw, commandId) {
   if (dropped.length) {
     try {
       agent.events({ type: 'info', text:
-        `image${dropped.length === 1 ? '' : 's'} not sent as pixels — the selected model (${modelId || 'unknown'}) is not vision-capable; locally extracted text was used instead` +
+        `image${dropped.length === 1 ? '': 's'} not sent as pixels: the selected model (${modelId || 'unknown'}) is not vision-capable; locally extracted text was used instead` +
         (metas.some(m => m.kind === 'image' && !m.text) ? ', and no text could be extracted from them' : '') });
     } catch { /* events are best-effort */ }
   }

@@ -158,7 +158,7 @@ async function embed(cfg, texts) {
 
     if (!res.ok) {
       const body = await errorBody(res);
-      const detail = body ? ` — ${body}` : '';
+      const detail = body ? `: ${body}` : '';
       // A wrong embed_model/auth fails identically every turn; retrying it 4x
       // just stalls the composer and reports a misleading "after N attempts".
       if (isInputRejected(res.status, body)) {
