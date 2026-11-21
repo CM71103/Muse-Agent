@@ -42,11 +42,22 @@ bun run start
 
 ### 2. Point it at a model
 
+Muse has no account of its own and ships no key. You bring a provider key: OpenAI, OpenRouter, Together, Groq, a local server, anything that speaks the OpenAI chat API. The app stores the key in the OS vault.
+
 **Settings → Connection**: base URL, API key, model. Press **Fetch models**, pick the ones you want in the chat picker, tick **In chat**, then **Save connection**.
 
 ![Searchable model library, with a separate checkbox for each model's chat visibility](docs/images/model-library.png)
 
 A model id can also be typed by hand. Fetching the list only proves the endpoint lists it; it does not promise the model can call tools.
+
+**One key is enough for most people.** Leave the memory embedding fields empty and the embeddings ride the same endpoint and the same key as the chat. Fill them in only when you want embeddings from a different provider, for example a chat model on your own machine with embeddings from a hosted one.
+
+| Key | When you need it | Where it is kept |
+| --- | --- | --- |
+| Chat key | Always, unless your endpoint needs none | OS vault (DPAPI on Windows, Keychain on macOS) |
+| Embedding key | Only when the embedding endpoint differs from the chat one | OS vault, same place |
+
+Neither key is written to `config.toml`, sent to the renderer, or put in a transcript. The app tells you only *whether* a key is saved, and shows a masked placeholder where you typed one.
 
 For a terminal run, export the key for that session instead:
 
@@ -164,7 +175,7 @@ Memory lives in SQLite next to the app, scoped per project. It stores scoped rec
 
 Use `/good` or `/bad` to grade a memory-backed answer. Retrieved memories arrive as labelled context data, never as higher-priority instructions.
 
-Embeddings can use a different endpoint and key than chat: **Settings → Connection → Memory embeddings**. A saved key shows as **Key saved** behind a masked placeholder, never handed back to the renderer.
+Embeddings use the chat endpoint and the chat key by default. Set a different endpoint, model or key in **Settings → Connection → Memory embeddings** when you want them somewhere else, and clear those fields to go back to the chat credential. A saved key shows as **Key saved** behind a masked placeholder, never handed back to the renderer.
 
 ### Your answer style
 
