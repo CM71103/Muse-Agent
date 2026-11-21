@@ -1,76 +1,33 @@
 # Muse Agent
 
-### A little spark. A clear next step.
+**A desktop AI agent that works on your machine, and shows its work.**
 
-A local-first desktop AI agent for understanding projects, working with files, and getting things done. Bring an OpenAI-compatible model endpoint, choose how much control to give the agent, and work from one focused workspace.
+Muse reads your folders, runs commands, builds live dashboards, writes cited research, and keeps what it learns between sessions. It is an Electron app with a local agent harness: your files, sessions, memory and keys stay on your device, and the model is whichever endpoint you point it at.
 
 [![Latest release](https://img.shields.io/github/v/release/CM71103/Muse-Agent?color=eaa064&label=release)](https://github.com/CM71103/Muse-Agent/releases/latest)
 [![Windows](https://img.shields.io/badge/desktop-Windows-eaa064)](https://github.com/CM71103/Muse-Agent/releases)
-[![MIT license](https://img.shields.io/badge/license-MIT-889977)](LICENSE)
+[![MIT](https://img.shields.io/badge/license-MIT-889977)](LICENSE)
 
-[Download](https://github.com/CM71103/Muse-Agent/releases/latest) · [Get started](#get-started) · [Features](#what-you-can-do) · [Build](#build-for-windows) · [Troubleshooting](#troubleshooting)
+![Muse Agent workspace: a menu bar across the top, conversations and projects on the left, a turn with its steps in the middle, and the agent inspector on the right](docs/images/muse-workspace.png)
 
-![Muse Agent workspace with its warm dark theme, project sidebar, chat composer, and activity panel](docs/images/muse-workspace.png)
-
-> **Local-first, with your choice of model.** The desktop app, project files, sessions, and memory live on your machine. Model requests go to the endpoint you configure; using a remote provider sends it the conversation and any tool results or recalled context included in the request. A local model server can keep inference on your machine too.
+> **What leaves your machine:** the model requests you trigger, and nothing else. A remote provider receives the conversation plus whatever files, tool results and recalled memories the turn needed. Point Muse at a local model server and inference stays on the device too.
 
 ---
 
-## What you can do
+## Start in three steps
 
-| Capability | In practice |
+### 1. Get the app
+
+Windows, from [GitHub Releases](https://github.com/CM71103/Muse-Agent/releases/latest):
+
+| Asset | What it is |
 | --- | --- |
-| **Work with projects** | Group conversations, attach a working folder, and give each project shared instructions. |
-| **Read and change files** | Explore directories, inspect source, and write changes through the agent's tools. |
-| **Run commands** | Execute shell commands and inspect readable output, completion status, and duration. |
-| **Query your data** | Register SQLite databases as read-only data sources; the agent explores schemas and runs capped, single-statement SELECTs. |
-| **Build live dashboards** | Ask for a dashboard in plain English. One SQL query per chart, re-run every time you open it. Bar, line, area, pie, stat, and table charts. |
-| **Explain visually** | Ask for a diagram, comparison, review, or recap, and Muse writes one self-contained HTML page (hand-drawn flows, charts, step-by-step replays) and checks its own layout in a browser before handing it over, instead of ASCII art. |
-| **Choose your models** | Search available models in Settings, select the ones visible in chat, and switch from the composer. |
-| **Delegate work** | Follow subagents through individual cards with their task, activity, status, and result. |
-| **Recall useful context** | Enable project-scoped memory backed by SQLite and embeddings, with feedback and memory-management controls. |
-| **Match your vibe** | On first run, Muse learns your preferred answer style from the AI conversations already on your machine (ChatGPT export or caches, Claude transcripts, Codex, Cline, Muse sessions), locally: style metrics only. |
-| **Research with citations** | Search Semantic Scholar, OpenAlex and arXiv, read the papers that matter, and record every source with the claim it supports, so answers about research, benchmarks or prior art are grounded, not remembered. |
-| **Full research briefs** | `/research <topic>` runs the whole pipeline (plan, search, read, draft, review, revise) and leaves a cited brief plus its citation map on disk. |
-| **Review its own work** | Before long output is handed over, a reviewer pass scores the draft against explicit axes and returns ranked fixes. The agent applies them and stops when the score stops improving. |
-| **Learn my style** | One click in the sidebar re-reads every local chat, finds the answers you accepted, and teaches Muse the difference between those and your average answer. |
-| **Extend the toolkit** | Connect MCP servers over stdio and make their tools available to the agent. |
-| **Stay in control** | Choose a permission mode, review approval requests, and stop a running task. Queue messages while the agent works: reorder them, jump the line, or cancel one. |
-| **Undo with confidence** | Every run snapshots the files it touches; one chip restores them, skipping anything you edited afterwards. |
-| **Attach PDFs and images** | Drop or paste a PDF or image. Text is extracted locally (exact text layer for digital PDFs, Windows OCR for scans and images). Images are sent as pixels only when the selected model can see them; otherwise the extracted text is sent. |
-| **Teach it by grading** | Mark an answer liked or disliked (👍 / 👎, or `/good` and `/bad`). Each grade leaves an explicit marker; the answer style adapts to what you actually reward. |
-| **Make it yours** | Six appearances, each with its own picture: Light, Dark, Krishna, Windows 7, Retro and Shiva. Pick one from the View menu or Settings; it persists across launches. The light and dark palettes follow the affectUI agent-clean language: ink-pill buttons, flat hairline panels, colour used only as data. |
+| `MuseAgent-<version>-portable.exe` | No install. Run it. |
+| `Muse-Agent-Setup-<version>.exe` | Installer (NSIS). It also carries the auto-update payload. |
 
-### Built for a continuous workflow
+Keep the whole archive together if a release ships a ZIP, and run `Muse Agent.exe` inside it.
 
-- **Readable activity:** commands and results have their own cards, with Copy buttons and expandable request details.
-- **Long conversations:** automatic context compaction summarizes older history; `/compact` requests compaction explicitly.
-- **Persistent sessions:** reopen previous conversations from the sidebar or project workspace.
-- **Queue and steer:** send follow-ups while the agent runs; they queue in order with reorder, run-now (steer), and cancel controls on each chip.
-- **Crash-safe runs:** every run writes durable receipts to its session; if the app dies mid-run, reopening the session surfaces the interrupted work with its context intact. Sends are idempotent: a retried command never executes twice.
-- **Self-healing history:** tool calls interrupted by a crash are repaired before the next request, so long sessions stay protocol-valid.
-- **Honest accounting:** the activity panel reports real provider token usage and tool-error counts per session. Estimates are marked, never presented as exact.
-- **Visible delegation:** child-agent completion does not prematurely finish the parent agent's running state.
-- **A design rulebook that ships with it:** the antislop rulebooks (40 rules, a purpose test for every visual decision, a liveliness bar) are bundled, usable in the Design Studio as a skill and in chat with `/antislop`.
-- **Desktop presence:** tray controls and notifications surface work and approval requests.
-- **Update notifications:** Muse checks GitHub Releases and points you to available updates; it does not silently replace the running app.
-
-## Get started
-
-### Option A: download the Windows app
-
-1. Open [GitHub Releases](https://github.com/CM71103/Muse-Agent/releases/latest).
-2. Download `MuseAgent-<version>-portable.exe` when that asset is available.
-3. Run the portable executable. Installation is not required.
-4. Open **Settings → Connection** and configure your endpoint, API key, and model.
-
-Release assets vary. If an installer is provided, `Muse-Agent-Setup-<version>.exe` installs the app with shortcuts. If a Windows ZIP is provided, extract the **entire archive** and run `Muse Agent.exe` inside it; keep its accompanying folders and files together.
-
-### Option B: run from source
-
-You need **Node.js 24 or newer**, **Bun**, and **Git**. You also need access to an OpenAI-compatible model endpoint; authentication requirements depend on that endpoint.
-
-Run in PowerShell:
+From source, you need **Node.js 24 or newer**, **Bun** and **Git**:
 
 ```powershell
 git clone https://github.com/CM71103/Muse-Agent.git
@@ -79,35 +36,26 @@ bun install
 bun run start
 ```
 
-The start command builds the local renderer bundles before opening Electron.
+`bun run start` builds the local renderer bundles and opens Electron.
 
-You can enter your key in Settings or provide an environment variable for the current terminal session:
+### 2. Point it at a model
+
+**Settings → Connection**: base URL, API key, model. Press **Fetch models**, pick the ones you want in the chat picker, tick **In chat**, then **Save connection**.
+
+![Searchable model library, with a separate checkbox for each model's chat visibility](docs/images/model-library.png)
+
+A model id can also be typed by hand. Fetching the list only proves the endpoint lists it; it does not promise the model can call tools.
+
+For a terminal run, export the key for that session instead:
 
 ```powershell
 $env:MUSE_LLM_API_KEY = "your-api-key"
 bun run start
 ```
 
-### Connect your first model
+### 3. Give it a folder and a task
 
-1. Open **Settings → Connection**.
-2. Enter your provider's **Base URL** and **API key**.
-3. Select **Fetch models**, then open the model dropdown.
-4. Choose a model to use, or enter its ID manually.
-5. Tick **In chat** for each model you want in the chat picker.
-6. Select **Save connection**.
-
-The model picker in the chat box shows your saved selections. Switching models keeps your conversation and unsent message. Switching is blocked while the agent is working or waiting for an approval.
-
-![Searchable model library with a separate checkbox for each model's chat visibility](docs/images/model-library.png)
-
-The library can also include a manually entered model ID. Fetching models checks the endpoint's model-list API; it does not guarantee that every listed model supports the tool calls your task needs.
-
-### Start a project
-
-Select **New project**, give it a name, and attach a folder when you want the agent to work with local files. Add goals or conventions in **Project settings** to share them across the project's conversations.
-
-Try a concrete request:
+Select **New project**, name it, attach the folder you want it to work in. Then ask something concrete:
 
 ```text
 Read the README and explain how this project is organized.
@@ -121,263 +69,201 @@ Review the changes in this folder and identify likely bugs.
 Make a plan for adding search to this application before editing files.
 ```
 
+---
+
+## What it does
+
+| Area | In practice |
+| --- | --- |
+| **Projects** | Group conversations, attach a working folder, give each project its own instructions. |
+| **Files** | Explore directories, read source, write changes through the agent's tools. |
+| **Commands** | Run shell commands and inspect the output, the status and the duration. |
+| **Your data** | Register SQLite databases as read-only sources; the agent explores schemas and runs capped single SELECTs. |
+| **Dashboards** | Ask in plain English. One SQL query per chart, re-run every time the dashboard opens. Bar, line, area, pie, stat, table. |
+| **Visual pages** | Ask for a diagram, comparison, review or recap. Muse writes one self-contained HTML page and checks its own layout in a browser, instead of ASCII art. |
+| **Your voice** | On first run Muse reads the AI conversations already on your machine and learns the shape of the answers you accept. Style metrics only, never the content. |
+| **Research** | Search Semantic Scholar, OpenAlex and arXiv, read the papers that matter, and record every source against the claim it supports. |
+| **Full briefs** | `/research <topic>` runs plan, search, read, draft, review, revise, and leaves a cited brief plus its citation map on disk. |
+| **Self review** | A reviewer pass scores long output against explicit axes and returns ranked fixes. The agent applies them and stops when the score stops climbing. |
+| **Models** | Search what your endpoint serves, choose which models are visible in chat, switch from the composer. |
+| **Subagents** | Delegate a self-contained task and follow it in its own card, with its own status and result. |
+| **Memory** | Project-scoped SQLite memory with embeddings, evidence versions, quarantine and grading. |
+| **MCP** | Connect stdio MCP servers and their tools become available to the agent. |
+| **Control** | Permission modes, approval requests, a real Stop button, and a queue you can reorder or cancel. |
+| **Undo** | Every run snapshots the files it touches. One action restores them, skipping anything you edited afterwards. |
+| **Attachments** | Drop a PDF or an image. Text is extracted locally, and pixels are sent only when the model can see them. |
+| **Grading** | Mark an answer liked or disliked. The marker becomes a style rule, applied to the very next answer. |
+| **Appearance** | Six looks, each with its own picture: Light, Dark, Krishna, Windows 7, Retro, Shiva. |
+
+---
+
 ## The interface
 
-Muse is a workbench, not a website. The window is one frame with three regions: a sidebar for sessions and projects, the workspace in the middle, and an inspector on the right that shows what the agent is doing right now. Panels are separated by hairlines, not by floating cards, so nothing looks like a page.
+![The empty workspace: the Muse mark, a greeting, three starting points, and the composer resting at the bottom](docs/images/muse-welcome.png)
 
-A turn reads top to bottom the way it happened: the request as a block with a rule down its left edge, the tools of that turn collected under one **Worked for N steps** disclosure, the answer as plain text under a small MUSE label, and, when files changed, a card naming them with one **Undo** action. A tool that finished folds itself to a single line, a tool that is still running stays open.
+A menu bar runs across the top: **Workspace**, **View**, **Window**. Every command in the app is one click from there, and the View menu is where the appearance is chosen.
 
-The composer is one container: the request on top, the controls (attach, Box, Sandbox, the model, Stop, Send) on a row below it. Stop really stops. The model chip names the model you are about to talk to.
+![The View menu open, listing the six appearances with the current one ticked](docs/images/muse-menu.png)
 
-A menu bar sits above the frame: **Workspace**, **View**, **Window**. Every command the app has is one click away from there, and the View menu is where the appearance is chosen.
+A turn reads in the order it happened:
 
-Six appearances ship, each with its own picture rather than a flat fill:
+1. **Your request**, as a block with a rule down its left edge.
+2. **The tools of that turn**, collected under one *Worked for N steps* disclosure. A finished step folds to a single line, a running one stays open, and a step you opened stays open.
+3. **The answer**, as plain text under a small MUSE label.
+4. **A files-changed card**, when the turn wrote anything, with the file names and one Undo action.
+
+The composer is one container: the request on top, the controls underneath (attach, Box, Sandbox, the model, Stop, Send). Stop really stops: the running tool, the provider call and the queued messages all respect the cancel.
+
+The rail on the right is an inspector. It shows the status, the model, the safety mode, the memory layer, and the live activity of the session.
+
+### Six appearances, each with a picture
+
+![The Shiva appearance: a trident drawn behind the workspace in ash and saffron](docs/images/muse-appearances.png)
 
 | Appearance | What it is |
 | --- | --- |
-| **Light** | The daylight working palette, its own set of tokens, not an inverted dark theme |
-| **Dark** | The neutral workbench: hairline chrome, one accent, 13px type |
-| **Krishna** | Deep indigo and teal with gold, for long sessions |
-| **Windows 7** | The Aero light rays, glossy blue chrome, the bright one |
-| **Retro** | An amber phosphor terminal: monospace, scanlines, a warm bloom |
-| **Shiva** | Ash, saffron and a trident on deep blue-black |
+| **Light** | The daylight palette, its own tokens, not an inverted dark theme. |
+| **Dark** | The neutral workbench: hairline chrome, one accent, 13px type. |
+| **Krishna** | Deep indigo and teal with gold. |
+| **Windows 7** | The Aero light rays and glossy blue chrome. |
+| **Retro** | An amber phosphor terminal: monospace, scanlines, a warm bloom. |
+| **Shiva** | Ash, saffron and a trident on deep blue-black. |
 
-The pictures are drawn as inline SVG, so the app stays offline and carries no image files. Every appearance is checked by the screenshot harness, not by eye.
+The pictures are inline SVG, so the app stays offline and carries no image files. Pick one from **View → Appearance** or from the swatches in Settings; it persists across launches.
 
-The layout rules live in `DESIGN.md` at the repo root, and the rulebook that governs it is in the repository as the antislop skills.
+---
 
-## Design Studio workspace
+## Control
 
-### Template guidelines (the spec that travels with the template)
-
-A design template says *what* to build; its optional `GUIDELINES.md` says *the rules the result must satisfy*: honesty rules, legibility limits, responsive breakpoints, density caps, required states. The guidelines file lives inside the template folder, so it ships with the template, gets copied into the project when the template is scaffolded, and is injected into the agent's context as a spec whenever that template is the one in use. These rules outrank Muse's defaults for that project.
-
-The three bundled templates ship with guidelines:
-
-| Template | What its guidelines pin down |
-|---|---|
-| `landing-page` | No invented customer counts or testimonials, 16px minimum type, 4.5:1 contrast, one CTA per section, mobile-first at 360px |
-| `deck` | One claim per slide, ≤ 6 lines of body text, ≤ 5 rows per table, every number traceable, nothing on the slide that is not in the material |
-| `dashboard` | Units and period on every metric, missing data is `-` not `0`, three distinct loading/empty/error states, "41–60 of 318" pagination |
-
-Add your own: drop a `GUIDELINES.md` next to the `TEMPLATE.md` in any template folder (project, personal `~/.muse-agent/design/`, or a custom registry root).
-
-**Design** in the sidebar opens the Design Studio: a project folder, the design knowledge that shapes it, a live preview canvas, and the same conversation you use in chat. Everything is local: a project is an ordinary folder that Muse can also open in your editor.
-
-![Muse Agent Design Studio with a centered artboard on a dotted canvas, file tabs, and a floating tool rail](docs/images/muse-design-studio.png)
-
-Selecting a project writes `.od/project.json` next to your files (name, kind, active design system, skill, template, craft rules). Nothing is copied into an app-owned database, so the folder stays usable on its own.
-
-### Registries
-
-Four registries feed the workspace, and each is scanned in the same order everywhere:
-
-| Registry | Entry document | Supplies |
-| --- | --- | --- |
-| `design-systems/<id>/` | `DESIGN.md` | Tokens, type, spacing, behaviour, accessibility rules |
-| `design-templates/<id>/` | `TEMPLATE.md` + starter files | A scaffolded starting point (landing page, deck, dashboard) |
-| `skills/<id>/` | `SKILL.md` | A reusable procedure the agent follows (design review, a11y audit) |
-| `craft/*.md` | the file itself | Brand-agnostic quality bars, on by default unless you pick a set |
-
-Roots are scanned **project → personal → bundled**, and the first hit for an id wins, so a project can override your personal copy, and your personal copy overrides the shipped defaults. The personal root is:
-
-```text
-%MUSE_HOME%\design\            (or ~\.muse-agent\design\ by default)
-```
-
-Create it once and drop in `design-systems\my-brand\DESIGN.md` to have it offered in every project. Bundled defaults ship with the app: two design systems, three templates, eight skills (six of them the antislop rulebooks, see below), and two craft rule sets.
-
-### What the agent can do
-
-When the selected folder is a Design Studio project, five extra tools appear for the model:
-
-| Tool | Effect | Permission |
-| --- | --- | --- |
-| `design_status` | Active project, selections, current artifact, registry roots | Read |
-| `design_registry` | List entries or read an entry's document/asset | Read |
-| `design_configure` | Set design system, skill, template, craft, name, kind | Write (plan mode blocked) |
-| `design_scaffold` | Copy a template's starter files into the project, keeping existing files | Write |
-| `design_artifact` | Validate and publish `.od/artifact.json` for the canvas | Write |
-
-Selection changes take effect on the next model call. The live system prompt block is rewritten, so you do not need to start a new session.
-
-### Artifacts and preview
-
-The canvas renders the project's artifact: the manifest at `.od/artifact.json` if present, otherwise a detected `index.html` / `README.md` / `index.svg`. The entry path is validated to stay inside the project folder.
-
-Two execution shapes are supported:
-
-- **Filesystem**: the agent writes real files, then calls `design_artifact`.
-- **Inline artifact**: a runtime that answers with a single `<artifact identifier="page.html" title="…">…</artifact>` block has that block parsed and materialized into the project automatically, with the manifest written for it. Block identifiers are sanitized the same way, so `../` cannot escape the folder.
-
-A project that is also a runnable web app keeps its own framework: **Run project** starts its `dev`/`start`/`serve` script and streams the live server into the canvas instead of a static file.
-
-## The design rulebook that ships with Muse (antislop)
-
-Muse carries the **antislop** rulebooks: the filter that stops generated UI and copy from coming out generic. Forty rules in three tiers, a purpose test for every visual decision (what does this technique serve?), and a liveliness bar, so the result is not just clean but specific. Six rulebooks travel with the app: the core filter, UI/visual, copy & text, people & accessibility (WCAG 2.2), layout & mobile, and code comments.
-
-Two ways to put them to work:
-
-- **In the Design Studio** they are ordinary skills. Choose `antislop` (or `antislop-ui`) as the project's skill and every artifact the agent builds in that project is filtered by those rules.
-- **In chat**, `/antislop` puts a rulebook in force for the session: the rules are written into the session's system message, so everything produced afterwards follows them, and they survive a restart.
-
-```text
-/antislop          the core filter
-/antislop ui       + the UI and visual rules
-/antislop all      every rulebook
-/antislop off      take them off again
-```
-
-The rules are a filter, not a style guide. They never replace a project's own `DESIGN.md`, which is where the direction lives.
-
-Upstream: [anti-slop](https://github.com/miqdadbadjuber/anti-slop) by Miqdad Badjuber (MIT), vendored under `app/design/skills/antislop*/`.
-
-## Attach PDFs and images (local OCR)
-
-Attach a file with the paperclip in the composer, by dragging it onto the conversation, or by pasting it from the clipboard.
-
-**How a file becomes text (all on your machine, nothing uploaded):**
-
-| File | What happens |
-| --- | --- |
-| **Digital PDF** | Its text layer is extracted directly, so numbers, amounts and IDs come out exact. |
-| **Scanned PDF** | Pages are rendered by Windows and read with the built-in Windows OCR engine (offline, no install, no service). |
-| **Image** | Read locally with the same Windows OCR engine; the result is plain text you can search, quote and act on. |
-
-**Images go to the model as pixels only when it can see them.** Muse knows the capabilities of the selected model: with a vision-capable model (GPT-4o/4.1/5, Claude 3/4, Gemini, Qwen-VL, Llama Vision, InternVL, …) the image itself is sent, together with the local OCR transcript so exact numbers survive. With a text-only model the pixels are withheld and only the locally extracted text is sent, and the composer says so plainly instead of failing quietly.
-
-The model picker marks the models that can see images (`sees images`). Overrides live in `config.toml`:
-
-```toml
-[llm]
-vision_capable = true                 # force the active model to be treated as vision-capable
-vision_models = ["my-private-vlm"]    # extra model ids that can see
-```
-
-Files are stored under `~/.muse-agent/attachments/`; delete them from the chip's × or clear them with `attachments:clear`.
-
-## Live dashboards and data sources
-
-Muse can answer questions from your own data and turn them into dashboards that stay live.
-
-### Data sources
-
-Register a SQLite database from the command palette (**Add SQLite data source**) or through chat. Connections live in a local registry and are read-only **at the driver level**: the agent physically cannot write, alter, or run multi-statement SQL against them. Queries are single SELECTs, capped per caller (200 rows for exploration, 10,000 for dashboard views).
-
-| Tool | What it does |
-| --- | --- |
-| `list_data_sources` | Shows registered connections with ids the agent passes to the other tools. |
-| `sqlite_tables` | Schema exploration: tables, views, and columns before writing SQL. |
-| `sqlite_run_sql` | One read-only SELECT returning `{columns, rows, truncated}`. |
-
-### Dashboards
-
-![Muse Agent live dashboard with bar, area, and pie charts rendered on paper cards](docs/images/muse-dashboards.png)
-
-Ask in plain English: *“make a dashboard of orders by region with a bar chart and a pie chart”*. Each chart is one SQL query stored **as a query, not as data**; opening a dashboard re-runs every chart through the guarded runner, so numbers are always current.
-
-- Six chart types rendered locally as SVG (no chart-library dependency): bar, line, area, pie, stat, and table.
-- **Edit one chart, keep the rest:** “make the second chart a line chart” replaces just that chart.
-- A failed query becomes an error card on that chart. It never breaks the dashboard.
-- Dashboards appear in the **Dashboards** tab and as an “open” chip in the conversation that created them.
-
-## Permission modes
-
-Change the active mode from the sidebar. All registered tool calls pass through the Sentinel policy gate.
+Change the mode from the sidebar. Every registered tool call passes through the Sentinel policy gate.
 
 | Mode | File access | Commands and other actions |
 | --- | --- | --- |
-| **Ask** | Reads within the granted project scope are automatic; access outside it asks. | Side-effect tools require approval. |
-| **Accept edits** | Project reads and in-project writes are automatic; other file access follows approval rules. | Shell and web actions still ask. |
-| **Plan** | Read tools remain subject to file-scope checks. | Writes, shell commands, and web actions are blocked. |
-| **Auto** | Registered file tools can run without approval, including outside the selected folder. | Registered tools, shell commands, MCP tools, and delegation run without approval prompts. |
+| **Ask** | Reads inside the granted project scope are automatic, anything else asks. | Side-effect tools need approval. |
+| **Accept edits** | Project reads and in-project writes are automatic. | Shell and web actions still ask. |
+| **Plan** | Read tools still respect the file scope. | Writes, shell commands and web actions are blocked. |
+| **Auto** | Registered file tools can run anywhere, including outside the selected folder. | Tools, shell, MCP and delegation run without prompts. |
 
-Deny rules still apply in every mode, and unknown tools are rejected. Legacy `always_ask_tools` settings do not override Auto.
+Deny rules apply in every mode, and unknown tools are rejected.
 
-![A permission request showing the exact command, full request details, and one-time Allow or Deny controls](docs/images/tool-approval.png)
+![A permission request showing the exact command, the full request details, and a one-time Allow or Deny choice](docs/images/muse-approval.png)
 
-**Commands run with your Windows user permissions.** The approval gate is not an operating-system sandbox. Review commands and choose the mode that fits the work you are authorizing.
+**Commands run with your Windows user permissions.** The approval gate is a policy check, not an operating-system sandbox. Read the command before you allow it.
 
-Subagents share the parent's live permission policy, while keeping separate model context. Child agents cannot spawn further children.
+Subagents share the parent's live permission policy while keeping their own model context, and a child agent cannot spawn further children.
 
-## Answer feedback the agent learns from
+---
 
-Every answer you grade becomes an **explicit marker**: a local, append-only record that the answer was liked or disliked, together with the objective traits of that answer (length, shape, stance, closer, emoji) and its word count.
+## What Muse remembers
 
-**How to grade**
+### Memory
 
-- **👍 / 👎** under any answer, or
-- **`/good`** and **`/bad`** in the composer
+Memory lives in SQLite next to the app, scoped per project. It stores scoped records with their metadata, retrieves them by embedding within a per-turn budget, captures durable preferences as they come up, and extracts useful facts at the end of a session. Records carry evidence versions, ranking controls, and quarantine for content a provider rejects.
 
-**What happens then**
+Use `/good` or `/bad` to grade a memory-backed answer. Retrieved memories arrive as labelled context data, never as higher-priority instructions.
 
-1. The marker is written to `~/.muse-agent/feedback.jsonl`: inspectable, yours, never uploaded.
-2. The **adaptive apply** turns those markers into style rules: 3 liked short answers plus 2 disliked hedged ones means *"keep answers tight"* and *"answer directly"*.
-3. The rules join the answer-style guide that goes into the system prompt, so **the very next answer** already matches; the style block is refreshed in place inside the live session, not only in the next one.
+Embeddings can use a different endpoint and key than chat: **Settings → Connection → Memory embeddings**. A saved key shows as **Key saved** behind a masked placeholder, never handed back to the renderer.
 
-The policy is deliberately conservative: a rule needs at least **two** liked samples and a **margin of two** over the disliked ones, so one bad day never flips your agent's voice. Contradictory grades produce no rule at all.
+### Your answer style
 
-The workbench shows the running count (`Answer feedback`), and the command palette has **Show answer feedback** and **Reset answer feedback**.
+On first run Muse looks for AI conversations that already exist on your machine: a ChatGPT data export (`conversations.json`), ChatGPT caches, Claude Code transcripts (`~/.claude/projects`), Codex rollouts (`~/.codex/sessions`), Cline transcripts (`~/.cline/data/sessions`) and Muse's own sessions. It measures the answers you **accepted** against your average answer, and writes the difference into `~/.muse-agent/voice.md` as explicit rules.
 
-## Run a full research brief: `/research <topic>`
+The scan runs in a worker thread, so the window never freezes, and the rail shows what is known (for example `5,767 messages · 21 liked`). Where the liked answers disagree with your average, the liked answers win.
 
-The three tools above are what the agent uses on demand. For a **complete brief**, Muse runs the whole PaperOrchestra-shaped pipeline for you:
+**Learn my style** in the sidebar (also in the command palette) re-reads every local chat, finds the accepted answers and rewrites the guide. The analysis is local and the guide stores style metrics and rules only: never quotes, topics or conversation content.
+
+### Answer feedback
+
+Grading an answer with 👍 or 👎 (or `/good` and `/bad`) writes an explicit marker to `~/.muse-agent/feedback.jsonl`: liked or disliked, plus the objective traits of that answer. Three liked short answers and two disliked hedged ones produce *keep answers tight* and *answer directly*. The rules join the style guide in the live session, so the next answer already matches.
+
+The policy is deliberately slow: a rule needs at least two liked samples and a margin of two over the disliked ones, so one bad day cannot flip your agent's voice.
+
+### A review before "done"
+
+Long answers go through a reviewer first. The `critique` tool scores a draft on correctness, completeness, clarity, conciseness and tone fit (the last one checked against your learned style), and returns ranked weaknesses with concrete fixes. The agent applies them and critiques again only if the score is still low.
+
+Every review is archived under `~/.muse-agent/reviews/<artifact>/`: `review_v1.json`, `review_v2.json`, and a `history.json` with the score of each round. That history is how the agent knows when to stop instead of churning the draft.
+
+Point the reviewer at a different model if you want a stronger judge:
+
+```toml
+[llm]
+model = "deepseek-chat"
+review_model = "gpt-5"      # optional, empty means the same model as the writer
+```
+
+---
+
+## What Muse produces
+
+### Live dashboards over your own data
+
+![A live dashboard with bar, area and pie charts rendered locally](docs/images/muse-dashboards.png)
+
+Register a SQLite database from the command palette (**Add SQLite data source**). Connections are read-only **at the driver level**: the agent physically cannot write, alter or run multi-statement SQL against them. Exploration queries are capped at 200 rows, dashboard queries at 10,000.
+
+| Tool | What it does |
+| --- | --- |
+| `list_data_sources` | Lists registered connections with the ids the other tools take. |
+| `sqlite_tables` | Schema exploration: tables, views and columns before any SQL. |
+| `sqlite_run_sql` | One read-only SELECT, returned as `{columns, rows, truncated}`. |
+
+Ask in plain English: *make a dashboard of orders by region with a bar chart and a pie chart*. Each chart is one SQL query stored **as a query, not as data**, so opening the dashboard re-runs every chart and the numbers are current. Six chart types render locally as SVG, with no chart library. A failed query becomes an error card on that chart and never breaks the dashboard.
+
+### Visual pages
+
+For anything a reader should grasp at a glance, Muse writes one self-contained HTML page: diagrams, comparisons, data tables, replays. The layout is checked in a real browser before the page is handed over, and the source sits beside the project files so it can be revised.
+
+### Research briefs
+
+![A research brief being written, stage by stage, with the sources recorded](docs/images/muse-research-brief.png)
 
 ```
 /research long context versus retrieval for coding agents
 ```
 
+The pipeline runs in public:
+
 ```
-plan      -> the topic becomes 3-5 real search queries and a section outline
-search    -> the scholarly indexes are queried, deduped and ranked
-read      -> the papers that matter are read and each one gets notes
-draft     -> the brief is written, citing [1] [2] markers
-critique  -> a reviewer scores it (llm.review_model gets a different model)
-revise    -> the fixes are applied - then it stops when the score stops climbing
+plan      the topic becomes 3-5 real search queries and a section outline
+search    the scholarly indexes are queried, deduped and ranked
+read      the papers that matter are read and each one gets notes
+draft     the brief is written, citing [1] [2] markers
+critique  a reviewer scores it (llm.review_model gets a different model)
+revise    the fixes are applied, then it stops when the score stops climbing
 ```
 
-Every stage streams into the transcript as it happens, and the run lands on disk:
+Every stage streams into the transcript, and the run lands on disk:
 
 ```
 ~/.muse-agent/briefs/<topic>-<stamp>/brief.md        the brief, with a References section
-                                        /sources.json   the citation map (source -> claim)
+                                        /sources.json   the citation map (source to claim)
                                         /notes.json     per-paper notes
-                                        /outline.json   queries + section plan
-                                        /run.json       stage receipts (resumable)
+                                        /outline.json   queries and section plan
+                                        /run.json       stage receipts, resumable
 ```
 
-The command palette has **Research a topic (brief)** (it prefills `/research `), and a terminal run is available for scripting:
+The same pipeline runs from a terminal for scripting:
 
-```bash
+```powershell
 node scripts/research-brief.mts "your topic" --goal "what should we adopt" --print
 ```
 
-The CLI needs `MUSE_LLM_API_KEY` exported (a terminal cannot read the app's OS-encrypted credential store) and picks up `SEMANTIC_SCHOLAR_API_KEY` the same way.
+The CLI needs `MUSE_LLM_API_KEY` exported (a terminal cannot read the app's encrypted vault) and picks up `SEMANTIC_SCHOLAR_API_KEY` the same way.
 
-## Research that cites its sources
+### Research that cites its sources
 
-The model's training data has a cut-off, so Muse can be wrong about what the state of the art *is*. Three tools make it check instead of guess:
+Training data has a cut-off, so the model can be wrong about what the state of the art *is*. Three tools make it check instead of guess:
 
-- **`search_papers`**: searches **OpenAlex**, **Semantic Scholar** and **arXiv**; returns a compact ranked list: title, authors, year, venue, citation count, a one-line takeaway and an id
-- **`read_paper`**: full record for the hits that matter (abstract, DOI/arXiv id, link)
-- **`cite_source`**: records the source against the artifact you are writing: the paper id, title, year, url, **the exact claim it supports** and a short quote → `~/.muse-agent/research/artifacts/<name>/sources.json`
+| Tool | What it returns |
+| --- | --- |
+| `search_papers` | A ranked list from OpenAlex, Semantic Scholar and arXiv: title, authors, year, venue, citation count, a one-line takeaway, an id. |
+| `read_paper` | The full record for the hits that matter: abstract, DOI or arXiv id, link. |
+| `cite_source` | The source recorded against the artifact you are writing: id, title, year, url, the exact claim it supports and a short quote. |
 
-That last file is the citation map. It says what the answer is based on, and it survives the session.
+The citation map lives at `~/.muse-agent/research/artifacts/<name>/sources.json`. It says what the answer is based on, and it survives the session.
 
-**No key required.** OpenAlex works keyless and leads the search; Semantic Scholar is consulted too; arXiv adds preprints. Upstream responses are cached for a day, so repeated searches cost nothing.
-
-**Adding a key (optional).** The shared free pools are often rate limited, so a key makes search reliable. Paste it in **Settings → Workspace → Research & citations**. The main process writes it straight into the **OS credential store** (Windows DPAPI / macOS Keychain), exactly like the chat key: it never sits in `config.toml`, never in the renderer, and never in the transcript. Muse reports only *whether* a key is saved.
-
-```toml
-[research]
-max_results = 6            # 1..10
-cache_ttl_hours = 24
-openalex_mailto = ""       # optional, polite pool
-```
-
-A rate limited index is retried once patiently before Muse falls back to the preprint index, and if every index is throttled, it says so instead of pretending the search was empty.
-
-**Honest by construction:** results carry their **year**, so stale sources are visible; where an index has no real abstract, Muse says so instead of inventing one; upstream failures come back as `{ok:false, code}` (`RATE_LIMITED`, `BLOCKED`, `NETWORK`, `EMPTY`) rather than as a fake empty result. Network access goes through the same egress allowlist and private-address guard as `web_fetch`, and the research tools are network class: they ask in Ask mode.
+**No key is required.** OpenAlex leads the search, Semantic Scholar is consulted too, and arXiv adds preprints. Responses are cached for a day, so repeated searches cost nothing. A key makes it reliable when the shared pools are rate limited: paste it in **Settings → Workspace → Research & citations** and the main process writes it into the OS credential store, exactly like the chat key. It never sits in `config.toml`, never in the renderer, never in the transcript.
 
 ```toml
 [research]
@@ -386,206 +272,166 @@ cache_ttl_hours = 24
 openalex_mailto = ""       # optional, for the polite pool
 ```
 
-## A review pass before "done"
+Failures are honest: results carry their year, so stale sources are visible; a missing abstract is reported as missing; an upstream error comes back as `{ok:false, code}` with `RATE_LIMITED`, `BLOCKED`, `NETWORK` or `EMPTY` rather than as a fake empty result.
 
-Long answers go through a reviewer before you see them. Muse's `critique` tool scores a draft against explicit axes (correctness, completeness, clarity, conciseness, tone fit, the last one checked against your learned style) and returns ranked weaknesses with concrete fixes. The agent applies them, and critiques again only if the score is still low. It stops as soon as the score stops improving, so drafts don't churn for the sake of a number.
+### The Design Studio
 
-The reviewer is read-class: it changes nothing and only spends a model call, so it is treated like a subagent spawn (asked in Ask mode, automatic in Auto mode).
+![The Design Studio: a project on the left, an artboard in the middle with the agent chat beside it](docs/images/muse-design-studio.png)
 
-**Every review is archived.** Pass a stable artifact label (the same slug each round) and Muse keeps the whole trail in `~/.muse-agent/reviews/<artifact>/`: `review_v1.json`, `review_v2.json`, plus a `history.json` with the score of each round. That is how the agent knows whether the score is actually climbing and when to stop instead of churning the draft.
+**Design** in the sidebar opens a workspace for building things properly: a project folder, the design knowledge that shapes it, a live canvas, and the same conversation you use in chat.
 
-You can point the reviewer at a different model than the one that writes, handy if you want a stronger model judging the work:
+Four registries feed it, scanned in the same order everywhere:
 
-```toml
-[llm]
-model = "deepseek-chat"
-review_model = "gpt-5"      # optional; empty = same model as the writer
+| Registry | Entry document | Supplies |
+| --- | --- | --- |
+| `design-systems/<id>/` | `DESIGN.md` | Tokens, type, spacing, behaviour, accessibility rules. |
+| `design-templates/<id>/` | `TEMPLATE.md` plus starter files | A scaffolded starting point: landing page, deck, dashboard. |
+| `skills/<id>/` | `SKILL.md` | A reusable procedure, such as a design review or an accessibility audit. |
+| `craft/*.md` | the file itself | Brand-agnostic quality bars, on unless you pick a set. |
+
+Roots are scanned **project → personal → bundled**, and the first hit wins, so a project overrides your personal copy and your personal copy overrides the shipped defaults. The personal root is `%MUSE_HOME%\design\` (or `~/.muse-agent\design\` by default). Bundled defaults: two design systems, three templates, eight skills (six of them the antislop rulebooks), two craft sets.
+
+The three bundled templates ship guidelines, and the guidelines travel with the template:
+
+| Template | What its guidelines pin down |
+| --- | --- |
+| `landing-page` | No invented customer counts or testimonials, 16px minimum type, 4.5:1 contrast, one CTA per section, mobile-first at 360px. |
+| `deck` | One claim per slide, six lines of body text at most, five table rows at most, every number traceable. |
+| `dashboard` | Units and period on every metric, missing data is `-` and not `0`, three distinct loading, empty and error states. |
+
+Useful when a template is scaffolded:
+
+```text
+design_status                 the active project, selections, registry roots
+design_registry              list or read registry entries
+design_configure              set design system, skill, template, craft, name, kind
+design_scaffold               copy a template's starter files into the project
+design_artifact              validate and publish .od/artifact.json for the canvas
 ```
 
-## Answer style that matches you (vibe calibration)
+A project is an ordinary folder. Selecting one writes `.od/project.json` next to your files, so the folder stays usable on its own.
 
-Muse does not start as a stranger. On first run it looks for AI conversations that already exist on your machine: a ChatGPT data export (`conversations.json` in Downloads/Documents/Desktop), ChatGPT desktop or web caches, Claude Code transcripts (`~/.claude/projects`), Codex rollouts (`~/.codex/sessions`, zstd-compressed), Cline transcripts (`~/.cline/data/sessions`) and Muse's own sessions, and measures **how you like answers**: their length, structure, use of lists and code, directness, and your register.
+### The rulebook that ships with it
 
-The result is an answer-style guide in `~/.muse-agent/voice.md` that joins the system prompt, so Muse answers in the voice you already know from message one.
+Six antislop rulebooks travel inside the app: the core filter, UI and visual, copy and text, people and accessibility (WCAG 2.2), layout and mobile, and code comments. Forty rules in three tiers, a purpose test for every visual decision, and a liveliness bar.
 
-### Learn my style
+They are usable in three ways: as a skill in the Design Studio, as `/antislop` in chat for the current session, and as the house direction in `DESIGN.md` at the root of this repository. The rules are a filter, never a substitute for a project of its own.
 
-The sidebar carries a **Learn my style** button (also in the command palette). One click:
+```text
+/antislop core       the forty rules
+/antislop ui         the visual layer
+/antislop all        every rulebook at once
+/antislop off        leave the session as it was
+```
 
-1. re-reads **every** AI chat on the machine (Claude, Codex, Cline, Muse, plus a ChatGPT export if you dropped one in Downloads);
-2. finds the answers you **accepted** (the ones followed by your own *"ok"*, *"thanks"*, *"works"*) and compares them with your average answer;
-3. writes the difference into the guide as explicit rules ("the answers you accept run long, so give the real detail instead of a teaser"), and tells you what it found.
+---
 
-Where the liked answers disagree with your average, the liked answers win. The scan runs in a worker thread, so the window never freezes, and the rail shows what is currently known (`5,767 messages · 21 liked`).
+## Where your data lives
 
-- **Local and private:** analysis runs on your machine and the guide stores style metrics and rules only, never quotes, topics, or conversation content (pinned by tests).
-- **Automatic:** first run calibrates itself in the background and tells you what it found.
-- **You stay in charge:** the command palette has **Show answer-style profile**, **Learn my style from all local chats**, **Recalibrate answer style**, and **Reset answer-style profile**.
-- **Best results:** a ChatGPT data export (Settings → Data controls → Export data) placed anywhere in Downloads gives the richest signal.
-
-## Memory that follows your work
-
-Memory is enabled in the example configuration. Automatic project memory becomes active when a project folder supplies a scope; without a project scope, automatic capture and retrieval stay suspended. Explicit personal or manual scopes are available through the memory controls.
-
-The memory layer provides:
-
-- SQLite storage for scoped memories and their metadata.
-- Embedding-based retrieval within a per-turn context budget.
-- Selective capture of durable preferences and facts.
-- Session-end extraction of useful information from collected events.
-- Evidence versions, adaptive ranking controls, and quarantine for suspicious content.
-- Inspection, grading, export, and deletion through the Memory drawer.
-
-Use `/good` or `/bad` to grade the most recent eligible memory-backed response. Retrieved memories are supplied as labelled context data, not as higher-priority instructions.
-
-### Embedding configuration
-
-Chat and embeddings can use different endpoints and credentials. In **Settings → Connection → Memory embeddings**, set a separate embedding URL, model, and key when your chat endpoint does not provide embeddings.
-
-A saved embedding key is reused automatically. The field displays a masked placeholder and **Key saved** rather than returning the secret to the renderer. Leave it unchanged to keep the saved key; type a new value only to replace it, then save.
-
-Post-answer capture stores pending memories locally without waiting for another embedding-provider request. Pending embeddings are processed during a later retrieval. Embedding or provider failures can still affect retrieval time; the app surfaces recoverable memory errors and can continue without recalled context.
-
-## Configuration and data
-
-| Item | Default location or control |
+| Item | Where |
 | --- | --- |
-| User configuration | `$HOME\.muse-agent\config.toml` |
-| Credential vault | `credentials.enc` inside the Muse configuration directory |
-| Memory database files | `memory` inside the Muse configuration directory |
-| Configuration reference | [config.example.toml](config.example.toml) |
-| Alternate data directory | `MUSE_HOME` environment variable |
-| Explicit configuration file | `MUSE_CONFIG` environment variable |
+| User configuration | `%MUSE_HOME%\config.toml` (by default `~\.muse-agent\config.toml`) |
+| Credential vault | `credentials.enc` in the configuration directory |
+| Sessions | `sessions\` in the configuration directory, one JSONL file each |
+| Memory database | `memory\` in the configuration directory |
+| Answer feedback | `feedback.jsonl` in the configuration directory |
+| Answer-style guide | `voice.md` in the configuration directory |
+| Research cache and artifacts | `research\cache\` and `research\artifacts\` |
+| Review history | `reviews\<artifact>\` |
+| Attachments | `attachments\` in the configuration directory |
+| Alternate root | `MUSE_HOME` environment variable |
+| Explicit config file | `MUSE_CONFIG` environment variable |
 
-The packaged app seeds its user configuration from the bundled template on first run. Source development can also use a project-local `config.toml`.
+Keys saved through Settings use Electron's OS-backed encryption (DPAPI on Windows, Keychain on macOS). Older plaintext settings are migrated when the app loads. Environment variables still work for supplying a chat key.
 
-Keys saved through Settings use Electron's OS-backed credential encryption. Existing plaintext key settings are migrated by the desktop configuration loader. Environment variables remain available for supplying chat credentials.
+The packaged app seeds its configuration from the bundled template on first run. Keep personal configuration out of git: [config.example.toml](config.example.toml) is the shareable reference, not a place for real keys.
 
-Keep credentials and personal configuration out of Git. `config.example.toml` is the shareable template, not a place for real API keys.
+**What is never written to web storage:** the renderer never touches it. Everything persists in files the app owns.
 
-## Integrations and terminal use
+---
 
-### Ubuntu sandbox screen
-
-Open **Sandbox** beside the chat model picker. With Oracle VirtualBox installed, choose an Ubuntu desktop ISO, select **Create VM**, then **Start**. The guest screen appears inside Muse and refreshes while the panel is open. Click it to send mouse and keyboard input directly into the guest; press **F6** to return focus to Muse controls. Text input currently supports printable ASCII.
-
-You can use **Try Ubuntu** without installing, or install Ubuntu inside the guest. Muse creates its own VM with 3 GB RAM, two CPUs and a dynamically allocated 24 GB disk. Shared folders, clipboard transfer and drag-and-drop are not enabled. Your existing WSL distributions are separate. The guest uses NAT networking for internet access.
-
-Once the desktop is ready, choose **Save clean desktop**. **Reset to clean** restores that snapshot and discards later guest changes. **Stop & save** saves the running state. While the sandbox is selected, the agent receives only guest screen/input tools; host shell, file, Windows desktop, MCP and subagent tools are unavailable. Stopping the VM keeps that target selected. **Use host tools** explicitly switches the agent back.
-
-The live preview stays local. Screenshots requested by the agent go to your configured vision-capable model and are not stored as image bytes in chat history or memory. This integration does not install Ubuntu unattended or choose a guest password for you.
-
-### Box cloud desktop
-
-Open **Settings → Integrations → Box by Simular → Connect Box**, then sign in and approve Muse in your browser. Credentials are stored in the encrypted desktop vault; no API key needs to be pasted into chat.
-
-The **Box** button beside the chat model picker opens a Muse-themed panel with connection status, recent tool activity, and the latest returned screenshot. **Open desktop** opens Box's live desktop in your browser. Box operates a cloud Linux desktop, separate from your Windows computer.
-
-Box tools follow Muse's permission mode and deny rules. After a private-file read, the egress policy can block remote Box calls unless `mcp.box.simular.ai` is authorized in `sentinel.egress_allowlist`. Use a vision-capable model when interpreting screenshots. Screenshot bytes are passed to the next model request but are not saved in session history or memory records.
-
-You must complete sign-in yourself. Disconnecting removes Muse's locally stored Box authorization. Manage server-side access through your Simular account.
+## Extending it
 
 ### MCP servers
 
-Open **Settings → Integrations** to add a stdio MCP server, its command, arguments, and environment settings. Server tools are exposed with names such as `mcp__server__tool` and follow the active permission mode.
-
-External MCP servers run their own code. Use servers you trust and configure only the access they need.
+**Settings → Integrations** adds a stdio server with its command, arguments and environment. Its tools appear as `mcp__<server>__<tool>` and follow the active permission mode. External servers run their own code: use the ones you trust.
 
 ### Command-line agent
 
-Run the same harness without the desktop window:
+The same harness without the window:
 
 ```powershell
 bun run agent "Summarize this directory"
 ```
 
-Supply credentials through the environment when using the CLI; the terminal harness does not decrypt the desktop credential vault.
+The terminal harness cannot read the desktop vault, so it takes credentials from the environment.
 
 ### Local host bridge
 
-When enabled, the host bridge exposes `/send`, `/status`, `/sessions`, `/cancel`, and `/reset` on `127.0.0.1`. Requests require its bearer token, stored as `bridge_token` in the configuration directory. The bridge controls the live app instance.
+When enabled, the bridge exposes `/send`, `/status`, `/sessions`, `/cancel` and `/reset` on `127.0.0.1`. Requests need the bearer token stored as `bridge_token` in the configuration directory. It drives the running app. See the `[bridge]` section of [config.example.toml](config.example.toml).
 
-See the `[bridge]` section in [config.example.toml](config.example.toml) for port and enablement settings.
+### Box cloud desktop
 
-## Build for Windows
+**Settings → Integrations → Box by Simular → Connect Box** signs you in through the browser; no API key is pasted into chat. The **Box** button beside the model picker opens a panel with the connection state, recent tool activity and the latest returned screenshot. Box runs a cloud Linux desktop, separate from your Windows machine. After a private-file read, the egress policy can block remote Box calls unless `mcp.box.simular.ai` is in `sentinel.egress_allowlist`. Screenshot bytes go to the next model request and are not kept in session history or memory.
 
-Run from the repository root:
+### Ubuntu sandbox
+
+The **Sandbox** button beside the model picker opens an Ubuntu desktop inside Muse, with Oracle VirtualBox installed. Pick an ISO, **Create VM**, **Start**: the guest screen appears in the panel and takes mouse and keyboard input (printable ASCII, F6 returns focus to Muse). The VM gets 3 GB of RAM, two CPUs and a dynamically allocated 24 GB disk, with NAT networking. Shared folders, clipboard and drag-and-drop are not enabled, and your WSL distributions are separate. **Save clean desktop** stores a snapshot, **Reset to clean** restores it, **Stop & save** keeps the running state.
+
+While the sandbox is the selected target, the agent receives only guest screen and input tools: host shell, file, Windows desktop, MCP and subagent tools are unavailable until you switch back with **Use host tools**.
+
+---
+
+## Build from source
 
 ```powershell
-# Portable executable
-bun run dist:portable
-
-# Unpacked application folder
-bun run dist:dir
-
-# Installer and portable targets
-bun run dist
+bun install
+bun run start              # run it
+bun run test               # the test suite
 ```
 
-User-facing builds are written to:
+### Windows executables
+
+```powershell
+bun run dist:portable      # portable executable
+bun run dist:dir           # unpacked application folder
+bun run dist               # installer and portable
+```
+
+Output lands in:
 
 ```text
 %LOCALAPPDATA%\MuseAgent\releases\<version>\
 ```
 
-For version `0.1.8` that release directory contains:
+For 0.1.8 that folder holds:
 
 | File | Purpose |
 | --- | --- |
 | `Muse-Agent-Setup-0.1.8.exe` | NSIS installer (auto-update payload) |
 | `Muse-Agent-Setup-0.1.8.exe.blockmap` | Differential-download block map |
 | `MuseAgent-0.1.8-portable.exe` | Portable executable |
-| `latest.yml` | Update manifest; its `url`, `sha512`, and `size` are generated from the installer beside it |
+| `latest.yml` | Update manifest, generated from the installer beside it |
 | `win-unpacked/` | Unpacked application folder |
 
-Artifact names contain no spaces on purpose: `latest.yml` refers to the installer by URL, and a spaced filename is a classic source of download failures for the updater. If you rename an artifact by hand, regenerate or re-check `latest.yml`.
+The output directory is not a preference. An executable built inside a Windows Low-integrity-labelled directory inherits restricted write access and fails when it needs the Temp folder, so the build wrapper stages releases in the per-user directory without changing the project's security labels.
 
-This output location matters: executables built inside a Windows Low-integrity-labelled directory inherit restricted write access and can fail when using the normal Temp folder. The Windows build wrapper stages releases in the per-user release directory without changing the project's security labels.
+Artifact names carry no spaces on purpose: `latest.yml` refers to the installer by URL, and a spaced filename is a classic source of updater failures. Rename an artifact by hand and you must regenerate `latest.yml`.
 
-### Validate before publishing
-
-```powershell
-# Automated tests
-bun run test
-
-# Tests, native SQLite, package contents, and executable/ASAR integrity
-bun run release:check
-
-# Launch the actual portable EXE with an isolated runtime probe
-bun scripts/verify-portable.mts
-```
-
-`release:check` uses `dist/release-check` for its validation build and writes a receipt only after successful checks. The receipt records source hashes, Git state, and package hashes. It does not replace a portable-launch or visual UI check.
-
-#### Electron fuses
-
-`build.electronFuses` in `package.json` hardens every packaged executable:
-
-| Fuse | State | Why |
-| --- | --- | --- |
-| `enableNodeCliInspectArguments` | off | Blocks `--inspect` / `SIGUSR1` debugging of the main process |
-| `enableNodeOptionsEnvironmentVariable` | off | Blocks `NODE_OPTIONS` / `NODE_EXTRA_CA_CERTS` injection; nothing in the app reads them |
-| `enableEmbeddedAsarIntegrityValidation` | on | The EXE embeds the ASAR header hash (written by electron-builder before the fuse flip) and refuses a tampered `app.asar` |
-| `runAsNode` | **on** | `scripts/release-check.mts` and `scripts/verify-portable.mts` probe the packaged binary as Node. Turning it off also disables `process.fork` from the main process |
-| `onlyLoadAppFromAsar` | off | WebApps built by `app/main/site-app-packager.js` ship an unpacked `resources/app` folder, which this fuse would reject |
-
-The two intentionally open fuses are the remaining gap. Closing `runAsNode` means moving the packaged smoke probes onto a different entry point first (for example a self-check flag handled inside the app).
-
-The portable probe launches the release executable, checks packaged source files and SQLite, and verifies Temp writes without loading your real agent configuration or credentials.
-
-Additional native UI checks are available:
+### Check before you publish
 
 ```powershell
-bun scripts/verify-settings.mts
-bun scripts/verify-activity.mts
-bun scripts/verify-shader.mts
+bun run test                      # the suite
+bun run release:check             # tests, native SQLite, package contents, ASAR integrity
+bun scripts/verify-portable.mts   # launches the real portable executable under a probe
+bun scripts/verify-settings.mts   # UI checks, writes screenshots into dist
+bun scripts/verify-chat.mts
+bun scripts/verify-design.mts
 ```
 
-These use an isolated preview bridge and generate screenshots under `dist`. The README images are preview captures with example data.
+`release:check` builds into `dist/release-check` and writes a receipt only after the checks pass. The receipt records source hashes, Git state and package hashes. The visual scripts use an isolated preview bridge, so they never touch your real configuration or credentials.
 
-### Publish a GitHub release
-
-After reviewing, committing, and pushing your release changes to `main`, use the GitHub CLI to upload the verified artifacts:
+### Publish a release
 
 ```powershell
 $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
@@ -603,47 +449,68 @@ gh release create "v$version" `
     --latest
 ```
 
-`electron-updater` is configured with the `github` provider (`resources/app-update.yml`), so the installer, its block map, and `latest.yml` must all be release assets with those exact names; the portable build alone leaves installed apps unable to update.
+Everything after the tag in `gh release create` is an asset path, which is why the title is passed with `--title`: a title in that position would be read as a file name.
 
-Use a new version and tag for each new release. `latest.yml` for a version that is already installed is ignored. Build and verify the matching executables before uploading them.
+The update check is notify-only by design. Muse asks the GitHub Releases API whether a newer tag exists, shows the notes and opens the release page in your browser when you click. Nothing is downloaded or replaced in place, because the portable executable is often file-locked by Windows.
+
+Use a new version and a new tag for every release.
+
+### Electron fuses
+
+`build.electronFuses` in `package.json` hardens every packaged executable:
+
+| Fuse | State | Why |
+| --- | --- | --- |
+| `enableNodeCliInspectArguments` | off | Blocks `--inspect` and `SIGUSR1` debugging of the main process. |
+| `enableNodeOptionsEnvironmentVariable` | off | Blocks `NODE_OPTIONS` injection. Nothing in the app reads it. |
+| `enableEmbeddedAsarIntegrityValidation` | on | The executable embeds the ASAR header hash and refuses a tampered `app.asar`. |
+| `runAsNode` | on | `release-check` and `verify-portable` probe the packaged binary as Node. Turning it off also disables `process.fork` from the main process. |
+| `onlyLoadAppFromAsar` | off | The site packager ships an unpacked `resources/app` folder, which this fuse would reject. |
+
+Two fuses are deliberately left open. Closing `runAsNode` means moving the packaged smoke probes onto a different entry point first.
+
+---
 
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
-| **NSIS: Error writing temporary file** | Use the release from the per-user output folder above. A copy inside a Low-integrity-labelled project directory can inherit restrictions that prevent Temp writes. |
-| **Embedding key looks empty** | Look for **Key saved** and the masked placeholder. Saved keys are intentionally not filled back into the input. |
-| **Model missing from chat** | Fetch or enter the model in Settings, tick **In chat**, and save the connection. |
-| **Slow responses** | Check the selected model and endpoint, tool duration, memory/embedding availability, and retry errors. A completed shell command may still be followed by another model request. |
-| **A tool is denied** | Check the active mode, project scope, and deny rules. Auto does not override deny rules. |
-| **Native SQLite fails to load** | Run `bun run rebuild:electron` for the desktop runtime and rebuild the app. |
-| **An update is available** | Download the new asset from GitHub Releases. Update notifications do not automatically install it. |
+| **NSIS: error writing temporary file** | Build into the per-user release folder. A copy inside a Low-integrity-labelled directory inherits restrictions that block Temp writes. |
+| **The embedding key looks empty** | Look for **Key saved** and the masked placeholder. Saved keys are deliberately not filled back into the field. |
+| **A model is missing from chat** | Fetch or enter it in Settings, tick **In chat**, save the connection. |
+| **Responses are slow** | Check the model and endpoint, the tool durations, memory availability and any retry errors. A finished shell command is usually followed by another model request. |
+| **A tool was denied** | Check the mode, the project scope and the deny rules. Auto does not override deny rules. |
+| **Native SQLite fails to load** | Run `bun run rebuild:electron` and rebuild the app. |
+| **An update is waiting** | Download it from GitHub Releases. Muse points at updates, it does not replace the running app. |
+
+---
 
 ## Project map
 
 ```text
 app/
-  main/                 Electron lifecycle, IPC, settings, credentials
+  main/                 Electron lifecycle, IPC, settings, the credential vault
   renderer/             Chat, projects, dashboards, charts, model pickers, activity, themes
-  harness/              Model loop, tools, Sentinel, sessions, data sources, dashboards, CLI, MCP
+  harness/              Model loop, tools, Sentinel, sessions, data sources, research, CLI, MCP
   memory/               SQLite memory, retrieval, extraction, feedback
-build/                   Application icon and branding
+  design/               Design systems, templates, skills and craft rules
+build/                  Application icon and branding
 scripts/
-  renderer/             TypeScript sources for local browser bundles
+  renderer/             TypeScript sources for the local browser bundles
   test/                 Packaging and release-check tests
-  build-windows.mts     Windows release output and builder wrapper
+  build-windows.mts     Windows release output and the builder wrapper
   release-check.mts     Reproducible package validation
-  verify-portable.mts   Actual launcher and runtime verification
-docs/                    Integration notes and UI preview images
-config.example.toml      Configuration reference
+  verify-portable.mts   Launches the packaged binary and probes it
+docs/                   Integration notes and UI preview images
+DESIGN.md               The interface direction: identity, tokens, mood
+AGENTS.md               How to work in this repository
+config.example.toml     Configuration reference
 ```
 
 ## Contributing
 
-Small, focused improvements are welcome. Describe the behavior you are changing, keep personal configuration out of the diff, and include the checks relevant to the change.
-
-For development, start with `bun run start`. Run `bun run test` for code changes, and use the native preview checks when changing the interface. For distributable Windows changes, also run the package and portable-launch checks.
+Small, focused changes are welcome. Describe the behavior you are changing, keep personal configuration out of the diff, and run the checks that cover it. `AGENTS.md` explains the layout, the pinned test contracts and the rules that do not bend (the vault holds secrets, the renderer never touches web storage, the policy gate fails closed).
 
 ## License
 
-**MIT**. See [LICENSE](LICENSE) and [package.json](package.json).
+MIT. See [LICENSE](LICENSE).

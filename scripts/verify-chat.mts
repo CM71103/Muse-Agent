@@ -56,7 +56,10 @@ const api={
   {chartId:'c3',columns:['region','revenue'],rows:[{region:'east',revenue:420},{region:'west',revenue:310},{region:'north',revenue:180},{region:'south',revenue:90}],truncated:false},
   {chartId:'c4',columns:['month','revenue'],rows:[{month:'jun',revenue:240}],truncated:false},
   {chartId:'c5',columns:['month','revenue'],rows:[{month:'jan',revenue:120},{month:'feb',revenue:180},{month:'mar',revenue:150}],truncated:false}]})};
-for(const name of ['onAgentEvent','onApprovalRequest','onApprovalResolved','onApprovalExpired','onSessionReset','onQuestion','onLearningStatus'])api[name]=()=>()=>{};
+const harnessCbs={};
+for(const name of ['onAgentEvent','onApprovalRequest','onApprovalResolved','onApprovalExpired','onSessionReset','onQuestion','onLearningStatus'])api[name]=(cb)=>{harnessCbs[name]=cb;return ()=>{};};
+// the harness can fire the real event handlers, so a screenshot shows the real UI
+api.__fire=(name,payload)=>{if(harnessCbs[name]){harnessCbs[name](payload);return true;}return false;};
 api.cancel=async()=>({ok:true});
 api.antislopSkills=async()=>({ok:true,skills:[{id:'antislop',title:'core filter',chars:53730,available:true}],active:[]});
 api.antislopApply=async groups=>({ok:true,groups:['antislop','antislop-ui'],chars:84650,skills:[]});
@@ -203,6 +206,9 @@ app.whenReady().then(async()=>{try{
  await js("setTheme('win7')");await pause(500);await shot('theme-win7');
  await js("setTheme('retro')");await pause(500);await shot('theme-retro');
  await js("setTheme('shiva')");await pause(500);await shot('theme-shiva');
+ await js("setTheme('dark')");await pause(300);
+ await js("window.muse.__fire('onApprovalRequest',{id:'req-1',tool:'shell',args:{command:'npm run test'}});document.getElementById('mainlog').scrollTop=document.getElementById('mainlog').scrollHeight");await pause(500);await shot('approval');
+ await js("window.muse.__fire('onApprovalResolved',{id:'req-1',decision:'allow'})");await pause(300);
  await js("setTheme('dark')");await pause(400);
  // the welcome screen carries the picture, so it is checked per appearance
  await js("document.getElementById('transcript').innerHTML='';renderEmpty()");await pause(400);
