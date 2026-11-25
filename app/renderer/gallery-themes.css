@@ -147,7 +147,7 @@ html { background:var(--color-surface-app); }
 body[data-theme="win7"] {
   --color-foreground:#0d1b2a;
   --color-muted-fg:#42607e;
-  --faint:#7b95b0;
+  --faint:#3c566f;
   --color-background:#eef5fc;
   --color-card:#f7fbff;
   --color-popover:#f7fbff;
@@ -213,7 +213,7 @@ body[data-theme="win7"]::before {
 body[data-theme="retro"] {
   --color-foreground:#ffc267;
   --color-muted-fg:#b0803a;
-  --faint:#7d5822;
+  --faint:#c99b5c;
   --color-background:#150e05;
   --color-card:#1d1409;
   --color-popover:#1d1409;
@@ -269,7 +269,7 @@ body[data-theme="retro"]::before {
 body[data-theme="shiva"] {
   --color-foreground:#e9e4d9;
   --color-muted-fg:#9b948a;
-  --faint:#6d665f;
+  --faint:#a3a7aa;
   --color-background:#0f1318;
   --color-card:#171c23;
   --color-popover:#171c23;

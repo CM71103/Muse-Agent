@@ -427,7 +427,9 @@ async function copyTextToClipboard(text) {
   ta.value = value; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; ta.style.pointerEvents = 'none';
   document.body.append(ta); ta.select(); ta.setSelectionRange(0, value.length);
   const ok = document.execCommand('copy'); ta.remove();
-  return ok;
+  if (ok) return true;
+  // Last stop: the main process clipboard always works (no focus required).
+  try { return Boolean(await window.muse.clipboardWrite(value)); } catch { return false; }
 }
 function addCopyAll(body, rawText) {
   // small "copy" affordance under assistant replies — copies the raw markdown
@@ -488,7 +490,7 @@ function renderMarkdown(root, text) {
       pre.append(codeEl);
       block.append(head, pre);
       cp.addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(codeText); cp.textContent = 'copied'; }
+        try { const ok = await copyTextToClipboard(codeText); cp.textContent = ok ? 'copied' : 'failed'; }
         catch { cp.textContent = 'failed'; }
         cp.classList.add('ok');
         setTimeout(() => { cp.textContent = 'copy'; if (cp.classList.remove) cp.classList.remove('ok'); }, 1400);
@@ -980,6 +982,8 @@ function ratingRow() {
     buttons.push({ el: b, rating });
     b.addEventListener('click', async () => {
       try {
+        // A repeat click on the same thumb is already recorded: do not grade twice.
+        if (row.getAttribute('data-rated') === String(rating)) return;
         const res = await window.muse.feedbackGrade(rating);
         if (!res || !res.ok) { addSysNote(String(res && res.error || 'could not record that'), true); return; }
         row.setAttribute('data-rated', String(rating));

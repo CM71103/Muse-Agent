@@ -113,7 +113,7 @@ main { gap:12px; }
   font-weight:550; background:color-mix(in srgb,var(--color-background) 65%,transparent); border-color:var(--color-border);
   box-shadow:inset 0 1px 0 rgb(255 230 200 / .025); }
 .starter::before { content:'↗'; display:grid; place-items:center; width:24px; height:24px; border-radius:7px;
-  color:var(--color-primary); background:var(--color-accent); font:14px var(--mono); }
+  color:var(--color-accent-fg); background:var(--color-accent); font:14px var(--mono); }
 .starter:nth-child(2)::before { content:'⌘'; }
 .starter:nth-child(3)::before { content:'✧'; }
 .starter span { font-size:9px; color:var(--color-muted-fg); }
@@ -136,7 +136,7 @@ footer { padding:10px 24px 17px; }
 .workspace-stats span { font-size:9px; margin-top:4px; color:var(--color-muted-fg); }
 .workspace-stats div:first-child strong { color:var(--color-primary); }
 .inspector-heading { padding:18px 17px 0; font-size:12px; justify-content:space-between; }
-.count-badge { color:var(--color-primary); background:var(--color-accent); font-size:9px; padding:1px 6px; }
+.count-badge { color:var(--color-accent-fg); background:var(--color-accent); font-size:9px; padding:1px 6px; }
 .inspector-hint { padding:6px 17px; font-size:10px; line-height:1.6; }
 .wb-tabs { padding:10px 13px 12px; }
 .wb-tabs button { font-size:10px; padding:6px 8px; border-radius:7px; }
@@ -240,7 +240,7 @@ footer { padding:10px 24px 17px; }
 .subagent-card { width:100%; border:1px solid var(--color-border); border-radius:14px; padding:17px 18px; background:var(--color-background); }
 .subagent-heading { display:flex; gap:12px; align-items:center; justify-content:space-between; font-size:12px; }
 .subagent-heading strong::before { content:'↗'; margin-right:9px; color:var(--color-primary); }
-.subagent-state { border:1px solid var(--color-border); padding:3px 8px; border-radius:20px; color:var(--color-primary); background:var(--color-accent); font-size:10px; }
+.subagent-state { border:1px solid var(--color-border); padding:3px 8px; border-radius:20px; color:var(--color-accent-fg); background:var(--color-accent); font-size:10px; }
 .subagent-task { color:var(--color-foreground); font-size:13px; line-height:1.7; margin:14px 0 7px; overflow-wrap:anywhere; }
 .subagent-progress { font-size:11px; color:var(--color-muted-fg); line-height:1.7; }
 .subagent-card details { margin-top:14px; border-top:1px solid var(--color-border-soft); padding-top:11px; }
@@ -258,7 +258,7 @@ footer { padding:10px 24px 17px; }
 #settings { width:min(980px,96vw); max-height:calc(100vh - 48px); display:flex; flex-direction:column; overflow:hidden;
   border:1px solid var(--glass-border); border-radius:22px; background:var(--color-background); box-shadow:0 28px 100px rgb(0 0 0 / .35); }
 .settings-header { height:auto; min-height:105px; flex-shrink:0; display:flex; align-items:center; gap:15px; padding:23px 28px; border-bottom:1px solid var(--color-border-soft); background:transparent; }
-.settings-emblem { display:grid; place-items:center; width:48px; height:48px; border-radius:15px; background:var(--color-accent); color:var(--color-primary); font-size:28px; border:1px solid var(--color-border); }
+.settings-emblem { display:grid; place-items:center; width:48px; height:48px; border-radius:15px; background:var(--color-accent); color:var(--color-accent-fg); font-size:28px; border:1px solid var(--color-border); }
 .settings-eyebrow { color:var(--color-muted-fg); font-size:8px; letter-spacing:1.7px; font-weight:600; }
 .settings-header h2 { font-size:23px; font-weight:550; letter-spacing:-.7px; margin:2px 0; }
 .settings-header p { font-size:11px; color:var(--color-muted-fg); margin:4px 0 0; }
@@ -278,11 +278,11 @@ footer { padding:10px 24px 17px; }
 .settings-content h3 { font-size:20px; font-weight:550; letter-spacing:-.5px; }
 .settings-content .sub { color:var(--color-muted-fg); font-size:11px; line-height:1.8; margin:6px 0 0; }
 #connection-state { flex-shrink:0; font-size:9px; line-height:1.6; padding:4px 8px; border:1px solid var(--color-border); border-radius:20px; color:var(--color-muted-fg); }
-#connection-state[data-state=dirty],#connection-state[data-state=saving] { color:var(--color-primary); background:var(--color-accent); }
+#connection-state[data-state=dirty],#connection-state[data-state=saving] { color:var(--color-accent-fg); background:var(--color-accent); }
 #connection-state[data-state=saved] { color:var(--color-success); }
 .settings-card { border:1px solid var(--color-border); border-radius:15px; padding:19px 20px; margin-bottom:15px; background:var(--color-surface-subtle); }
 .settings-card-heading { display:flex; align-items:center; gap:11px; padding-bottom:16px; border-bottom:1px solid var(--color-border-soft); }
-.settings-card-icon { width:31px; height:31px; display:grid; place-items:center; border-radius:9px; color:var(--color-primary); background:var(--color-accent); font-size:18px; flex-shrink:0; }
+.settings-card-icon { width:31px; height:31px; display:grid; place-items:center; border-radius:9px; color:var(--color-accent-fg); background:var(--color-accent); font-size:18px; flex-shrink:0; }
 .settings-card-heading h4 { font-size:12px; font-weight:600; margin:0; }
 .settings-card-heading p { font-size:10px; color:var(--color-muted-fg); margin:4px 0 0; }
 #settings .field { margin:16px 0 0; }
@@ -344,7 +344,7 @@ footer { padding:10px 24px 17px; }
 @media (prefers-reduced-motion:reduce) { .settings-nav button,.settings-expand { transition:none; } #settings[aria-busy=true] #btn-save::before { animation:none; } }
 .saved-key-state { display:inline-flex; margin:0 0 9px; padding:3px 8px; border:1px solid var(--color-border); border-radius:12px; font-size:10px; color:var(--color-muted-fg); }
 .saved-key-state[data-state=saved] { color:var(--color-success); }
-.saved-key-state[data-state=pending] { color:var(--color-primary); background:var(--color-accent); }
+.saved-key-state[data-state=pending] { color:var(--color-accent-fg); background:var(--color-accent); }
 
 /* Calm workspace refinement: preserve Ember's warmth, reduce visual noise,
    and use one consistent surface, control and spacing language throughout. */
