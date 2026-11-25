@@ -179,7 +179,8 @@ test('tool registry keeps central policy (no alwaysAsk drift)', () => {
     'visual_kit_docs','visual_render','list_visual_pages',
     'critique',
     'search_papers','read_paper','cite_source',
-    'preview_run','preview_status'].sort());
+    'preview_run','preview_status',
+    'astryx_docs','astryx_check'].sort());
 });
 
 test('shipped DEFAULTS and absent legacy fields both support approval-free Auto', () => {

@@ -23,7 +23,9 @@
     "node": ">=24"
   },
   "devDependencies": {
+    "@astryxdesign/cli": "^0.7.17",
     "@electron/fuses": "^1.8.0",
+    "@stylexjs/stylex": "^0.19.2",
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0"
   },
@@ -92,8 +94,11 @@
     ]
   },
   "dependencies": {
+    "@astryxdesign/core": "^0.7.17",
+    "@astryxdesign/theme-neutral": "^0.7.17",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@paper-design/shaders": "0.0.82",
     "better-sqlite3": "^13.0.3"
-  }
+  },
+  "packageManager": "npm@10.9.2"
 }

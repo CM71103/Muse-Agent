@@ -72,6 +72,10 @@ class Sentinel {
     const previewTools = require('./preview-tools.ts');
     for (const name of previewTools.PREVIEW_READ_NAMES) this.readTools.add(name);
     for (const name of previewTools.PREVIEW_WRITE_NAMES) this.sideEffectTools.add(name);
+    // Astryx design capability: both tools read (docs, and a lint that only
+    // reads the built output).
+    const astryxTools = require('./astryx-tools.ts');
+    for (const name of astryxTools.ASTRYX_READ_NAMES) this.readTools.add(name);
     this.projectWriteTools = new Set(['write_file', ...designTools.DESIGN_WRITE_NAMES, ...visualTools.VISUAL_WRITE_NAMES]);
     // Legacy always_ask_tools values are accepted in config but do not override Auto.
     // Modes live on the sentinel so a running agent picks up a switch
