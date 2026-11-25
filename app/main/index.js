@@ -1380,6 +1380,26 @@ function _sanitizeMcpServer(s) {
   return out;
 }
 
+ipcMain.handle('mcp:import-claude', async (e) => {
+  requireTrusted(e);
+  // One-click setup: read the Claude Desktop config the user already has and
+  // hand its servers to the renderer. Read-only; nothing is saved until the
+  // user confirms in the settings panel.
+  const p = path.join(process.env.APPDATA || '', 'Claude', 'claude_desktop_config.json');
+  let raw;
+  try { raw = fs.readFileSync(p, 'utf8'); } catch { return { ok: false, error: `No Claude Desktop config at ${p}` }; }
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch (err) { return { ok: false, error: `Could not parse that config: ${err.message}` }; }
+  const servers = parsed && parsed.mcpServers && typeof parsed.mcpServers === 'object' ? parsed.mcpServers : {};
+  const entries = Object.entries(servers).map(([name, s]) => ({
+    name,
+    command: String((s && s.command) || ''),
+    args: Array.isArray(s && s.args) ? s.args.map(String) : [],
+    env: s && s.env && typeof s.env === 'object' ? Object.entries(s.env).map(([k, v]) => `${k}=${v}`) : [],
+  }));
+  return { ok: true, entries, path: p };
+});
+
 ipcMain.handle('mcp:save', async (e, { name, server, enabled } = {}) => {
   try {
     requireTrusted(e);

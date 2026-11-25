@@ -98,6 +98,7 @@ contextBridge.exposeInMainWorld('muse', {
   fetchModels: (opts) => ipcRenderer.invoke('settings:fetchModels', opts),
   mcpList: () => ipcRenderer.invoke('mcp:list'),
   mcpSave: (srv) => ipcRenderer.invoke('mcp:save', srv),
+  mcpImportClaude: () => ipcRenderer.invoke('mcp:import-claude'),
   mcpRemove: (name) => ipcRenderer.invoke('mcp:remove', { name }),
   listSessions: () => ipcRenderer.invoke('sessions:list'),
   loadSession: (id) => ipcRenderer.invoke('sessions:load', id),

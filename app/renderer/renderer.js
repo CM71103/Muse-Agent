@@ -61,21 +61,32 @@ function renderEmpty() {
   const box = document.createElement('section'); box.id = 'empty';
   const hero = buildHeroEmblem();
   attachSparkReplay(hero, false);
-  const eyebrow = document.createElement('div'); eyebrow.className = 'empty-eyebrow'; eyebrow.textContent = 'Muse';
+  hero.classList.add('hero-home');
   const title = document.createElement('h1'); title.id = 'empty-title'; title.textContent = 'Good to see you. What is next?'; title.style.whiteSpace = 'pre-line';
-  const text = document.createElement('p'); text.textContent = 'Think it through, build something, or pick up where you left off.';
-  const starters = document.createElement('div'); starters.className = 'starters';
-  for (const [label, task, hint] of [
-    ['Understand a project', 'List the files here and summarize the README.', 'Files & context'],
-    ['Make a plan', 'Help me turn an idea into a practical implementation plan.', 'Think it through'],
-    ['Review my work', 'Help me review a change. Ask which files to inspect first.', 'A fresh perspective']
+  const text = document.createElement('p'); text.className = 'empty-lead'; text.textContent = 'Think it through, build something, or pick up where you left off.';
+  const head = document.createElement('div'); head.className = 'empty-head'; head.append(hero, title);
+  const ideas = document.createElement('div'); ideas.className = 'home-ideas';
+  const ideasLabel = document.createElement('p'); ideasLabel.className = 'home-ideas-label'; ideasLabel.textContent = 'Ideas for you';
+  ideas.append(ideasLabel);
+  for (const [icon, label, task, hint] of [
+    ['M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10v7a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17z', 'Understand a project', 'List the files here and summarize the README.', 'Files & context'],
+    ['M4 6h16M4 12h16M4 18h10', 'Make a plan', 'Help me turn an idea into a practical implementation plan.', 'Think it through'],
+    ['M5 12h14M13 6l6 6-6 6', 'Review my work', 'Help me review a change. Ask which files to inspect first.', 'A fresh perspective']
   ]) {
-    const b = document.createElement('button'); b.className = 'starter';
-    const strong = document.createElement('strong'); strong.textContent = label; b.append(strong);
-    const small = document.createElement('span'); small.textContent = hint; b.append(small);
-    b.addEventListener('click', () => { if (!busy && !loadingSession) { input.value = task; autosize(); input.focus(); } }); starters.append(b);
+    const row = document.createElement('button'); row.className = 'home-idea';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true');
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', icon); svg.append(p);
+    const strong = document.createElement('strong'); strong.textContent = label;
+    const small = document.createElement('span'); small.textContent = hint;
+    const go = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    go.setAttribute('viewBox', '0 0 24 24'); go.setAttribute('aria-hidden', 'true'); go.setAttribute('class', 'go');
+    const gp = document.createElementNS('http://www.w3.org/2000/svg', 'path'); gp.setAttribute('d', 'M5 12h14M13 6l6 6-6 6'); go.append(gp);
+    const words = document.createElement('span'); words.className = 'home-idea-words'; words.append(strong, small);
+    row.append(svg, words, go);
+    row.addEventListener('click', () => { if (!busy && !loadingSession) { input.value = task; autosize(); input.focus(); } }); ideas.append(row);
   }
-  box.append(hero, eyebrow, title, text, starters); transcript.append(box);
+  box.append(head, text, ideas); transcript.append(box);
 }
 
 // Mini spark mark: the agent's logo chip (sidebar brand + message pip).
@@ -2620,6 +2631,8 @@ try {
       userName = r.name;
       const t = document.getElementById('empty-title');
       if (t) t.textContent = `Good to see you, ${r.name}. What is next?`;
+      const acct = document.getElementById('rail-account-name');
+      if (acct) acct.textContent = r.name;
     }
   }).catch(() => {});
 } catch {}
@@ -3502,6 +3515,55 @@ async function renderMcpList() {
 }
 
 $('btn-mcp-refresh').addEventListener('click', renderMcpList);
+
+/* Claude-Desktop-style sidebar nav: every row drives a real view. */
+$('btn-nav-search')?.addEventListener('click', () => $('btn-command')?.click());
+$('btn-nav-projects')?.addEventListener('click', () => document.querySelector('[data-nav="projects"]')?.click());
+$('btn-nav-artifacts')?.addEventListener('click', () => { try { openPagesView(); } catch { /* view not ready */ } });
+$('btn-nav-customize')?.addEventListener('click', () => $('btn-settings')?.click());
+$('composer-project')?.addEventListener('click', () => $('btn-project')?.click());
+
+/* MCP quick add: presets fill the form so nobody hand-types npx lines. */
+const MCP_PRESETS = [
+  ['Filesystem', 'docs', 'npx', '-y @modelcontextprotocol/server-filesystem D:/projects', ''],
+  ['GitHub', 'github', 'npx', '-y @modelcontextprotocol/server-github', 'GITHUB_TOKEN=your token'],
+  ['PostgreSQL', 'postgres', 'npx', '-y @modelcontextprotocol/server-postgres postgresql://localhost/db', ''],
+  ['SQLite', 'sqlite', 'npx', '-y @modelcontextprotocol/server-sqlite ./data.db', ''],
+  ['Browser', 'browser', 'npx', '-y @modelcontextprotocol/server-puppeteer', ''],
+  ['Memory', 'memory', 'npx', '-y @modelcontextprotocol/server-memory', ''],
+];
+const presetWrap = $('mcp-presets');
+if (presetWrap) {
+  for (const [label, name, command, args, env] of MCP_PRESETS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'mcp-preset'; b.textContent = label;
+    b.title = `${command} ${args}`;
+    b.addEventListener('click', () => {
+      $('f-mcp-name').value = name; $('f-mcp-command').value = command;
+      $('f-mcp-args').value = args; $('f-mcp-env').value = env;
+      $('f-mcp-name').focus();
+    });
+    presetWrap.append(b);
+  }
+}
+$('btn-mcp-import')?.addEventListener('click', async () => {
+  const err = $('settings-err'); if (err) err.textContent = '';
+  const btn = $('btn-mcp-import'); if (btn) btn.disabled = true;
+  try {
+    const r = await window.muse.mcpImportClaude();
+    if (!r || !r.ok) { if (err) err.textContent = (r && r.error) || 'Import failed'; return; }
+    if (!r.entries.length) { addSysNote('mcp: no servers in the Claude Desktop config'); return; }
+    if (!confirm(`Add ${r.entries.length} MCP server(s) from Claude Desktop: ${r.entries.map((x) => x.name).join(', ')}?`)) return;
+    let added = 0;
+    for (const s of r.entries) {
+      const res = await window.muse.mcpSave({ name: s.name, server: { command: s.command, args: s.args, env: s.env }, enabled: true });
+      if (res.ok) added += 1; else if (err) err.textContent = res.error;
+    }
+    addSysNote(`mcp: imported ${added} server(s) from Claude Desktop`);
+    renderMcpList();
+  } catch (e) { if (err) err.textContent = `Import failed: ${e.message || e}`; }
+  finally { if (btn) btn.disabled = false; }
+});
 
 $('btn-mcp-save').addEventListener('click', async () => {
   const err = $('settings-err');

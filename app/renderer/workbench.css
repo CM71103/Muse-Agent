@@ -327,3 +327,50 @@ button:disabled,[aria-disabled=true],select:disabled,input:disabled{cursor:not-a
     transition-duration:.01ms !important;scroll-behavior:auto !important;
   }
 }
+
+/* ── Launch screen and rail: the platform-style home ─────────────── */
+/* Serif greeting beside a small mark: one warm moment before the work. */
+#empty{display:flex;flex-direction:column;align-items:center;padding:7vh 0 2vh}
+.empty-head{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:10px}
+.hero-home{width:clamp(36px,5vmin,50px);margin:0}  /* the mark as punctuation, not a poster */
+#empty h1{font-family:Georgia,'Times New Roman',serif;font-size:clamp(28px,4.4vw,42px);font-weight:600;letter-spacing:-.01em;line-height:1.15;margin:0;text-align:left}
+.empty-lead{max-width:520px;margin:0 auto 30px;text-align:center;color:var(--color-muted-fg);font-size:15px;line-height:1.65}
+.home-ideas{max-width:560px;width:100%;margin:26px auto 0;display:flex;flex-direction:column;gap:2px}
+#empty .home-ideas-label{font-size:12px;color:var(--color-muted-fg);margin:0 0 10px 4px;text-align:left}  /* ID beats the inherited centered text below */
+.home-idea{display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;border:0;background:transparent;border-radius:var(--radius-md);color:var(--color-foreground);font-size:14px;cursor:pointer;text-align:left;transition:background-color var(--dur-fast) var(--ease-soft)}
+.home-idea:hover{background:var(--color-secondary)}  /* hover is the only cue a row needs */
+.home-idea svg{width:18px;height:18px;flex:none;fill:none;stroke:var(--color-muted-fg);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.home-idea .go{margin-left:auto;width:15px;height:15px;opacity:0;transition:opacity var(--dur-fast) var(--ease-soft)}  /* the arrow earns its place on intent */
+.home-idea:hover .go{opacity:1}
+.home-idea-words{display:flex;flex-direction:column;gap:1px;min-width:0}
+.home-idea-words strong{font-weight:550;font-size:14px}
+.home-idea-words span{font-size:12px;color:var(--color-muted-fg)}
+
+/* Rail nav rows: five equal peers, New slightly forward. */
+.rail-nav{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
+.rail-nav-row{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;background:transparent;border-radius:var(--radius-md);color:var(--color-foreground);font-size:13.5px;font-weight:500;cursor:pointer;text-align:left;transition:background-color var(--dur-fast) var(--ease-soft)}
+.rail-nav-row svg{width:17px;height:17px;flex:none;fill:none;stroke:var(--color-muted-fg);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.rail-nav-row:hover{background:var(--color-secondary)}
+.rail-nav-row.is-primary{background:var(--color-secondary);font-weight:600}
+.rail-account{display:flex;align-items:center;gap:8px;padding:4px 10px 10px}
+.rail-account-mark{color:var(--color-primary);font-size:14px}
+.rail-account-name{font-size:12.5px;font-weight:600;color:var(--color-muted-fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Composer as the primary object: one large rounded card, pill controls. */
+#composer .inputwrap{border-radius:var(--radius-floating,20px);padding:14px 16px 10px}
+#composer #btn-attach{border-radius:50%;width:34px;height:34px;padding:0;display:grid;place-items:center}
+#composer #btn-attach svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.composer-model-control #chat-model-trigger{border:1px solid var(--color-border);border-radius:999px;padding:5px 12px;font-size:12.5px;background:transparent}  /* the model is a choice, shown as a pill */
+.composer-model-control #chat-model-trigger .chev{margin-left:6px;opacity:.6}
+#send{border-radius:999px;padding:7px 16px}
+.composer-project{display:flex;align-items:center;gap:8px;margin:8px auto 0;max-width:800px;width:100%;border:1px solid var(--color-border-soft);background:transparent;color:var(--color-muted-fg);border-radius:12px;padding:9px 12px;font-size:12.5px;cursor:pointer;transition:background-color var(--dur-fast) var(--ease-soft)}
+.composer-project svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round}
+.composer-project:hover{background:var(--color-secondary)}
+.composer-project .chev{margin-left:auto;opacity:.6}
+
+/* MCP quick add: a preset is one click away from the form it fills. */
+.mcp-presets{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px}
+.mcp-preset{border:1px solid var(--color-border);background:var(--color-card);border-radius:999px;padding:6px 13px;font-size:12px;color:var(--color-foreground);cursor:pointer;transition:border-color var(--dur-fast) var(--ease-soft),background-color var(--dur-fast) var(--ease-soft)}
+.mcp-preset:hover{border-color:var(--color-primary);background:color-mix(in srgb,var(--color-primary) 8%,var(--color-card))}
+
+@media(max-width:760px){#empty{padding:4vh 0 1vh}.empty-head{flex-wrap:wrap;gap:8px}.home-ideas{width:100%}}
