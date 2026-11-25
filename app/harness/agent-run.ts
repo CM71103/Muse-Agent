@@ -28,7 +28,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   if (!this.history.length) {
     const design = this.cwdOverride ? designContext(this.cwdOverride) : null;
     const systemExtra = [opts.systemExtra || '', design?.text || ''].filter(Boolean).join('\n\n');
-    const base = systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard'), this.toolMap.has('visual_render'), this.toolMap.has('critique'), this.toolMap.has('search_papers'), this.toolMap.has('preview_run'));
+    const base = systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard'), this.toolMap.has('visual_render'), this.toolMap.has('critique'), this.toolMap.has('search_papers'), this.toolMap.has('preview_run'), this.toolMap.has('astryx_docs'));
     const voiceGuide = readVoice();
     const antiGuide = readAnti();
     this._voiceGuideApplied = voiceGuide;
@@ -220,9 +220,14 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     if (memoryContext?.turn_id) this.memory.failTurn(memoryContext.turn_id, 'unknown',
       cancelled ? 'user_cancelled' : 'provider_or_transport_failure');
     if (cancelled) {
-      this.persist();   // partial progress is context worth keeping
+      // Stop answers immediately: done goes out first and the persistence
+      // write follows off the critical path. A long session's history is a
+      // slow synchronous JSON write, and doing it before done made Stop look
+      // like it hung for seconds.
+      const ckCancel = ckpt();
       receipt('run_finished', { outcome: 'cancelled' });
-      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckpt() });
+      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckCancel });
+      setImmediate(() => { try { this.persist(); } catch { /* partial progress is best-effort */ } });
       return { text: finalText || '(cancelled)', turns: 0, cancelled: true, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
     }
     this.persist();   // a failed run still leaves resumable context behind

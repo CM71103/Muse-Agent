@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('muse', {
   attachCapabilities: () => ipcRenderer.invoke('attachments:capabilities'),
   attachModelCaps: (models) => ipcRenderer.invoke('attachments:modelCaps', models),
   feedbackGrade: (rating) => ipcRenderer.invoke('feedback:grade', rating),
+  clipboardWrite: (text) => ipcRenderer.invoke('clipboard:write', text),
   feedbackSummary: () => ipcRenderer.invoke('feedback:summary'),
   feedbackReset: () => ipcRenderer.invoke('feedback:reset'),
   voiceStatus: () => ipcRenderer.invoke('voice:status'),

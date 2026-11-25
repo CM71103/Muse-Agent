@@ -68,7 +68,16 @@ function readMarkers() {
       if (m && (m.rating === 1 || m.rating === 0)) out.push(m);
     } catch { /* skip a torn line */ }
   }
-  return out.slice(-KEEP_MARKERS);
+  // One grade per turn: re-clicking a thumb must not count twice (a like is
+  // a grade of a turn, not of a click). The latest marker for a turn wins, so
+  // changing your mind swaps the grade instead of stacking a second one.
+  const seen = new Map();
+  let anon = 0;
+  for (const m of out) {
+    const key = m.turn_id ? `${m.session_id || ''}|${m.turn_id}` : `anon|${anon++}`;
+    seen.set(key, m);
+  }
+  return [...seen.values()].slice(-KEEP_MARKERS);
 }
 
 function appendMarker(marker) {
@@ -191,6 +200,17 @@ function adaptiveApply(turn, rating) {
     words: words(text),
     traits: traitsOf(text),
   };
+  // Idempotent per turn: the same grade on the same answer is a no-op, so a
+  // double click stays one like (and switching like/dislike replaces it).
+  const prior = marker.turn_id
+    ? readMarkers().find(m => m.session_id === marker.session_id && m.turn_id === marker.turn_id)
+    : null;
+  if (prior && prior.rating === r) {
+    const policy = adaptiveRules(readMarkers());
+    let guide = null;
+    try { guide = require('./voice').composeGuide(); } catch { guide = null; }
+    return { ok: true, deduped: true, marker: prior, policy, guide };
+  }
   appendMarker(marker);
 
   const markers = readMarkers();

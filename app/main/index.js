@@ -28,7 +28,7 @@ process.on('unhandledRejection', (e) => {
 // app/main/index.js - Electron main. Thin shell, nanoMuse-style:
 // window + native menus minimal, agent runs in-process (renderer drives it over preload).
 
-const { app, BrowserWindow, WebContentsView, Menu, dialog, shell, safeStorage, Tray, nativeImage, Notification, powerMonitor, protocol, net, session } = require('electron');
+const { app, BrowserWindow, WebContentsView, Menu, dialog, shell, safeStorage, Tray, nativeImage, Notification, powerMonitor, protocol, net, session, clipboard } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('node:url');
 const fs = require('fs');
@@ -773,7 +773,6 @@ ipcMain.handle('agent:send', async (e, text, commandId) => {
     return { ok: true, queued: true, position: turnQueue.findIndex(q => q.commandId === cmdId) + 1 };
   }
   if (!agent) agent = await mkAgent({ projectDir: currentProjectDir });
-  await learningService.flush().catch(()=>{});
   let ownsRun = false;   // only the invocation executing turns may clear the busy flag
   try {
     // /good /bad — grade the most recent graded-eligible turn (R-49 obligation 6)
@@ -843,7 +842,16 @@ ipcMain.handle('agent:send', async (e, text, commandId) => {
       }
     }
     return result;
-  } finally { if (ownsRun) setBusyState(false); }
+  } finally {
+    if (ownsRun) {
+      setBusyState(false);
+      // Lesson publishing runs AFTER the turn, never during it: it writes the
+      // learning store and can call the embedding provider, and running that
+      // alongside a streaming response contended with the run and made the
+      // whole app feel slower. Lessons published now apply from the next turn.
+      learningService.flush().catch(()=>{});
+    }
+  }
 });
 
 ipcMain.handle('agent:reset', async (e) => {
@@ -1198,18 +1206,22 @@ ipcMain.handle('feedback:grade', async (e, rating) => {
   const r = Number(rating) === 1 ? 1 : 0;
   const target = latestAssistantAnswer();
   if (!target.text) return { ok: false, error: 'no answer to grade yet' };
-  // Memory semantics are unchanged: an eligible turn still updates the
-  // adaptive memory evidence exactly as before.
-  let memory = null;
-  if (agent && agent.memory && agent.lastMemoryTurnId) {
-    try { memory = agent.memory.grade(agent.lastMemoryTurnId, r); } catch (err) { memory = { ok: false, error: String(err && err.message || err) }; }
-  }
   const feedback = require('../harness/feedback');
   const res = feedback.adaptiveApply({
     sessionId: agent && agent.sessionId ? agent.sessionId : '',
     turnId: target.turnId,
     text: target.text,
   }, r);
+  if (!res.ok) return res;
+  // A repeat grade of the same turn is a no-op everywhere: no second memory
+  // evidence, no second count (a like grades a turn, not a click).
+  if (res.deduped) return { ...res, summary: feedback.summary(), memory: null };
+  // Memory semantics are unchanged: an eligible turn still updates the
+  // adaptive memory evidence exactly as before.
+  let memory = null;
+  if (agent && agent.memory && agent.lastMemoryTurnId) {
+    try { memory = agent.memory.grade(agent.lastMemoryTurnId, r); } catch (err) { memory = { ok: false, error: String(err && err.message || err) }; }
+  }
   if (!res.ok) return res;
   const summary = feedback.summary();
   send('agent-event', {
@@ -1219,6 +1231,14 @@ ipcMain.handle('feedback:grade', async (e, rating) => {
       : `answer marked as disliked (${summary.liked} liked · ${summary.disliked} disliked)`,
   });
   return { ...res, summary, memory };
+});
+
+// Clipboard writes that always work: the renderer's navigator.clipboard can
+// fail in a file:// window without focus and execCommand is deprecated, so the
+// main process is the reliable last stop ("copy" must never fail silently).
+ipcMain.handle('clipboard:write', (e, text) => {
+  requireTrusted(e);
+  try { clipboard.writeText(String(text || '')); return true; } catch { return false; }
 });
 
 ipcMain.handle('feedback:summary', (e) => {

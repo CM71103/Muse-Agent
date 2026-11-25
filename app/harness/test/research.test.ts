@@ -61,6 +61,10 @@ function ctxFor(cfg) {
 test('search_papers returns a compact ranked list with ids and takeaways', async () => {
   const calls = [];
   const original = globalThis.fetch;
+  // Hermetic: a machine-level SEMANTIC_SCHOLAR_API_KEY makes the keyed index
+  // lead by design, which is not what this keyless ordering test is about.
+  const savedKey = process.env.SEMANTIC_SCHOLAR_API_KEY;
+  delete process.env.SEMANTIC_SCHOLAR_API_KEY;
   globalThis.fetch = fakeFetch(S2_PAYLOAD, calls);
   try {
     const ctx = ctxFor();
@@ -72,7 +76,10 @@ test('search_papers returns a compact ranked list with ids and takeaways', async
     // is rate limited); the keyless S2 search is only a last resort.
     assert.match(calls[0], /api\.openalex\.org/);
     assert.ok(calls.some(u => /semanticscholar/.test(u)), 'semantic scholar is still consulted as a fallback');
-  } finally { globalThis.fetch = original; }
+  } finally {
+    globalThis.fetch = original;
+    if (savedKey !== undefined) process.env.SEMANTIC_SCHOLAR_API_KEY = savedKey;
+  }
 });
 
 test('results respect the year filter and the result cap', async () => {
@@ -250,7 +257,10 @@ test('the openalex api key is sent as a query parameter', async () => {
   try {
     const ctx = ctxFor({ llm: {}, research: { request_interval_ms: 0, openalex_api_key: 'oa-secret' } });
     await research.searchPapers('openalex-key-check', { cfg: ctx.cfg }, ctx);
-    const oa = calls.find(u => /openalex/.test(u));
+    // Match the HOST, not the bare word: the query text itself contains
+    // "openalex", which made the semantic scholar URL match and masked which
+    // call was being asserted on.
+    const oa = calls.find(u => /api\.openalex\.org/.test(u));
     assert.ok(oa, 'openalex was called');
     assert.match(oa, /api_key=oa-secret/);
   } finally { globalThis.fetch = original; }

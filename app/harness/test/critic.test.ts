@@ -112,7 +112,7 @@ test('system prompt mentions the critique gate only when the tool exists', () =>
   assert.ok(!/You also have critique/.test(without));
   const withTool = systemPrompt({ llm: { model: 'm' } }, '', null, false, 'ask', false, false, false, false, true);
   assert.match(withTool, /You also have critique/);
-  assert.match(withTool, /stop as soon as the score stops improving/);
+  assert.match(withTool, /At most one review pass per artifact/);
 });
 
 // --- persisted review artifacts (PaperOrchestra review log) ---
