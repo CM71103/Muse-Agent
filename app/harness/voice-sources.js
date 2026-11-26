@@ -36,11 +36,49 @@ function pushPair(out, role, text) {
 
 // --- source parsers ---
 
-function parseChatgptExport(file) {
+// --- zip reading (minimal, stdlib-only) ---
+// A ChatGPT data export downloads as a .zip whose only interesting member is
+// conversations.json. Reading just that member takes the central directory
+// (end-of-central-directory record), one local header, and inflateRaw.
+
+function zipEntryData(zipPath, suffix) {
+  let buf;
+  try { buf = fs.readFileSync(zipPath); } catch { return null; }
+  // EOCD: signature PK\x05\x06 within the last 66 KB of the file.
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return null;
+  const entries = buf.readUInt16LE(eocd + 10);
+  let ptr = buf.readUInt32LE(eocd + 16);
+  for (let n = 0; n < entries && ptr + 46 <= buf.length; n++) {
+    if (buf.readUInt32LE(ptr) !== 0x02014b50) return null;
+    const method = buf.readUInt16LE(ptr + 10);
+    const compSize = buf.readUInt32LE(ptr + 20);
+    const nameLen = buf.readUInt16LE(ptr + 28);
+    const extraLen = buf.readUInt16LE(ptr + 30);
+    const commentLen = buf.readUInt16LE(ptr + 32);
+    const localAt = buf.readUInt32LE(ptr + 42);
+    const name = buf.toString('utf8', ptr + 46, ptr + 46 + nameLen);
+    if (name.endsWith(suffix)) {
+      if (localAt + 30 > buf.length) return null;
+      const start = localAt + 30 + buf.readUInt16LE(localAt + 26) + buf.readUInt16LE(localAt + 28);
+      const raw = buf.slice(start, start + compSize);
+      try {
+        return method === 0 ? raw : method === 8 ? zlib.inflateRawSync(raw) : null;
+      } catch { return null; }
+    }
+    ptr += 46 + nameLen + extraLen + commentLen;
+  }
+  return null;
+}
+
+function parseChatgptData(data) {
   const out = [];
-  let data;
-  try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return out; }
-  const convs = Array.isArray(data) ? data : [];
+  // a full export is an array of conversations; a single shared/exported chat
+  // is one object with a mapping
+  const convs = Array.isArray(data) ? data : (data && data.mapping ? [data] : []);
   for (const conv of convs) {
     const mapping = conv && conv.mapping;
     if (!mapping || typeof mapping !== 'object') continue;
@@ -57,6 +95,16 @@ function parseChatgptExport(file) {
     }
   }
   return out;
+}
+
+function parseChatgptExport(file) {
+  try { return parseChatgptData(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch { return []; }
+}
+
+function parseChatgptZip(file) {
+  const raw = zipEntryData(file, 'conversations.json');
+  if (!raw) return [];
+  try { return parseChatgptData(JSON.parse(raw.toString('utf8'))); } catch { return []; }
 }
 
 function parseClaudeProjects(dir) {
@@ -268,13 +316,34 @@ function parseWebCache(dir) {
 
 function discoverRoots({ home = os.homedir(), configDir } = {}) {
   const roots = [];
-  // 1. ChatGPT data export: conversations.json sitting in Downloads & friends
+  // 1. ChatGPT data export: conversations.json — at the top level, nested in
+  //    an extracted export folder, or still inside the export .zip itself
+  //    (the way it downloads from OpenAI). Loose files win over zips.
   const docDirs = ['Downloads', 'Documents', 'Desktop'].map(d => path.join(home, d));
-  for (const dir of docDirs) {
+  const SKIP_DIR = /^(node_modules|\$recycle\.bin|system volume information|windows|appdata)$/i;
+  const queue = docDirs.map(d => [d, 0]);
+  let visited = 0, zips = 0;
+  while (queue.length && visited < 300) {
+    const [dir, depth] = queue.shift();
+    visited++;
     let entries = [];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
     for (const e of entries) {
-      if (e.isFile() && e.name === 'conversations.json') roots.push({ kind: 'chatgpt-export', path: path.join(dir, e.name), confidence: 'high' });
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (depth < 2 && !SKIP_DIR.test(e.name) && !e.name.startsWith('.')) queue.push([full, depth + 1]);
+      } else if (e.isFile() && e.name === 'conversations.json') {
+        roots.push({ kind: 'chatgpt-export', path: full, confidence: 'high' });
+      } else if (e.isFile() && /\.zip$/i.test(e.name) && zips < 12) {
+        // a random zip without conversations.json parses to [] and is dropped
+        // by the min-messages rule downstream
+        try {
+          if (fs.statSync(full).size < 100 * 1024 * 1024) {
+            roots.push({ kind: 'chatgpt-zip', path: full, confidence: 'high' });
+            zips++;
+          }
+        } catch { /* unreadable */ }
+      }
     }
   }
   // 2. Claude Code transcripts
@@ -322,6 +391,7 @@ function discoverRoots({ home = os.homedir(), configDir } = {}) {
 function parseRoot(root) {
   switch (root.kind) {
     case 'chatgpt-export': return parseChatgptExport(root.path);
+    case 'chatgpt-zip': return parseChatgptZip(root.path);
     case 'claude-projects': return parseClaudeProjects(root.path);
     case 'codex-sessions': return parseCodexSessions(root.path);
     case 'cline-sessions': return parseClineSessions(root.path);
@@ -346,4 +416,4 @@ function collectMessages(opts = {}) {
   return { messages: messages.slice(0, MAX_MESSAGES), roots: usedRoots };
 }
 
-module.exports = { discoverRoots, parseRoot, collectMessages, parseChatgptExport, parseClaudeProjects, parseCodexSessions, parseClineSessions, parseMuseSessions, parseWebCache };
+module.exports = { discoverRoots, parseRoot, collectMessages, parseChatgptExport, parseChatgptZip, parseChatgptData, parseClaudeProjects, parseCodexSessions, parseClineSessions, parseMuseSessions, parseWebCache };

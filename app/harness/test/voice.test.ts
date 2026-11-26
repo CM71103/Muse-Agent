@@ -158,7 +158,7 @@ test('the likable answers win over the average when the two disagree', () => {
   const base = voice.renderGuide(features, null, liked);
   assert.ok(!/keep replies short and direct/i.test(base), 'the contradicting average-length rule is dropped');
   const section = voice.renderLikedSection(liked);
-  assert.match(section, /this one wins/i);
+  assert.match(section, /depth rule wins/i);
   assert.match(section, /run long/i);
 });
 
@@ -252,4 +252,81 @@ test('the Codex corpus feeds calibration without leaking its content', () => {
   assert.ok(res.messages >= 20, 'enough messages for calibration');
   assert.ok(!res.guide.includes(SECRET), 'guide must never quote Codex conversations');
   assert.match(res.guide, /short and direct|shorter than your average/i);
+});
+
+// --- export handover: nested folders, the export .zip, single chats ---
+
+function crc32(buf) {
+  let c = ~0;
+  for (const b of buf) {
+    c ^= b;
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xEDB88320 & -(c & 1));
+  }
+  return ~c >>> 0;
+}
+
+// one stored (uncompressed) entry, built the way real zips are laid out
+function makeZip(name, data) {
+  const nameBuf = Buffer.from(name);
+  const crc = crc32(data);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4);
+  local.writeUInt32LE(crc, 14); local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22);
+  local.writeUInt16LE(nameBuf.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
+  central.writeUInt32LE(crc, 16); central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24);
+  central.writeUInt16LE(nameBuf.length, 28); central.writeUInt32LE(0, 42);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(1, 8); eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(central.length, 12);
+  eocd.writeUInt32LE(local.length + nameBuf.length + data.length, 16);
+  return Buffer.concat([local, nameBuf, data, central, nameBuf, eocd]);
+}
+
+function chatExportJson(times) {
+  const mapping = {};
+  times.forEach((t, i) => {
+    mapping['m' + i] = {
+      message: {
+        create_time: t,
+        author: { role: i % 2 === 0 ? 'user' : 'assistant' },
+        content: { parts: ['message number ' + i + ' about parser design'] },
+      },
+    };
+  });
+  return [{ title: 'parser chat', mapping }];
+}
+
+test('a conversations.json nested in an export folder is discovered', () => {
+  const scanHome = path.join(home, 'scan-nested');
+  const deep = path.join(scanHome, 'Downloads', 'chatgpt-export', 'data');
+  fs.mkdirSync(deep, { recursive: true });
+  fs.writeFileSync(path.join(deep, 'conversations.json'), JSON.stringify(chatExportJson([1, 2, 3, 4, 5, 6])));
+  const found = sources.discoverRoots({ home: scanHome, configDir: null })
+    .filter(r => r.kind === 'chatgpt-export');
+  assert.equal(found.length, 1, 'nested export must be found');
+  assert.equal(sources.parseRoot(found[0]).length, 6);
+});
+
+test('an export still inside its .zip is read', () => {
+  const scanHome = path.join(home, 'scan-zip');
+  fs.mkdirSync(path.join(scanHome, 'Downloads'), { recursive: true });
+  const zipPath = path.join(scanHome, 'Downloads', 'my chatgpt export.zip');
+  fs.writeFileSync(zipPath, makeZip('ChatGPT-export/conversations.json', Buffer.from(JSON.stringify(chatExportJson([1, 2, 3, 4, 5, 6])))));
+  const found = sources.discoverRoots({ home: scanHome, configDir: null })
+    .filter(r => r.kind === 'chatgpt-zip');
+  assert.equal(found.length, 1, 'the zip must be found');
+  assert.equal(sources.parseChatgptZip(zipPath).length, 6);
+  const notAnExport = path.join(scanHome, 'Downloads', 'photos.zip');
+  fs.writeFileSync(notAnExport, makeZip('photos/cat.txt', Buffer.from('meow')));
+  assert.equal(sources.parseChatgptZip(notAnExport).length, 0, 'zips without conversations.json parse empty');
+});
+
+test('a single exported chat (one conversation, not an array) is parsed', () => {
+  const one = chatExportJson([1, 2, 3, 4, 5, 6])[0];
+  const pairs = sources.parseChatgptData(one);
+  assert.equal(pairs.length, 6);
+  assert.equal(pairs[0].role, 'user');
+  assert.equal(pairs[1].role, 'assistant');
 });
