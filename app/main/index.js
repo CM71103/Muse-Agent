@@ -991,9 +991,24 @@ ipcMain.handle('dashboards:delete', (e, id) => {
 // in Explorer. Contained to the selected project so this is not a generic
 // "open anything" primitive.
 function visualPageTarget(p) {
+  const s = String(p || '');
+  const direct = path.resolve(s);
+  // A rendered page arrives as the absolute path the render returned. Open it
+  // when the evidence says it is one of our pages: listed in the Pages
+  // registry, or carrying its own <name>.src.html sibling (the render always
+  // keeps the source beside the page). Containment by provenance, not by the
+  // selected project — so pages open even with no project active.
+  if (path.isAbsolute(s) && fs.existsSync(direct)) {
+    let registered = false;
+    try {
+      registered = require('../harness/visual-tools.ts').listPages()
+        .some((pg) => path.resolve(String(pg.path || '')) === direct);
+    } catch { /* registry unreadable: fall through to project containment */ }
+    if (registered || fs.existsSync(direct.replace(/\.html?$/i, '.src.html'))) return direct;
+  }
   const root = currentProjectDir ? path.resolve(currentProjectDir) : null;
-  const target = root ? path.resolve(root, String(p || '')) : null;
-  if (!root || !target) throw new Error('no project selected');
+  const target = root ? path.resolve(root, s) : null;
+  if (!root || !target) throw new Error('no project selected and this page is not a registered visual page');
   const rel = path.relative(root, target);
   if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('not inside the selected project');
   if (!fs.existsSync(target)) throw new Error('no such file');
@@ -1008,6 +1023,18 @@ ipcMain.handle('visual:reveal', async (e, p) => {
   requireTrusted(e);
   try { shell.showItemInFolder(visualPageTarget(p)); return { ok: true }; }
   catch (error) { return { ok: false, error: String((error && error.message) || error) }; }
+});
+// The page itself, for showing inside the chat and the in-app viewer. Kit
+// pages are self-contained, so a sandboxed iframe with an opaque origin can
+// run their steppers without any access to the app.
+ipcMain.handle('visual:read', (e, p) => {
+  requireTrusted(e);
+  try {
+    const target = visualPageTarget(p);
+    const html = fs.readFileSync(target, 'utf8');
+    if (html.length > 2 * 1024 * 1024) return { ok: false, error: 'page is too large to show inline' };
+    return { ok: true, html };
+  } catch (error) { return { ok: false, error: String((error && error.message) || error) }; }
 });
 // The visual pages registry (~/.muse-agent/visual-pages.json): the Pages view
 // lists renders across sessions, thumbnails come from their contact sheets,

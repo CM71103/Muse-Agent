@@ -1344,7 +1344,7 @@ async function renderPagesView() {
     const card = document.createElement('div'); card.className = 'page-card';
     const img = document.createElement('img'); img.className = 'page-thumb';
     img.alt = p.title || 'visual page'; img.loading = 'lazy';
-    img.addEventListener('click', () => window.muse?.visualOpen?.(p.path));
+    img.addEventListener('click', () => openVisualInApp(p.path));
     if (typeof window.muse.visPageThumb === 'function') {
       window.muse.visPageThumb(p.id).then(t => { if (t && t.ok && t.data) img.src = t.data; }).catch(() => {});
     }
@@ -1355,7 +1355,7 @@ async function renderPagesView() {
       .filter(Boolean).join(' · ');
     const row = document.createElement('div'); row.className = 'page-actions';
     const openBtn = document.createElement('button'); openBtn.className = 'q-btn'; openBtn.textContent = 'open';
-    openBtn.addEventListener('click', () => window.muse?.visualOpen?.(p.path));
+    openBtn.addEventListener('click', () => openVisualInApp(p.path));
     const folderBtn = document.createElement('button'); folderBtn.className = 'q-btn'; folderBtn.textContent = 'folder';
     folderBtn.addEventListener('click', () => window.muse?.visualReveal?.(p.path));
     const forget = document.createElement('button'); forget.className = 'q-btn'; forget.textContent = 'remove';
@@ -1426,6 +1426,45 @@ function addDashboardChip(result) {
 }
 // The visual_render artifact, like a dashboard chip: what the page says, what
 // the render checked, and its first contact sheet as the preview.
+// Visual pages open INSIDE the app: the chat shows them live and this overlay
+// is an in-app viewer. Nothing here hands a page to an external browser.
+function openVisualInApp(pathStr) {
+  const r = window.muse?.visualRead?.(pathStr);
+  if (!r || typeof r.then !== 'function') { addSysNote('visual pages cannot be shown in this window', true); return; }
+  r.then((res) => {
+    if (!res || !res.ok || typeof res.html !== 'string') { addSysNote(`visual page could not be shown: ${String((res && res.error) || 'unknown')}`, true); return; }
+    let ov = document.getElementById('visual-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'visual-overlay';
+      ov.tabIndex = -1;
+      const head = document.createElement('div');
+      head.className = 'visual-overlay-head';
+      const title = document.createElement('span');
+      title.className = 'q-label';
+      title.id = 'visual-overlay-title';
+      const close = document.createElement('button');
+      close.className = 'q-btn';
+      close.textContent = 'close';
+      close.addEventListener('click', () => ov.remove());
+      head.append(title, close);
+      const wrap = document.createElement('div');
+      wrap.className = 'visual-overlay-frame';
+      const frame = document.createElement('iframe');
+      frame.setAttribute('sandbox', 'allow-scripts');  // opaque origin: no reach back into the app
+      frame.title = 'visual page';
+      wrap.append(frame);
+      ov.append(head, wrap);
+      ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') ov.remove(); });
+      document.body.append(ov);
+      ov._frame = frame;
+    }
+    ov.querySelector('#visual-overlay-title').textContent = String(pathStr || '').split(/[\\/]/).pop();
+    ov._frame.srcdoc = res.html;
+    ov.focus();
+  });
+}
+
 function addVisualPageChip(result) {
   const el = document.createElement('div');
   el.className = 'sysnote action-chip visual-page';
@@ -1439,23 +1478,37 @@ function addVisualPageChip(result) {
   label.textContent = `visual page created: ${name}${facts.length ? ' · ' + facts.join(' · ') : ''}`;
   const openBtn = document.createElement('button');
   openBtn.className = 'q-btn';
-  openBtn.textContent = 'open';
-  openBtn.addEventListener('click', () => window.muse?.visualOpen?.(result.path));
+  openBtn.addEventListener('click', () => {
+    const open = frameWrap.classList.toggle('open');
+    openBtn.textContent = open ? 'shrink' : 'open';
+    frameWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
   const folderBtn = document.createElement('button');
   folderBtn.className = 'q-btn';
   folderBtn.textContent = 'folder';
-  folderBtn.addEventListener('click', () => window.muse?.visualReveal?.(result.path));
-  el.append(label, openBtn, folderBtn);
-  // sheets are the render's own screenshots of the page; the first is the reader's first screen
+  folderBtn.addEventListener('click', async () => {
+    const r = await window.muse?.visualReveal?.(result.path);
+    if (r && !r.ok) addSysNote(`could not reveal the page folder: ${String(r.error || 'unknown')}`, true);
+  });
+  const frameWrap = document.createElement('div');
+  frameWrap.className = 'visual-frame';
+  const frame = document.createElement('iframe');
+  frame.className = 'visual-embed';
+  frame.setAttribute('sandbox', 'allow-scripts');  // the kit page runs its steppers; it cannot touch the app
+  frame.title = `visual page: ${name}`;
+  frameWrap.append(frame);
+  el.append(label, openBtn, folderBtn, frameWrap);
+  // the page renders live in the chat; the contact sheet is only the fallback
   const sheet = (result.images || [])[0];
-  if (sheet && sheet.data) {
-    const img = document.createElement('img');
-    img.src = `data:${sheet.mimeType || 'image/png'};base64,${sheet.data}`;
-    img.alt = 'preview of the rendered page';
-    img.title = 'open the page';
-    img.addEventListener('click', () => window.muse?.visualOpen?.(result.path));
-    el.append(img);
-  }
+  window.muse?.visualRead?.(result.path).then((r) => {
+    if (r && r.ok && typeof r.html === 'string') { frame.srcdoc = r.html; return; }
+    if (sheet && sheet.data) {
+      const img = document.createElement('img');
+      img.src = `data:${sheet.mimeType || 'image/png'};base64,${sheet.data}`;
+      img.alt = 'preview of the rendered page';
+      frameWrap.append(img);
+    }
+  });
   transcript.append(el);
   reveal(el, 8);
   scrollDown();

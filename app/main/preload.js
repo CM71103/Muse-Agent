@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('muse', {
   windowsRelease:()=>ipcRenderer.invoke('windows:release'),
   visualOpen:p=>ipcRenderer.invoke('visual:open',p),
   visualReveal:p=>ipcRenderer.invoke('visual:reveal',p),
+  visualRead:p=>ipcRenderer.invoke('visual:read',p),
   visPages:()=>ipcRenderer.invoke('visual:pages'),
   visPageThumb:id=>ipcRenderer.invoke('visual:page-thumb',id),
   visPageForget:id=>ipcRenderer.invoke('visual:page-forget',id),

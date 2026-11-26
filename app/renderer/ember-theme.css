@@ -97,7 +97,7 @@ main { gap:12px; }
 .nav-pill { top:3px; bottom:3px; border-radius:6px; background:var(--color-background); }
 .navbar-glow { width:65px; opacity:.32; }
 .navbar-panel { container-type:inline-size; }
-#transcript { width:100%; max-width:900px; padding:28px 30px; gap:24px; }
+#transcript { width:100%; max-width:1160px; padding:28px 30px; gap:24px; }
 #empty { padding:12px 0 16px; margin:auto; max-width:660px; }
 #empty .hero { width:82px; margin:0 auto 22px; }
 .hero .heat-layer { inset:auto; left:-16%; top:-16%; width:132%; height:132%; opacity:.18; }
@@ -381,7 +381,7 @@ body::before { background:radial-gradient(ellipse at 50% 0%,rgb(177 91 34 / .055
 .navbar .right button { border-radius:9px; }
 .navbar .nav-pill { border-radius:7px; }
 .navbar-panel { background:var(--glass-fill); }
-#transcript { max-width:860px; padding:30px 34px; gap:22px; }
+#transcript { max-width:1160px; padding:30px 34px; gap:22px; }
 .msg.user { max-width:min(82%,680px); }
 .bubble { padding:14px 18px; border-radius:14px 14px 5px 14px; }
 .abody,.bubble { font-size:13.5px; line-height:1.72; }
