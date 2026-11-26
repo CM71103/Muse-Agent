@@ -128,7 +128,7 @@ function likedProfile(messages) {
   const rules = [];
   const deltas = {};
   if (L.medianWords && baseline.medianWords) {
-    if (L.medianWords <= baseline.medianWords * 0.8) { deltas.length = 'shorter'; rules.push(`The answers you accept are shorter than your average: aim for about ${round10(L.medianWords)} words, then stop.`); }
+    if (L.medianWords <= baseline.medianWords * 0.8) { deltas.length = 'shorter'; rules.push(`The answers you accept are shorter than your average: aim for about ${round10(L.medianWords)} words of padding, but never cut substance to hit a count.`); }
     else if (L.medianWords >= baseline.medianWords * 1.25) { deltas.length = 'longer'; rules.push(`The answers you accept run long (about ${round10(L.medianWords)} words): give the real detail instead of a teaser.`); }
   }
   if (baseline.recapRate >= 0.15 && L.recapRate <= baseline.recapRate * 0.5) { deltas.recap = 'none'; rules.push('The answers you accept skip the recap and the closing pleasantry: end on the answer itself.'); }
@@ -149,14 +149,26 @@ function likedProfile(messages) {
   return profile;
 }
 
+// Stored rule strings outlive the code that wrote them: rewrite the legacy
+// length caps ("expand only when asked", "then stop") into depth-safe wording
+// so a profile learned before the depth policy cannot keep compressing.
+function migrateRule(rule) {
+  return String(rule)
+    .replace(/expand only when asked\.?/i, 'expand whenever the question deserves it')
+    .replace(/aim for about (\d+) words, then stop\./i, 'aim for about $1 words of padding, but never cut substance to hit a count.')
+    .replace(/a few sentences unless asked for detail/i, 'a few sentences of padding; depth follows the question without being asked')
+    .replace(/when the task allows; expand only when asked/i, 'in the mechanics; depth follows the question');
+}
+
 function renderLikedSection(profile) {
   if (!profile || !profile.rules || !profile.rules.length) return '';
   return [
     '# Answer style (the answers you liked best)',
     '# Learned from the answers you accepted across your local chats —',
     '# compared against your average answer, and only what differs is kept.',
-    '# Where this section and the summary above disagree, this one wins.',
-    ...profile.rules.map(r => `- ${r}`),
+    '# These rules tune the surface of answers. Where they meet the depth rule,',
+    '# the depth rule wins: style may never cap how much gets explained.',
+    ...profile.rules.map(r => `- ${migrateRule(r)}`),
     profile.note ? `\n<!-- ${profile.note} -->` : '',
   ].filter(Boolean).join('\n');
 }
@@ -169,10 +181,13 @@ function renderGuide(features, report, liked) {
   const rules = [];
   rules.push(`Match the answer style the user already knows from their previous AI conversations (${n} messages analyzed locally).`);
 
-  // length — skipped when the likable answers already say something different
+  // length — skipped when the likable answers already say something different.
+  // Word counts describe padding habits; they never cap substance. Depth
+  // follows the question (the core prompt's depth rule), so these rules tune
+  // the surface only.
   const lengthDelta = liked && liked.deltas ? liked.deltas.length : null;
-  if (!lengthDelta && a.medianWords && a.medianWords < 90) rules.push(`Keep replies short and direct: around ${Math.max(30, Math.round(a.medianWords / 10) * 10)} words when the task allows; expand only when asked.`);
-  else if (!lengthDelta && a.medianWords < 220) rules.push(`Keep replies moderate: a few short paragraphs (previous median ≈ ${Math.round(a.medianWords / 10) * 10} words); pad nothing.`);
+  if (!lengthDelta && a.medianWords && a.medianWords < 90) rules.push(`Keep replies short and direct in the mechanics: your chats run about ${Math.max(30, Math.round(a.medianWords / 10) * 10)} words, so cut padding and openers. Depth still follows the question, never the word count: a how or why gets the full explanation with its mechanism and structure.`);
+  else if (!lengthDelta && a.medianWords < 220) rules.push(`Keep replies moderate and padded-free (previous median ≈ ${Math.round(a.medianWords / 10) * 10} words), but let depth follow the question: explanations get their full mechanism and structure, never a trimmed teaser.`);
   else if (!lengthDelta && a.medianWords) rules.push(`Thorough replies match this user's history (previous median ≈ ${Math.round(a.medianWords / 10) * 10} words): structure them, don't ramble.`);
 
   // structure

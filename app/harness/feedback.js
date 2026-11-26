@@ -123,8 +123,8 @@ function favoured(markers, pick) {
 
 const RULES = {
   length: {
-    short: 'Short replies: keep answers tight: a few sentences unless asked for detail.',
-    medium: 'Moderate replies: a few short paragraphs, nothing padded.',
+    short: 'Tight replies: keep the surface compact, a few sentences of padding. Depth follows the question: an explanation gets its full mechanism and structure without being asked twice.',
+    medium: 'Moderate replies: a few short paragraphs, nothing padded. Depth still follows the question.',
     long: 'Thorough replies: structure them with headings and details.',
   },
   shape: {

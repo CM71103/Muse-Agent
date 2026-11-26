@@ -69,7 +69,7 @@ test('liked short answers and disliked hedged ones shape the rules', () => {
   ];
   const policy = feedback.adaptiveRules(markers);
   assert.equal(policy.applied, true);
-  assert.ok(policy.rules.some(r => /short/i.test(r)), 'a length rule is derived');
+  assert.ok(policy.rules.some(r => /keep the surface compact/i.test(r)), 'a length rule is derived');
   assert.ok(policy.rules.some(r => /direct/i.test(r)), 'a stance rule is derived');
   assert.ok(policy.rules.some(r => /bullet lists/i.test(r)), 'a shape rule is derived');
 });
@@ -99,7 +99,7 @@ test('grading composes the guide so the next answers follow the evidence', () =>
   for (let i = 0; i < 3; i++) feedback.adaptiveApply({ sessionId: 's2', turnId: `s2:${i}`, text: SHORT_LIST }, 1);
   const guide = voice.composeGuide();
   assert.match(guide, /adjusted by your own feedback/);
-  assert.match(guide, /keep answers tight/i);
+  assert.match(guide, /keep the surface compact/i);
   // the guide still carries the base part
   assert.match(guide, /previous AI conversations/);
 });
@@ -142,7 +142,7 @@ test('the next turn of a live session picks up the updated style rules', () => {
   a.run('second question', { systemExtra: '' });
   const after = systemOf();
   assert.match(after, /adjusted by your own feedback/, 'the system prompt refreshed in place');
-  assert.match(after, /keep answers tight/i);
+  assert.match(after, /keep the surface compact/i);
 });
 
 test('reset removes the markers and the adaptive rules', () => {
