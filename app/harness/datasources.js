@@ -129,6 +129,92 @@ function testConnection(conn) {
   } catch (e) { return { ok: false, error: e.message, code: e.code || 'connection_invalid' }; }
 }
 
+// --- async facade ----------------------------------------------------------
+// The driver is synchronous by design (that is why it is fast), so asynchrony
+// comes from the thread, not the API: tool calls go to a worker and the UI
+// thread never waits on a query. Workers unavailable (or dying mid-job) fall
+// back to the same functions in-process: behavior is identical, only the
+// latency lands on the caller instead of the whole app.
+const { Worker } = require('worker_threads');
+let sqliteWorker = null;
+let jobSeq = 0;
+const jobs = new Map();
+
+function sqliteWorkerRef() {
+  if (sqliteWorker) return sqliteWorker;
+  // execArgv: [] — a worker inherits the parent's node flags otherwise, and
+  // under the test runner that means booting the worker as another test
+  // runner (a ~30s stall per call). This worker needs zero flags.
+  const w = new Worker(path.join(__dirname, 'sqlite-worker.js'), { execArgv: [] });
+  w.on('message', (m) => {
+    const job = jobs.get(m.id);
+    if (!job) return;
+    jobs.delete(m.id);
+    if (!jobs.size) idleWorker(w);
+    if (m.ok) { job.resolve(m.result); return; }
+    const err = new Error((m.error && m.error.message) || 'query failed');
+    if (m.error && m.error.code) err.code = m.error.code;
+    job.reject(err);
+  });
+  w.on('error', () => {
+    sqliteWorker = null;
+    for (const [, job] of jobs) job.reject(new Error('sqlite worker stopped'));
+    jobs.clear();
+  });
+  w.on('exit', () => {
+    if (sqliteWorker === w) sqliteWorker = null;
+    for (const [, job] of jobs) job.reject(new Error('sqlite worker stopped'));
+    jobs.clear();
+  });
+  sqliteWorker = w;
+  idleWorker(w);
+  return w;
+}
+
+// The message channel counts as an active handle the moment a listener is
+// attached, so an idle worker would keep the whole process alive forever.
+// Ref only while jobs are pending: the loop is free between queries, and a
+// waiting caller still holds the process through its own work.
+function busyWorker(w) { if (typeof w.ref === 'function') w.ref(); }
+function idleWorker(w) { if (typeof w.unref === 'function') w.unref(); }
+
+function callSqliteWorker(kind, payload) {
+  return new Promise((resolve, reject) => {
+    let w;
+    try { w = sqliteWorkerRef(); } catch (e) { reject(e); return; }
+    const id = ++jobSeq;
+    jobs.set(id, { resolve, reject });
+    busyWorker(w);
+    w.postMessage({ id, kind, ...payload });
+  });
+}
+
+async function sqliteRunSqlAsync(conn, sql, opts = {}) {
+  try {
+    return await callSqliteWorker('run', { file: conn && conn.config && conn.config.file, sql, caller: opts.caller || 'agent' });
+  } catch (e) {
+    if (e && e.code) throw e;                 // a real query failure: surface it
+    return sqliteRunSql(conn, sql, opts);      // infrastructure fell back
+  }
+}
+
+async function sqliteTablesAsync(conn) {
+  try {
+    return await callSqliteWorker('tables', { file: conn && conn.config && conn.config.file });
+  } catch (e) {
+    if (e && e.code) throw e;
+    return sqliteTables(conn);
+  }
+}
+
+async function testConnectionAsync(conn) {
+  try {
+    return await callSqliteWorker('test', { file: conn && conn.config && conn.config.file });
+  } catch (e) {
+    return testConnection(conn);
+  }
+}
+
 // --- uniform runner: resolve the connection server-side, map every failure ---
 
 function withConnection(args, fn) {
@@ -136,7 +222,10 @@ function withConnection(args, fn) {
   if (!id) return fail('bad_args', 'connection id is required (from list_data_sources)');
   const conn = getConnection(id);
   if (!conn) return fail('connection_not_found', `no data source with id "${id}": ids come from list_data_sources`);
-  try { return fn(conn); }
+  try {
+    const r = fn(conn);
+    return r && typeof r.then === 'function' ? r.catch((e) => fail(e.code || 'query_failed', e.message)) : r;
+  }
   catch (e) { return fail(e.code || 'query_failed', e.message); }
 }
 
@@ -169,7 +258,7 @@ function dataTools() {
       output: { ok: true, tables: [{ name: 'orders', columns: [{ name: 'id', type: 'INTEGER', pk: true }, { name: 'total', type: 'REAL', pk: false }] }] },
       callers: ['agent'],
       async run(args) {
-        return withConnection(args, conn => ({ ok: true, tables: sqliteTables(conn) }));
+        return withConnection(args, async (conn) => ({ ok: true, tables: await sqliteTablesAsync(conn) }));
       },
     },
     {
@@ -186,9 +275,9 @@ function dataTools() {
       output: { ok: true, columns: ['id', 'total'], rows: [{ id: 1, total: 42.5 }], truncated: false },
       callers: ['agent', 'dashboard'],
       async run(args, ctx) {
-        return withConnection(args, conn => ({
+        return withConnection(args, async (conn) => ({
           ok: true,
-          ...sqliteRunSql(conn, args.sql, { caller: (ctx && ctx.dataCaller) || 'agent' }),
+          ...await sqliteRunSqlAsync(conn, args.sql, { caller: (ctx && ctx.dataCaller) || 'agent' }),
         }));
       },
     },
@@ -199,5 +288,6 @@ module.exports = {
   ROW_CAPS,
   listConnections, getConnection, saveConnection, removeConnection, testConnection,
   sqliteRunSql, sqliteTables, withConnection, fail,
+  sqliteRunSqlAsync, sqliteTablesAsync, testConnectionAsync,
   dataTools,
 };
