@@ -278,6 +278,20 @@ function mkVisualTools(options = {}) {
               : 'passed';
           }
         }
+        // Diagram shapes that lost the kit contract render as black boxes with
+        // black labels: broken like a compile error, so like one they must not
+        // ship. The source stays; the error names the fix.
+        const blocking = (out.problems || []).filter((p) => /default black fill/.test(String(p)));
+        if (blocking.length) {
+          try { await fsp.unlink(pageFile); } catch {}
+          for (const s of writtenSheets) { try { await fsp.unlink(s); } catch {} }
+          return {
+            ok: false,
+            errors: blocking,
+            error: `The page was not kept: ${blocking.join('; ')}. Fix ${path.basename(sourceFile)} and render again (small edits only): wrap diagram nodes as <g class="ve-n"><rect class="sh"/>… and edges as <path class="ve-e">.`,
+            warnings: rendered.warnings,
+          };
+        }
         // remembered in the pages registry so the Pages view and
         // list_visual_pages find it from the next session on
         try {

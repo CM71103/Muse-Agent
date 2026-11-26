@@ -79,6 +79,17 @@ function veIsCustomColors() {
 
 function veScrollTop() { window.scrollTo(0, 0); }
 
+/* Shapes that lost the kit contract render with the SVG default fill: black
+   boxes with black labels. Upstream measure() catches unfilled TEXT; this
+   catches unfilled SHAPES, naming the fix (diagrams.md shape classes). */
+function veShapeCheck() {
+  const black = 'rgb(0, 0, 0)';
+  const bad = [...document.querySelectorAll('svg.ve-svg rect, svg.ve-svg circle, svg.ve-svg ellipse, svg.ve-svg polygon, svg.ve-svg path')]
+    .filter((el) => !el.closest('defs, marker, symbol, clipPath, mask, pattern') && el.checkVisibility() && getComputedStyle(el).fill === black);
+  if (!bad.length) return [];
+  return [`${bad.length} diagram shape(s) render with the default black fill (a <${bad[0].tagName.toLowerCase()}> outside the kit's shape classes); wrap nodes as <g class="ve-n"><rect class="sh"/>… and edges as <path class="ve-e">`];
+}
+
 function veScrollHeight() {
   return Math.min(Math.max(
     document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0,
@@ -216,6 +227,7 @@ function createVisualLookService() {
       result.errors.push(...collect.map((message) => `console at 1280px: ${message}`));
       collect = null;
       note(await evalIn(checks.inspect, null));
+      result.problems.push(...(await evalIn(veShapeCheck)));
       const gaps = await evalIn(checks.headings, checks.MIN_HEADING_GAP);
       const desktop = sheet ? await shot() : null;
       await setBounds(390, 900);
