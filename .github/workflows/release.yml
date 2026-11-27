@@ -26,6 +26,7 @@ jobs:
       - name: Build Windows installers
         env:
           MUSE_RELEASE_DIR: ${{ github.workspace }}\dist
+          GH_TOKEN: ${{ github.token }}
         run: npm run dist
 
       - name: Upload release assets
