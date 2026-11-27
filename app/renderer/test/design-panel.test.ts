@@ -183,3 +183,52 @@ test('a failed design request surfaces the message instead of clearing the panel
   await h.panel.refresh();
   assert.match(h.text('design-error'), /Disk is unreadable/);
 });
+
+test('registry filter narrows the selects and previews the chosen entry', async () => {
+  const h = harness({ designStatus: async () => STATUS });
+  await h.panel.refresh();
+  const filter = h.element('design-registry-filter');
+  filter.value = 'studio';
+  filter.fire('input');
+  assert.deepEqual(h.options('design-system'), ['', 'studio'], 'only matching systems remain');
+  h.element('design-system').value = 'studio';
+  h.element('design-system').fire('change');
+  const preview = h.all(h.element('design-panel')).find(node => node.className === 'design-registry-preview')!;
+  assert.match(preview.textContent, /Studio/, 'preview names the chosen entry');
+});
+
+test('craft rows show their description and can be read in the panel', async () => {
+  const read: any[] = [];
+  const h = harness({
+    designStatus: async () => ({ ...STATUS, craft: [{ id: 'design-quality', name: 'Design quality bar', source: 'bundled', description: 'Spacing, contrast, and type scale.' }] }),
+    designRegistryRead: async (kind: string, id: string) => { read.push({ kind, id }); return { ok: true, text: 'No cramped spacing.' }; },
+  });
+  await h.panel.refresh();
+  const row = h.all(h.element('design-panel')).find(node => node.className === 'design-craft-row')!;
+  assert.match(row.textContent, /Spacing, contrast, and type scale\./);
+  const readButton = row.querySelectorAll('button').find(node => node.className === 'design-craft-read')!;
+  readButton.fire('click');
+  await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(read, [{ kind: 'craft', id: 'design-quality' }]);
+  const preview = h.all(h.element('design-panel')).find(node => node.className === 'design-registry-preview')!;
+  assert.match(preview.textContent, /No cramped spacing/);
+});
+
+test('a failed request offers retry and folder actions', async () => {
+  const h = harness({ designStatus: async () => ({ ok: false, error: 'Disk is unreadable', systems: [], skills: [] }) });
+  await h.panel.refresh();
+  assert.equal(h.element('design-error-retry').parent!.hidden, false, 'actions show with the error');
+});
+
+test('template confirmation names the files it wrote and kept', async () => {
+  const h = harness({
+    designStatus: async () => STATUS,
+    designApplyTemplate: async () => ({ ok: true, written: ['index.html', 'styles.css'], skipped: ['app.js'], name: 'Deck' }),
+  });
+  await h.panel.refresh();
+  h.element('design-template').value = 'deck';
+  h.element('design-apply-template').fire('click');
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.match(h.text('design-artifact'), /index\.html, styles\.css/);
+  assert.match(h.text('design-artifact'), /1 kept as they were/);
+});
