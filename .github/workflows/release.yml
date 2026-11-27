@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -26,11 +27,16 @@ jobs:
       - name: Build Windows installers
         env:
           MUSE_RELEASE_DIR: ${{ github.workspace }}\dist
-          GH_TOKEN: ${{ github.token }}
+          EP_PUBLISH: never
         run: npm run dist
+
+      - name: Resolve release tag
+        shell: bash
+        run: echo "TAG=v$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: dist/*.exe
           fail_on_unmatched_files: true
