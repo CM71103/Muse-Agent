@@ -52,13 +52,21 @@ function fakeFetch(payload, calls) {
   };
 }
 
+// Every search path runs the DNS-rebinding check before its first fetch. Point
+// that check at a public address so these tests do not depend on a resolver.
+function publicDns(t) {
+  const dns = require('node:dns');
+  t.mock.method(dns, 'lookup', (host, opts, cb) => cb(null, [{ address: '93.184.216.34', family: 4 }]));
+}
+
 function ctxFor(cfg) {
   const sentinel = new Sentinel({ sentinel: { mode: 'auto', deny_rules: [], egress_allowlist: [] }, agent: {} });
   // request_interval_ms 0 keeps the tests fast (no politeness delay).
   return { cfg: cfg || { llm: { model: 'm' }, research: { request_interval_ms: 0 } }, sentinel, tainted: false, netPolicy: { allowLocal: false } };
 }
 
-test('search_papers returns a compact ranked list with ids and takeaways', async () => {
+test('search_papers returns a compact ranked list with ids and takeaways', async (t) => {
+  publicDns(t);
   const calls = [];
   const original = globalThis.fetch;
   // Hermetic: a machine-level SEMANTIC_SCHOLAR_API_KEY makes the keyed index
@@ -82,7 +90,8 @@ test('search_papers returns a compact ranked list with ids and takeaways', async
   }
 });
 
-test('results respect the year filter and the result cap', async () => {
+test('results respect the year filter and the result cap', async (t) => {
+  publicDns(t);
   const original = globalThis.fetch;
   globalThis.fetch = fakeFetch(S2_PAYLOAD, []);
   try {
@@ -111,7 +120,8 @@ test('arXiv preprints are parsed and merged without duplicates', async () => {
   assert.match(papers[0].abstract, /benchmark of retrieval/);
 });
 
-test('a failing upstream is reported honestly with a code', async () => {
+test('a failing upstream is reported honestly with a code', async (t) => {
+  publicDns(t);
   const original = globalThis.fetch;
   globalThis.fetch = async () => ({ ok: false, status: 429, json: async () => ({}) });
   try {
@@ -250,7 +260,8 @@ test('the environment can supply the semantic scholar key', () => {
   }
 });
 
-test('the openalex api key is sent as a query parameter', async () => {
+test('the openalex api key is sent as a query parameter', async (t) => {
+  publicDns(t);
   const calls = [];
   const original = globalThis.fetch;
   globalThis.fetch = fakeFetch({ results: [] }, calls);
@@ -266,7 +277,8 @@ test('the openalex api key is sent as a query parameter', async () => {
   } finally { globalThis.fetch = original; }
 });
 
-test('a rate limited index is retried once before giving up', async () => {
+test('a rate limited index is retried once before giving up', async (t) => {
+  publicDns(t);
   const original = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async () => {

@@ -41,6 +41,11 @@ function pushPair(out, role, text) {
 // conversations.json. Reading just that member takes the central directory
 // (end-of-central-directory record), one local header, and inflateRaw.
 
+const ZIP_METHODS = {
+  0: raw => raw,
+  8: raw => zlib.inflateRawSync(raw),
+};
+
 function zipEntryData(zipPath, suffix) {
   let buf;
   try { buf = fs.readFileSync(zipPath); } catch { return null; }
@@ -65,8 +70,12 @@ function zipEntryData(zipPath, suffix) {
       if (localAt + 30 > buf.length) return null;
       const start = localAt + 30 + buf.readUInt16LE(localAt + 26) + buf.readUInt16LE(localAt + 28);
       const raw = buf.slice(start, start + compSize);
+      // ZIP compression methods from the format spec (APPNOTE 4.4.5): 0 stored,
+      // 8 deflate. Anything else is a method this reader does not implement.
+      const inflate = ZIP_METHODS[method];
+      if (!inflate) return null;
       try {
-        return method === 0 ? raw : method === 8 ? zlib.inflateRawSync(raw) : null;
+        return inflate(raw);
       } catch { return null; }
     }
     ptr += 46 + nameLen + extraLen + commentLen;
