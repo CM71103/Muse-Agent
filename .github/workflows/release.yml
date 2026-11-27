@@ -27,8 +27,7 @@ jobs:
       - name: Build Windows installers
         env:
           MUSE_RELEASE_DIR: ${{ github.workspace }}\dist
-          EP_PUBLISH: never
-        run: npm run dist
+        run: npm run dist -- --publish never
 
       - name: Resolve release tag
         shell: bash
