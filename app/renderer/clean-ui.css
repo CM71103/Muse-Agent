@@ -317,7 +317,7 @@ body::before { background:radial-gradient(ellipse at 50% -20%,rgb(0 0 0 / .03),t
 /* the one-line status under a rail row (e.g. what the style scan found) */
 .rail-learn { margin:2px 0 8px; }
 .rail-status { display:block; margin:1px 0 2px 34px; font-size:10.5px; line-height:1.5;
-  color:var(--faint); }
+  color:var(--color-muted-fg); }
 .rail-status.busy { color:var(--color-muted-fg); }
 .rail-item[aria-busy="true"] { color:var(--color-muted-fg); }
 .rail-item[aria-busy="true"] svg { animation:rail-pulse 1.4s ease-in-out infinite; }
@@ -325,6 +325,7 @@ body::before { background:radial-gradient(ellipse at 50% -20%,rgb(0 0 0 / .03),t
 
 /* sections */
 .rail-section { border-top:1px solid var(--color-border-soft); padding:12px 0 4px; }
+.rail-section[hidden] { display:none; }
 .rail-section-head { display:flex; align-items:center; justify-content:space-between; gap:8px;
   padding:0 8px 7px; }
 .rail-label { font:650 10px/1 var(--sans); letter-spacing:.7px; text-transform:uppercase;

@@ -131,7 +131,7 @@
      --color-surface was never defined; inline styles read it, so alias it. */
   --color-surface:var(--color-card);
   --bg:var(--color-background);--surface:var(--color-card);--ice:var(--color-foreground);
-  --dim:var(--color-muted-fg);--faint:#a1a1aa;--stroke:var(--color-border);
+  --dim:var(--color-muted-fg);--faint:var(--color-muted-fg);--stroke:var(--color-border);
   --blue:var(--color-primary);--teal:var(--color-success);--amber:var(--color-warn);
   --red:var(--color-destructive);--violet:#549c22;--pink:#549c22;
   --field-bg:var(--color-surface-subtle);--active-bg:var(--color-accent);
@@ -324,7 +324,7 @@ input:hover,textarea:hover{background-color:var(--color-secondary)}
 .pip.on{background:var(--color-success)}
 .pip.on.blink{animation:pip-pulse 1.2s steps(4,end) infinite}
 @keyframes pip-pulse{50%{opacity:.3}}
-.pips-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--faint);margin-top:6px}
+.pips-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--color-muted-fg);margin-top:6px}
 .pips-labels i{font-style:normal}
 
 /* Main column */
@@ -484,18 +484,28 @@ header{height:56px;flex-shrink:0;display:flex;align-items:center;padding:0 22px;
 .dashboards-home h1{font-size:22px;margin:0}
 .dash-hint{color:var(--color-muted-fg);font-size:12.5px;margin:0;line-height:1.6}
 .dash-list{display:flex;flex-wrap:wrap;gap:10px}
-.dash-item{display:flex;flex-direction:column;gap:4px;border:1px solid var(--color-border-soft);background:var(--color-surface);border-radius:12px;padding:12px 14px;min-width:210px;cursor:pointer;transition:border-color .16s var(--ease-soft),transform .16s var(--ease-soft);color:#4a3a2c}
+.dash-item{display:flex;flex-direction:column;gap:4px;border:1px solid var(--color-border-soft);background:var(--color-surface);border-radius:12px;padding:12px 14px;min-width:210px;transition:border-color .16s var(--ease-soft),transform .16s var(--ease-soft);color:var(--color-foreground)}
 .dash-item:hover{border-color:var(--color-border);transform:translateY(-1px)}
 .dash-item.active{border-color:color-mix(in srgb,var(--color-primary) 55%,transparent)}
 .dash-item strong{font-size:13px}
+.dash-open{display:flex;flex-direction:column;gap:4px;border:0;background:transparent;padding:0;text-align:left;color:inherit;cursor:pointer;font:inherit}
+.dash-open:focus-visible{outline:2px solid var(--color-primary);outline-offset:3px;border-radius:6px}
+.dash-error{display:flex;flex-direction:column;gap:10px;align-items:flex-start;border:1px solid var(--color-destructive);border-radius:12px;padding:14px 16px;background:var(--color-surface)}
+.dash-error p{margin:0;font-size:13px;line-height:1.6;color:var(--color-foreground)}
+.dash-error .q-btn{border:1px solid var(--color-border);background:var(--color-surface);border-radius:8px;padding:4px 12px;font-size:12px;cursor:pointer}
 .pages-grid{display:flex;flex-wrap:wrap;gap:12px}
 .page-card{display:flex;flex-direction:column;gap:6px;border:1px solid var(--color-border-soft);background:var(--color-surface);border-radius:12px;padding:12px;width:250px}
 .page-card strong{font-size:13px;overflow-wrap:anywhere}
 .page-card small{color:var(--color-muted-fg);font-size:11px;line-height:1.5;overflow-wrap:anywhere}
-.page-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;object-position:top left;border:1px solid var(--color-border-soft);border-radius:9px;cursor:pointer;background:var(--color-surface-subtle)}
-.page-actions{display:flex;gap:6px;margin-top:4px}
-.dash-item small{color:#8a7663}
-.dash-item .dash-del{align-self:flex-start;margin-top:4px;font-size:10.5px;padding:1px 8px;color:#8a7663}
+.page-open{display:flex;flex-direction:column;gap:6px;border:0;background:transparent;padding:0;text-align:left;color:inherit;cursor:pointer;font:inherit}
+.page-open:focus-visible{outline:2px solid var(--color-primary);outline-offset:3px;border-radius:8px}
+.page-thumb{display:block;width:100%;aspect-ratio:4/3;border:1px solid var(--color-border-soft);border-radius:9px;background:var(--color-surface-subtle);overflow:hidden}
+.page-thumb img{display:block;width:100%;height:100%;object-fit:cover;object-position:top left}
+.page-thumb.missing{display:flex;align-items:center;justify-content:center;padding:12px;font-size:11px;line-height:1.5;color:var(--color-muted-fg);text-align:center}
+.page-actions{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+.dash-item small{color:var(--color-muted-fg)}
+.dash-item .dash-del{align-self:flex-start;margin-top:4px;font-size:10.5px;padding:1px 8px;color:var(--color-muted-fg)}
+.dash-item .dash-del:hover{color:var(--color-destructive)}
 .mc-grid-wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
 /* Paper cards: --color-surface is the root-computed paper token (cream in
    every theme), so ink is pinned here: never inherit the themed foreground. */
@@ -950,11 +960,12 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   </div>
   <div class="sidebar-primary">
   <nav class="rail-nav" aria-label="Primary">
-    <button id="btn-new" class="rail-nav-row is-primary" data-i18n="sidebar.newSession"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New session</span></button>
-    <button id="btn-nav-search" class="rail-nav-row"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg><span>Search</span></button>
-    <button id="btn-nav-projects" class="rail-nav-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10v7a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17z"/></svg><span>Projects</span></button>
-    <button id="btn-nav-artifacts" class="rail-nav-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v5H4zM4 13h7v5H4zM13 13h7v5h-7z"/></svg><span>Artifacts</span></button>
-    <button id="btn-nav-customize" class="rail-nav-row"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg><span>Customize</span></button>
+    <button id="btn-new" class="rail-nav-row is-primary"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="sidebar.newSession">New session</span></button>
+    <button id="btn-nav-search" class="rail-nav-row" title="Command palette: every action, one query"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></svg><span data-i18n="rail.commands">Commands</span></button>
+    <button id="btn-nav-projects" class="rail-nav-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10v7a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17z"/></svg><span data-i18n="nav.projects">Projects</span></button>
+    <button id="btn-nav-boards" class="rail-nav-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h7v7H4zM13 5h7v4h-7zM13 12h7v7h-7zM4 15h7v4H4z"/></svg><span data-i18n="nav.boards">Boards</span></button>
+    <button id="btn-nav-artifacts" class="rail-nav-row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v5H4zM4 13h7v5H4zM13 13h7v5h-7z"/></svg><span data-i18n="nav.pages">Pages</span></button>
+    <button id="btn-nav-customize" class="rail-nav-row"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg><span data-i18n="rail.appearance">Appearance</span></button>
   </nav>
   <button id="btn-create-project" class="project-create-trigger" aria-expanded="false" aria-controls="project-create"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10v7a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17z"/></svg><span>New project</span></button>
   <form id="project-create" class="project-create-form" hidden>
@@ -973,7 +984,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   </nav>
   <div class="rail-learn">
     <button id="btn-learn-style" class="rail-item" title="Read every AI chat on this machine and learn the answers you like best"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 13.7 8l4.8.4-3.6 3.1 1.1 4.7L12 13.8 8 16.2l1.1-4.7L5.5 8.4 10.3 8z"/></svg><span id="learn-style-label">Learn my style</span></button>
-    <span id="learn-style-status" class="rail-status" role="status">not learned yet</span>
+    <span id="learn-style-status" class="rail-status" role="status">Learns from your chats</span>
   </div>
   <section class="rail-section">
     <div class="rail-section-head"><span class="rail-label">Recents</span>
@@ -992,8 +1003,8 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <div id="sessions-list"></div>
     </div>
   </section>
-  <section class="rail-section">
-    <div class="rail-section-head"><span class="rail-label">Pinned</span>
+  <section class="rail-section" id="pinned-section">
+    <div class="rail-section-head"><span class="rail-label" data-i18n="rail.pinned">Pinned</span>
       <button id="btn-archived-projects" class="icon-btn sm" aria-pressed="false" aria-label="Show archived projects" title="Show archived projects"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg></button>
     </div>
     <div class="rail-search">
@@ -1020,12 +1031,12 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
     </div>
     <div class="nav-links" role="toolbar" aria-label="Views">
       <span class="nav-pill" aria-hidden="true"></span>
-      <button id="nav-chat" aria-pressed="true" data-nav="chat" data-tip="Conversation view · Alt 1">Chat</button>
-      <button id="nav-projects" aria-pressed="false" data-nav="projects" data-tip="Project spaces · Alt 2">Projects</button>
-      <button id="nav-activity" aria-pressed="false" data-nav="activity" aria-controls="workbench" data-tip="Live agent activity · Alt 3">Activity</button>
-      <button id="nav-memory" aria-pressed="false" data-nav="memory" data-tip="Memory scopes · Alt 4">Memory</button>
-      <button id="nav-dashboards" aria-pressed="false" data-nav="dashboards" data-tip="Live dashboards · ask Muse to build one">Boards</button>
-      <button id="nav-pages" aria-pressed="false" data-nav="pages" data-tip="Visual pages rendered by Muse">Pages</button>
+      <button id="nav-chat" aria-pressed="true" data-nav="chat" data-tip="Conversation view · Alt 1" data-i18n="nav.chat">Chat</button>
+      <button id="nav-projects" aria-pressed="false" data-nav="projects" data-tip="Project spaces · Alt 2" data-i18n="nav.projects">Projects</button>
+      <button id="nav-activity" aria-pressed="false" data-nav="activity" aria-controls="workbench" data-tip="Live agent activity · Alt 3" data-i18n="nav.activity">Activity</button>
+      <button id="nav-memory" aria-pressed="false" data-nav="memory" data-tip="Memory scopes · Alt 4" data-i18n="nav.memory">Memory</button>
+      <button id="nav-dashboards" aria-pressed="false" data-nav="dashboards" data-tip="Live boards built from your data" data-i18n="nav.boards">Boards</button>
+      <button id="nav-pages" aria-pressed="false" data-nav="pages" data-tip="Visual pages Muse rendered for you" data-i18n="nav.pages">Pages</button>
     </div>
     <div class="navbar-side right">
       <div class="right">
@@ -1042,9 +1053,9 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   </nav>
   <div id="model-pop" hidden role="dialog" aria-label="Model details">
     <h4>Model context</h4>
-    <div class="row"><span>Model</span><b id="mp-model">Not set</b></div>
-    <div class="row"><span>Endpoint</span><b id="mp-url">Not set</b></div>
-    <div class="row"><span>API key</span><b id="mp-key">Not set</b></div>
+    <div class="row"><span>Model</span><b id="mp-model">Choose in Settings</b></div>
+    <div class="row"><span>Endpoint</span><b id="mp-url">Set with the model</b></div>
+    <div class="row"><span>API key</span><b id="mp-key">Add in Settings</b></div>
     <div class="row"><span>Safety mode</span><b id="mp-sentinel">Not set</b></div>
     <div class="row"><span>Memory</span><b id="mp-mem">Not set</b></div>
   </div>
@@ -1102,19 +1113,19 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   <div class="wb-panels">
     <section id="wb-panel-activity" role="tabpanel" aria-labelledby="wb-tab-activity">
       <div class="wb-heat-wrap">
-        <div class="wb-heat-head"><span data-i18n="wb.heatTitle">Session rhythm</span><small id="wb-heat-count">0 sessions</small></div>
+        <div class="wb-heat-head"><span data-i18n="wb.heatTitle">Session rhythm</span><small id="wb-heat-count">No sessions yet</small></div>
         <div id="wb-heat" class="wb-heat" role="img" aria-label="Session activity over the last 15 weeks"></div>
         <div class="wb-heat-legend"><i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><span>less → more</span></div>
       </div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.status">Status</div><div id="wb-status" class="wb-v" data-i18n="wb.idle">Idle</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.model">Model</div><div id="wb-model" class="wb-v">Not set</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.safetyMode">Safety mode</div><div id="wb-sentinel" class="wb-v">Not set</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="pips.memory">Memory</div><div id="wb-mem" class="wb-v">Not set</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.model">Model</div><div id="wb-model" class="wb-v">Choose one in Settings</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.safetyMode">Safety mode</div><div id="wb-sentinel" class="wb-v">Ask before tools run</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="pips.memory">Memory</div><div id="wb-mem" class="wb-v">Starts with your first chat</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.activity">Activity</div><div id="wb-log" class="wb-log" aria-live="polite"></div></div>
     </section>
     <section id="wb-panel-memory" role="tabpanel" aria-labelledby="wb-tab-memory" hidden>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.memLayer">Memory layer</div><div id="wb-memstat" class="wb-v">Not set</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.memRecords">Records in scope</div><div id="wb-memcount" class="wb-v">Not set</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.memLayer">Memory layer</div><div id="wb-memstat" class="wb-v">Reading local memory…</div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.memRecords">Records in scope</div><div id="wb-memcount" class="wb-v">—</div></div>
       <p class="wb-hint" data-i18n="wb.memHint">Open the full Memory drawer for records, quarantine review, export and policy flags.</p>
       <button id="wb-open-mem" class="wb-btn" data-i18n="wb.openMemDrawer">Open Memory drawer</button>
     </section>
@@ -1122,8 +1133,8 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <div class="wb-section"><div class="wb-k" data-i18n="wb.session">Session</div><div id="wb-session" class="wb-v" data-i18n="wb.new">New</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.messages">Messages</div><div id="wb-msgs" class="wb-v">0</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.toolCalls">Tool calls</div><div id="wb-tools" class="wb-v">0</div></div>
-      <div class="wb-section"><div class="wb-k">Tokens</div><div id="wb-tokens" class="wb-v">Not set</div></div>
-      <div class="wb-section"><div class="wb-k">Answer feedback</div><div id="wb-feedback" class="wb-v">Not set</div></div>
+      <div class="wb-section"><div class="wb-k">Tokens</div><div id="wb-tokens" class="wb-v">Counted per answer</div></div>
+      <div class="wb-section"><div class="wb-k">Answer feedback</div><div id="wb-feedback" class="wb-v">No answers rated yet</div></div>
       <div class="wb-section"><div class="wb-k">Tool errors</div><div id="wb-errors" class="wb-v">0</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.shortcuts">Shortcuts</div>
         <div class="shortcut"><span data-i18n="wb.scCommands">Commands</span><kbd>Ctrl K</kbd></div>
@@ -1161,6 +1172,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
         <button role="tab" id="tab-workspace" data-tab="workspace" aria-controls="panel-workspace" aria-selected="false"><span aria-hidden="true">▱</span><span>Workspace<small>Look &amp; feel</small></span></button>
         <button role="tab" id="tab-mcp" data-tab="mcp" aria-controls="panel-mcp" aria-selected="false"><span aria-hidden="true">⊕</span><span>Integrations<small>MCP tool servers</small></span></button>
         <button role="tab" id="tab-shortcuts" data-tab="shortcuts" aria-controls="panel-shortcuts" aria-selected="false"><span aria-hidden="true">⌘</span><span>Shortcuts<small>Move a little faster</small></span></button>
+        <button role="tab" id="tab-about" data-tab="about" aria-controls="panel-about" aria-selected="false"><span aria-hidden="true">✳</span><span>About<small>Version &amp; your data</small></span></button>
         <div class="settings-preview"><span class="settings-eyebrow">YOUR CONNECTION</span><strong id="settings-model-preview">Choose a model</strong><span id="settings-endpoint-preview">Your model endpoint</span></div>
       </nav>
       <div class="settings-content">
@@ -1311,8 +1323,27 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
           <div class="shortcut"><span data-i18n="wb.scNew">New session</span><kbd>Ctrl / ⌘ N</kbd></div>
           <div class="shortcut"><span data-i18n="wb.scExport">Export transcript</span><kbd>Ctrl / ⌘ Shift E</kbd></div>
           <div class="shortcut"><span data-i18n="wb.scSettings">Settings</span><kbd>Ctrl / ⌘ ,</kbd></div>
+          <div class="shortcut"><span data-i18n="settings.scViews">Switch view: Chat, Projects, Activity, Memory</span><kbd>Alt 1–4</kbd></div>
           <div class="shortcut"><span data-i18n="common.close">Close dialog</span><kbd>Esc</kbd></div>
           <p class="hint" data-i18n="settings.shortcutsHint">New sessions and history changes are blocked while Muse is working or awaiting approval.</p>
+        </section>
+        <section id="panel-about" role="tabpanel" aria-labelledby="tab-about" hidden>
+          <div class="settings-section-heading"><div><h3>About Muse</h3><p class="sub">What you are running, and where your work lives.</p></div></div>
+          <div class="settings-card">
+            <div class="settings-card-heading"><span class="settings-card-icon" aria-hidden="true">✳</span><div><h4 id="about-version">Muse Agent</h4><p id="about-runtime">Desktop app</p></div></div>
+            <div class="row">
+              <button type="button" id="btn-check-update">Check for updates</button>
+              <span id="about-update" role="status" class="hint"></span>
+            </div>
+          </div>
+          <div class="settings-card">
+            <div class="settings-card-heading"><span class="settings-card-icon" aria-hidden="true">▤</span><div><h4>Your data</h4><p>Chats, memory, projects and settings stay in this app's data folder on this device. API keys live in the OS credential vault, never in a transcript.</p></div></div>
+            <p class="hint" id="about-data-path">Copy that folder to back it up. Removing the app removes it.</p>
+            <div class="row">
+              <button type="button" id="btn-open-data">Open data folder</button>
+              <button type="button" class="btn-ghost" id="btn-export-about">Export this transcript</button>
+            </div>
+          </div>
         </section>
       </div>
     </div>

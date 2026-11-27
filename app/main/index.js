@@ -665,6 +665,32 @@ function startUpdateChecks() {
   setInterval(run, CHECK_MS).unref?.();
 }
 
+// ---- About: version, an on-demand update check, and the data folder ----
+ipcMain.handle('app:info', () => {
+  const running = app.getVersion ? app.getVersion() : '';
+  return {
+    version: running && running !== '0.0.0' ? running : require('../harness/version'),
+    electron: process.versions.electron || '',
+    platform: process.platform,
+  };
+});
+ipcMain.handle('app:check-update', async () => {
+  try {
+    const { checkUpdate } = require('../harness/updater');
+    const cur = app.getVersion ? app.getVersion() : require('../harness/version');
+    const res = await checkUpdate(cur);
+    return { ok: true, current: cur, latest: res.latest || '', update: !!res.update, url: res.url || '' };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+});
+ipcMain.handle('app:open-data-folder', async () => {
+  const dir = app.getPath('userData');
+  try { await require('node:fs').promises.mkdir(dir, { recursive: true }); } catch { /* exists or unreadable; openPath reports it */ }
+  const err = await shell.openPath(dir);
+  return err ? { ok: false, error: String(err) } : { ok: true, path: dir };
+});
+
 // First-run vibe calibration: if no answer-style profile exists yet and the
 // machine has prior AI conversations (ChatGPT export/caches, Claude Code
 // transcripts, Muse sessions), learn the user's preferred answer style in the

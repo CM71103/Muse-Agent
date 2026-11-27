@@ -194,7 +194,7 @@ button:disabled,[aria-disabled=true],select:disabled,input:disabled{cursor:not-a
 .menubar-mark{color:var(--color-rail-logo)}
 .menubar-name{letter-spacing:-.01em}
 .menubar-item{
-  color:color-mix(in srgb,var(--color-rail-fg) 82%,transparent);
+  color:var(--color-rail-fg);
   transition:color var(--dur-fast) ease-out,background var(--dur-fast) ease-out;
 }
 .menubar-item:hover{color:var(--color-rail-fg);background:var(--color-rail-hover)}

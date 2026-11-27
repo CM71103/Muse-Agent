@@ -54,7 +54,22 @@ function reveal(el, fromY) {
   else el.classList.add('reveal-in');
   return el;
 }
-function resetTranscript() { closeStepGroup(); showThinking(false); clearStreamingMessage(); subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; renderEmpty(); }
+let chatSnapshot = null;
+// Pages and Boards are full-page views; they borrow the transcript area. Keep
+// the conversation aside instead of destroying it, so Chat brings it back.
+function stashChat() {
+  if (chatSnapshot) return;
+  if (!transcript.childNodes.length) return;
+  chatSnapshot = document.createDocumentFragment();
+  while (transcript.firstChild) chatSnapshot.append(transcript.firstChild);
+}
+function restoreChat() {
+  if (!chatSnapshot) { renderEmpty(); return; }
+  transcript.replaceChildren();
+  while (chatSnapshot.firstChild) transcript.append(chatSnapshot.firstChild);
+  chatSnapshot = null;
+}
+function resetTranscript() { closeStepGroup(); showThinking(false); clearStreamingMessage(); subagentUI?.reset(); openCards.clear(); transcript.replaceChildren(); transcriptMessages = []; chatSnapshot = null; pagesViewVisible = false; dashboardsViewVisible = false; renderEmpty(); }
 function renderEmpty() {
   if (projectHomeVisible && activeProjectId) { renderProjectHome(); return; }
   if (transcript.children.length) return;
@@ -807,11 +822,11 @@ function handleAgentEvent(ev) {
     case 'session-restored': addSysNote(`session loaded: ${ev.title}`, false, 'mem'); crumbTitle = ev.title || 'Session'; wbUpdateDetails(); break;
   }
 }
-window.muse.onAgentEvent(handleAgentEvent);
+window.muse?.onAgentEvent(handleAgentEvent);
 
 /* ---------- approval flow ---------- */
 
-window.muse.onApprovalRequest((req) => {
+window.muse?.onApprovalRequest((req) => {
   $('approval-title').textContent = req.subagent ? `${subagentUI?.label(req.subagentId) || 'Subagent'} needs approval` : 'Your approval is required';
   currentApproval = req;
   composer.style.display = 'none';
@@ -827,7 +842,7 @@ window.muse.onApprovalRequest((req) => {
   $('btn-deny').focus();
 });
 
-window.muse.onApprovalResolved((result) => {
+window.muse?.onApprovalResolved((result) => {
   if (!currentApproval || currentApproval.id !== result.id) return;
   currentApproval = null;
   approvalBox.classList.remove('active');
@@ -840,7 +855,7 @@ window.muse.onApprovalResolved((result) => {
 });
 
 // Approval timed out server-side: restore composer so the agent is never stuck.
-window.muse.onApprovalExpired(() => {
+window.muse?.onApprovalExpired(() => {
   if (!currentApproval) return;
   currentApproval = null;
   approvalBox.classList.remove('active');
@@ -870,7 +885,7 @@ $('btn-deny').addEventListener('click', () => answerApproval(false));
 
 let currentQuestion = null;
 
-window.muse.onQuestion((q) => {
+window.muse?.onQuestion((q) => {
   $('question-title').textContent = q.subagent ? `${subagentUI?.label(q.subagentId) || 'Subagent'} has a question` : 'The agent has a question';
   currentQuestion = q;
   const box = $('question');
@@ -1245,71 +1260,108 @@ function renderQueueChips(items) {
     c.pos.textContent = `#${it.position}`;
   }
 }
-window.muse.onQueueUpdate?.((state) => renderQueueChips((state && state.items) || []));
+window.muse?.onQueueUpdate?.((state) => renderQueueChips((state && state.items) || []));
 
 /* ---------- dashboards view (live JSON dashboards — queries, not data) ---------- */
 let dashboardsViewVisible = false;
 let pagesViewVisible = false;
 let selectedDashboardId = null;
 
+const tr = (key, fallback) => (window.MuseI18n && typeof window.MuseI18n.t === 'function')
+  ? window.MuseI18n.t(key, fallback) : fallback;
+function loadingLine(text) {
+  const p = document.createElement('p');
+  p.className = 'dash-hint'; p.setAttribute('role', 'status'); p.textContent = text;
+  return p;
+}
+// A failed read says so and offers the one action that can help. Silence and
+// a retry button are better than an empty page that looks like a fresh install.
+function viewError(message, err, retry) {
+  const box = document.createElement('div');
+  box.className = 'dash-error'; box.setAttribute('role', 'alert');
+  const p = document.createElement('p');
+  const detail = err && err.message ? ` ${String(err.message).slice(0, 160)}` : '';
+  p.textContent = message + detail;
+  const again = document.createElement('button');
+  again.type = 'button'; again.className = 'q-btn'; again.textContent = tr('common.retry', 'Try again');
+  again.addEventListener('click', retry);
+  box.append(p, again);
+  return box;
+}
 async function renderDashboardsView() {
   if (!dashboardsViewVisible || typeof window.muse.dashList !== 'function') return;
-  let list = [];
-  try { list = await window.muse.dashList(); } catch { /* store not ready */ }
-  if (!dashboardsViewVisible) return;
+  stashChat();
   transcript.replaceChildren();
   const home = document.createElement('section');
   home.id = 'dashboards-home'; home.className = 'dashboards-home';
-  const h = document.createElement('h1'); h.textContent = 'Dashboards';
+  const h = document.createElement('h1'); h.textContent = tr('boards.title', 'Boards');
   const hint = document.createElement('p'); hint.className = 'dash-hint';
-  hint.textContent = 'Ask Muse to build one (e.g. “create a dashboard of orders by region”). Each chart is a live SQL query: open a dashboard any time to re-run the numbers.';
+  hint.textContent = tr('boards.hint', 'Ask Muse to build one (e.g. “create a board of orders by region”). Each chart is a live SQL query: open a board any time to re-run the numbers.');
   home.append(h, hint);
+  const loading = document.createElement('p'); loading.className = 'dash-hint';
+  loading.textContent = tr('boards.loading', 'Loading your boards…');
+  home.append(loading);
+  transcript.append(home);
+  const scroller = $('mainlog');
+  if (scroller) scroller.scrollTop = 0;   // the view is a page — always open at its header
+
+  let list = null, listError = null;
+  try { list = await window.muse.dashList(); } catch (err) { listError = err; }
+  if (!dashboardsViewVisible) return;
+  home.replaceChildren(h, hint);
+
+  if (listError) {
+    home.append(viewError(tr('boards.listError', 'Could not read your boards. Your files are untouched.'), listError, () => renderDashboardsView()));
+    return;
+  }
   if (!list.length) {
     const n = document.createElement('p'); n.className = 'dash-hint';
-    n.textContent = 'No dashboards yet.';
+    n.textContent = tr('boards.empty', 'No boards yet. Ask Muse to build one from your data.');
     home.append(n);
   }
   const listWrap = document.createElement('div'); listWrap.className = 'dash-list';
   for (const d of list) {
     const item = document.createElement('div');
     item.className = 'dash-item' + (d.id === selectedDashboardId ? ' active' : '');
+    const open = document.createElement('button');
+    open.type = 'button'; open.className = 'dash-open';
+    open.setAttribute('aria-current', d.id === selectedDashboardId ? 'true' : 'false');
     const t = document.createElement('strong'); t.textContent = d.title;
-    const s = document.createElement('small'); s.textContent = `${d.charts} chart${d.charts === 1 ? '' : 's'}`;
-    const del = document.createElement('button'); del.className = 'btn-ghost dash-del'; del.textContent = 'delete';
+    const s = document.createElement('small');
+    s.textContent = d.description || `${d.charts} chart${d.charts === 1 ? '' : 's'}`;
+    open.append(t, s);
+    open.addEventListener('click', () => { selectedDashboardId = d.id; renderDashboardsView(); });
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'btn-ghost dash-del'; del.textContent = tr('boards.remove', 'Remove');
+    del.setAttribute('aria-label', tr('boards.removeAria', 'Remove board') + ` “${d.title}”`);
     del.addEventListener('click', guarded(async () => {
       if (!window.confirm(`Delete “${d.title}”?`)) return;
       await window.muse.dashDelete(d.id);
       if (selectedDashboardId === d.id) selectedDashboardId = null;
       renderDashboardsView();
     }));
-    item.addEventListener('click', (e) => {
-      if (e && e.target === del) return;
-      selectedDashboardId = d.id;
-      renderDashboardsView();
-    });
-    item.append(t, s, del);
+    item.append(open, del);
     listWrap.append(item);
   }
   home.append(listWrap);
   const view = document.createElement('div');
   view.id = 'dash-view';
   home.append(view);
-  transcript.append(home);
-  const scroller = $('mainlog');
-  if (scroller) scroller.scrollTop = 0;   // the view is a page — always open at its header
   if (selectedDashboardId) {
+    view.appendChild(loadingLine(tr('boards.loadingOne', 'Running this board’s queries…')));
     try {
       const data = await window.muse.dashData(selectedDashboardId);
-      if (!dashboardsViewVisible) return;
+      if (!dashboardsViewVisible || !view.isConnected) return;
+      view.replaceChildren();
       if (data && data.ok && typeof window.MuseCharts !== 'undefined') {
         const datasets = {};
         for (const c of data.charts || []) datasets[c.chartId] = c;
         window.MuseCharts.renderDashboard(view, data.dashboard, datasets);
       } else {
-        view.textContent = 'Dashboard unavailable.';
+        view.append(viewError(tr('boards.unavailable', 'This board could not be opened.'), null, () => renderDashboardsView()));
       }
     } catch (err) {
-      view.textContent = 'Failed to load dashboard data: ' + String(err && err.message || err);
+      view.replaceChildren();
+      view.append(viewError(tr('boards.dataError', 'Could not run this board’s queries.'), err, () => renderDashboardsView()));
     }
   }
 }
@@ -1324,54 +1376,73 @@ function openDashboardView(id) {
 // "remove" only forgets the entry; the files stay in the project.
 async function renderPagesView() {
   if (!pagesViewVisible || typeof window.muse.visPages !== 'function') return;
-  let list = [];
-  try { list = await window.muse.visPages(); } catch { /* store not ready */ }
-  if (!pagesViewVisible) return;
+  stashChat();
   transcript.replaceChildren();
   const home = document.createElement('section');
   home.id = 'pages-home'; home.className = 'dashboards-home';
-  const h = document.createElement('h1'); h.textContent = 'Visual pages';
+  const h = document.createElement('h1'); h.textContent = tr('pages.title', 'Pages');
   const hint = document.createElement('p'); hint.className = 'dash-hint';
-  hint.textContent = 'Self-contained HTML pages Muse rendered: diagrams, reviews, recaps. Each lives in its project beside its .src.html source; re-render the source to revise it.';
+  hint.textContent = tr('pages.hint', 'Self-contained HTML pages Muse rendered: diagrams, reviews, recaps. Each lives in its project beside its .src.html source; re-render the source to revise it.');
   home.append(h, hint);
+  const loading = document.createElement('p'); loading.className = 'dash-hint';
+  loading.textContent = tr('pages.loading', 'Loading your pages…');
+  home.append(loading);
+  transcript.append(home);
+  const scroller = $('mainlog');
+  if (scroller) scroller.scrollTop = 0;   // the view is a page — always open at its header
+
+  let list = null, listError = null;
+  try { list = await window.muse.visPages(); } catch (err) { listError = err; }
+  if (!pagesViewVisible) return;
+  home.replaceChildren(h, hint);
+  if (listError) {
+    home.append(viewError(tr('pages.listError', 'Could not read your pages. Your files are untouched.'), listError, () => renderPagesView()));
+    return;
+  }
   if (!list.length) {
     const n = document.createElement('p'); n.className = 'dash-hint';
-    n.textContent = 'No visual pages yet. Ask Muse for a diagram, comparison, or review.';
+    n.textContent = tr('pages.empty', 'No pages yet. Ask Muse for a diagram, comparison, or review.');
     home.append(n);
   }
   const grid = document.createElement('div'); grid.className = 'pages-grid';
   for (const p of list) {
     const card = document.createElement('div'); card.className = 'page-card';
-    const img = document.createElement('img'); img.className = 'page-thumb';
-    img.alt = p.title || 'visual page'; img.loading = 'lazy';
-    img.addEventListener('click', () => openVisualInApp(p.path));
+    const title = p.title || (String(p.path || '').split(/[\\/]/).pop() || 'page');
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button'; openBtn.className = 'page-open';
+    openBtn.addEventListener('click', () => openVisualInApp(p.path));
+    const thumb = document.createElement('span'); thumb.className = 'page-thumb';
+    const img = document.createElement('img');
+    img.alt = ''; img.loading = 'lazy';
+    img.addEventListener('error', () => { thumb.classList.add('missing'); thumb.textContent = tr('pages.noPreview', 'Preview unavailable — open the page to see it.'); });
+    thumb.append(img);
     if (typeof window.muse.visPageThumb === 'function') {
-      window.muse.visPageThumb(p.id).then(t => { if (t && t.ok && t.data) img.src = t.data; }).catch(() => {});
+      window.muse.visPageThumb(p.id).then(t => {
+        if (t && t.ok && t.data) img.src = t.data;
+        else { thumb.classList.add('missing'); thumb.textContent = tr('pages.noPreview', 'Preview unavailable — open the page to see it.'); }
+      }).catch(() => { thumb.classList.add('missing'); thumb.textContent = tr('pages.noPreview', 'Preview unavailable — open the page to see it.'); });
+    } else {
+      thumb.classList.add('missing'); thumb.textContent = tr('pages.noPreview', 'Preview unavailable — open the page to see it.');
     }
-    const t = document.createElement('strong');
-    t.textContent = p.title || (String(p.path || '').split(/[\\/]/).pop() || 'page');
+    const t = document.createElement('strong'); t.textContent = title;
     const s = document.createElement('small');
     s.textContent = [p.report, p.check && !String(p.check).startsWith('skipped') ? String(p.check) : '', p.project]
       .filter(Boolean).join(' · ');
+    openBtn.append(thumb, t, s);
     const row = document.createElement('div'); row.className = 'page-actions';
-    const openBtn = document.createElement('button'); openBtn.className = 'q-btn'; openBtn.textContent = 'open';
-    openBtn.addEventListener('click', () => openVisualInApp(p.path));
-    const folderBtn = document.createElement('button'); folderBtn.className = 'q-btn'; folderBtn.textContent = 'folder';
+    const folderBtn = document.createElement('button'); folderBtn.type = 'button'; folderBtn.className = 'q-btn'; folderBtn.textContent = tr('pages.folder', 'Show folder');
     folderBtn.addEventListener('click', () => window.muse?.visualReveal?.(p.path));
-    const forget = document.createElement('button'); forget.className = 'q-btn'; forget.textContent = 'remove';
+    const forget = document.createElement('button'); forget.type = 'button'; forget.className = 'q-btn'; forget.textContent = tr('pages.remove', 'Remove');
     forget.addEventListener('click', guarded(async () => {
-      if (!window.confirm(`Remove “${t.textContent}” from the list? The files stay on disk.`)) return;
+      if (!window.confirm(`Remove “${title}” from the list? The files stay on disk.`)) return;
       await window.muse.visPageForget(p.id);
       renderPagesView();
     }));
-    row.append(openBtn, folderBtn, forget);
-    card.append(img, t, s, row);
+    row.append(folderBtn, forget);
+    card.append(openBtn, row);
     grid.append(card);
   }
   home.append(grid);
-  transcript.append(home);
-  const scroller = $('mainlog');
-  if (scroller) scroller.scrollTop = 0;   // the view is a page — always open at its header
 }
 function openPagesView() {
   pagesViewVisible = true;
@@ -1549,7 +1620,7 @@ function setLearnStyleStatus(text, busy) {
 async function refreshVoiceStatus() {
   try {
     const st = await window.muse.voiceStatus();
-    if (!st || !st.calibrated) { setLearnStyleStatus('not learned yet', false); return; }
+    if (!st || !st.calibrated) { setLearnStyleStatus('Learns from your chats', false); return; }
     const liked = st.liked && st.liked.count ? ` · ${st.liked.count} liked` : '';
     const when = st.calibrated_at ? relativeStamp(st.calibrated_at) : '';
     setLearnStyleStatus(`${st.messages.toLocaleString ? st.messages.toLocaleString() : st.messages} messages${liked}${when ? ' · ' + when : ''}`, false);
@@ -1781,7 +1852,7 @@ async function newSession() {
 $('btn-new').addEventListener('click', () => { closeMobileHistory(); newSession(); });
 $('session-search').addEventListener('input', renderSessions);
 $('session-filter').addEventListener('change', renderSessions);
-window.muse.onSessionReset(() => { if (!loadingSession && !busy && !currentApproval) { activeSessionId = null; resetTranscript(); } });
+window.muse?.onSessionReset(() => { if (!loadingSession && !busy && !currentApproval) { activeSessionId = null; resetTranscript(); } });
 
 /* ---------- status: pips + tags ---------- */
 
@@ -1875,7 +1946,7 @@ let lastLearningActivity=0;
 for(const eventName of ['pointerdown','keydown'])window.addEventListener(eventName,()=>{
   if(Date.now()-lastLearningActivity>750){lastLearningActivity=Date.now();window.muse.learningActivity?.();}
 },{capture:true,passive:true});
-if (window.muse.boxStatus) boxUI.refresh();
+if (window.muse?.boxStatus) boxUI.refresh();
 const modelUI = window.MuseModelPicker.create({
   changed: () => settingsUI?.changed(),
   busy: () => busy || loadingSession || !!currentApproval,
@@ -1894,9 +1965,11 @@ const modelUI = window.MuseModelPicker.create({
 $('f-base').addEventListener('input', () => { modelUI.changedEndpoint($('f-base').value); settingsUI?.changed(); });
 let modelFetchVersion = 0;
 
-async function openSettings() {
-  if (settingsOpen || switchingModel) return;
+async function openSettings(tab) {
+  if (settingsOpen) { if (tab) showSettingsTab(tab); return; }
+  if (switchingModel) return;
   if (memOpen) closeMemory();
+  if (tab) showSettingsTab(tab);
   dialogReturnFocus = document.activeElement;
   settingsOpen = true;
   backdrop.classList.add('active');
@@ -1938,7 +2011,7 @@ function closeSettings() {
   if (dialogReturnFocus) dialogReturnFocus.focus();
 }
 
-$('btn-settings').addEventListener('click', openSettings);
+$('btn-settings').addEventListener('click', () => openSettings());
 $('btn-cancel').addEventListener('click', closeSettings);
 backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeSettings(); });
 window.addEventListener('keydown', (e) => {
@@ -2284,16 +2357,75 @@ window.addEventListener('keydown', (e) => {
 });
 
 /* ---------- Studio workspace controls ---------- */
-for (const name of ['connection', 'workspace', 'mcp', 'shortcuts']) {
-  $('tab-' + name).addEventListener('click', () => {
-    settingsUI?.selectTab(name);
-    for (const section of ['connection', 'workspace', 'mcp', 'shortcuts']) {
-      $('tab-' + section).setAttribute('aria-selected', String(name === section));
-      $('panel-' + section).hidden = name !== section;
-    }
-    if (name === 'mcp') renderMcpList();
-  });
+const SETTINGS_TABS = ['connection', 'workspace', 'mcp', 'shortcuts', 'about'];
+function showSettingsTab(name) {
+  if (!SETTINGS_TABS.includes(name)) name = 'connection';
+  settingsUI?.selectTab(name);
+  for (const section of SETTINGS_TABS) {
+    $('tab-' + section)?.setAttribute('aria-selected', String(name === section));
+    const panel = $('panel-' + section);
+    if (panel) panel.hidden = name !== section;
+  }
+  // Saving only exists where credentials are edited; the other tabs have a
+  // single honest action (Close).
+  const saveBtn = $('btn-save'), saveNote = $('settings-save-note');
+  if (saveBtn) saveBtn.hidden = name !== 'connection';
+  if (saveNote) saveNote.hidden = name !== 'connection';
+  if (name === 'mcp') renderMcpList();
+  if (name === 'about') refreshAbout();
 }
+for (const name of SETTINGS_TABS) {
+  $('tab-' + name)?.addEventListener('click', () => showSettingsTab(name));
+}
+
+let aboutLoaded = false;
+async function refreshAbout() {
+  const version = $('about-version'), runtime = $('about-runtime');
+  if (!aboutLoaded) {
+    aboutLoaded = true;
+    try {
+      const info = await window.muse.appInfo?.();
+      if (info && info.version && version) version.textContent = `Muse Agent ${info.version}`;
+      if (info && runtime) {
+        const os = info.platform === 'win32' ? 'Windows' : info.platform === 'darwin' ? 'macOS' : 'Linux';
+        runtime.textContent = [os, info.electron ? `Electron ${info.electron}` : ''].filter(Boolean).join(' · ');
+      }
+    } catch {
+      if (runtime) runtime.textContent = 'Version unavailable';
+    }
+  }
+}
+$('btn-check-update')?.addEventListener('click', async () => {
+  const status = $('about-update');
+  const btn = $('btn-check-update');
+  if (!status || !btn || typeof window.muse.checkUpdate !== 'function') return;
+  btn.disabled = true; status.textContent = tr('about.checking', 'Checking…');
+  try {
+    const r = await window.muse.checkUpdate();
+    if (!r || !r.ok) status.textContent = tr('about.checkFailed', 'Could not reach the update server.');
+    else if (r.update) status.textContent = tr('about.updateReady', `Version ${r.latest} is available.`);
+    else status.textContent = tr('about.upToDate', 'You are up to date.');
+  } catch { status.textContent = tr('about.checkFailed', 'Could not reach the update server.'); }
+  btn.disabled = false;
+});
+$('btn-open-data')?.addEventListener('click', async () => {
+  const note = $('about-data-path');
+  const r = await window.muse.openDataFolder?.();
+  if (note && r && r.ok && r.path) note.textContent = `Data folder: ${r.path}`;
+  else if (note && r && !r.ok) note.textContent = tr('about.openFailed', 'Could not open the data folder from here.');
+});
+$('btn-export-about')?.addEventListener('click', () => $('btn-export')?.click());
+
+// Shortcuts the tooltips promise (Alt 1–4). Dialogs own the keyboard.
+window.addEventListener('keydown', (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.defaultPrevented) return;
+  const target = { 1: 'nav-chat', 2: 'nav-projects', 3: 'nav-activity', 4: 'nav-memory' }[e.key];
+  if (!target || settingsOpen || memOpen) return;
+  const btn = $(target);
+  if (!btn) return;
+  e.preventDefault();
+  btn.click();
+});
 for (const [id, key, cls] of [['pref-compact', 'compact', 'compact'], ['pref-tools', 'tools', 'hide-tools'], ['pref-enter', 'enter', null]]) {
   $(id).addEventListener('change', () => {
     prefs[key] = $(id).checked;
@@ -2404,7 +2536,7 @@ function renderHeatmap() {
     heatEl.append(el);
   }
   const countEl = document.getElementById('wb-heat-count');
-  if (countEl) countEl.textContent = `${sessionCache.length} sessions`;
+  if (countEl) countEl.textContent = sessionCache.length ? `${sessionCache.length} sessions` : 'No sessions yet';
 }
 function scheduleHeatmap() {
   if (heatTimer) return;
@@ -2430,7 +2562,13 @@ function setNav(name) {
   syncPill();
 }
 const NAV_ACTIONS = {
-  chat: () => { if (memOpen) closeMemory(); input.focus(); },
+  chat: () => {
+    if (memOpen) closeMemory();
+    const wasView = pagesViewVisible || dashboardsViewVisible;
+    pagesViewVisible = false; dashboardsViewVisible = false;
+    if (wasView) restoreChat();
+    input.focus();
+  },
   projects: () => { if (memOpen) closeMemory(); if (activeProjectId) { projectHomeVisible = true; renderProjectHome(); } else { const s = document.getElementById('project-search'); if (s) { s.focus(); s.scrollIntoView?.({ block: 'nearest' }); } } },
   activity: () => { if (memOpen) closeMemory(); setWorkbenchCollapsed(false); const tab = $('wb-tab-activity'); if (tab) tab.click(); },
   dashboards: () => { if (memOpen) closeMemory(); dashboardsViewVisible = true; renderDashboardsView(); },
@@ -2536,7 +2674,7 @@ async function refreshWorkbenchMemory() {
     const on = !!(st && st.enabled);
     $('wb-mem').textContent = on ? (st.ready ? 'Ready' : 'Starting') : 'Disabled';
     $('wb-memstat').textContent = on ? (st.ready ? 'Ready' : 'Starting') : 'Disabled';
-    $('wb-memcount').textContent = st && st.health && st.health.memories ? String(Object.keys(st.health.memories).length) : 'not set';
+    $('wb-memcount').textContent = st && st.health && st.health.memories ? String(Object.keys(st.health.memories).length) : 'No records yet';
   } catch { $('wb-mem').textContent = 'not set'; }
 }
 /* ---------- appearance (persisted beside the config, never web storage) ---------- */
@@ -2593,7 +2731,7 @@ const MENUS = {
     { sep: true },
     { label: 'Memory', run: () => openMemory() },
     { label: 'Boards', run: () => openDashboardView(selectedDashboardId) },
-    { label: 'Visual pages', run: () => openPagesView() },
+    { label: 'Pages', run: () => openPagesView() },
     { label: 'Answer style', run: () => showVoiceProfile() },
     { sep: true },
     { label: 'Settings', hint: 'Ctrl ,', run: () => openSettings() },
@@ -2728,7 +2866,7 @@ async function refreshProject() {
     renderSessions();
   } catch { /* project surface optional */ }
 }
-window.muse.onProjectChange?.(() => { void refreshProject(); });
+window.muse?.onProjectChange?.(() => { void refreshProject(); });
 async function pickProject() {
   if (busy || loadingSession || currentApproval) { addSysNote('Finish the current task before changing the project.', true); return; }
   const res = await window.muse.browseProject();
@@ -2860,7 +2998,9 @@ function renderProjects() {
     }
     list.append(branch);
   }
-  if(!list.children.length){const note=document.createElement('p');note.className='hint';note.textContent=query?'No matching projects':showArchivedProjects?'No archived projects':'Create a project to keep related chats together.';list.append(note);}
+  const section = $('pinned-section');
+  if (section) section.hidden = !projectCache.length && !query && !showArchivedProjects;
+  if(!list.children.length){const note=document.createElement('p');note.className='hint';note.textContent=query?'No matching projects':'No archived projects';list.append(note);}
 }
 function renderProjectHome() {
   if(!projectHomeVisible)return;
@@ -3571,9 +3711,10 @@ $('btn-mcp-refresh').addEventListener('click', renderMcpList);
 
 /* Claude-Desktop-style sidebar nav: every row drives a real view. */
 $('btn-nav-search')?.addEventListener('click', () => $('btn-command')?.click());
-$('btn-nav-projects')?.addEventListener('click', () => document.querySelector('[data-nav="projects"]')?.click());
-$('btn-nav-artifacts')?.addEventListener('click', () => { try { openPagesView(); } catch { /* view not ready */ } });
-$('btn-nav-customize')?.addEventListener('click', () => $('btn-settings')?.click());
+$('btn-nav-projects')?.addEventListener('click', () => { closeMobileHistory(); document.querySelector('[data-nav="projects"]')?.click(); });
+$('btn-nav-boards')?.addEventListener('click', () => { closeMobileHistory(); document.querySelector('[data-nav="dashboards"]')?.click(); });
+$('btn-nav-artifacts')?.addEventListener('click', () => { closeMobileHistory(); try { openPagesView(); } catch { /* view not ready */ } });
+$('btn-nav-customize')?.addEventListener('click', () => { openSettings('workspace'); });
 $('composer-project')?.addEventListener('click', () => $('btn-project')?.click());
 
 /* MCP quick add: presets fill the form so nobody hand-types npx lines. */
