@@ -352,4 +352,58 @@ async function runBrief(cfg, options = {}) {
   };
 }
 
-module.exports = { runBrief, slug };
+// The agent-facing tool: one call runs the whole pipeline and returns the
+// brief, so "research X for me" starts the real thing instead of ad-hoc fetches.
+function mkResearchBriefTool() {
+  return {
+    name: 'research_brief',
+    description: 'Run the full research pipeline on a topic: plan queries, read papers from the scholarly indexes, draft a cited brief, review it and revise it. Writes the brief to disk and returns it. Takes minutes and several model calls.',
+    parameters: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'what the brief is about' },
+        goal: { type: 'string', description: 'optional: what the brief must answer or decide' },
+        papers: { type: 'integer', description: 'papers to read, 2-10 (default 6)' },
+        rounds: { type: 'integer', description: 'review rounds, 1-3 (default 2)' },
+      },
+      required: ['topic'],
+    },
+    async run(args, ctx) {
+      if (!args || typeof args.topic !== 'string' || !args.topic.trim()) return { ok: false, error: 'a topic is required' };
+      const emit = (text) => { try { if (ctx.agent && typeof ctx.agent.events === 'function') ctx.agent.events({ type: 'info', text }); } catch {} };
+      const seen = new Set();
+      const onStage = (stage, data = {}) => {
+        if (seen.has(stage)) return;
+        seen.add(stage);
+        if (stage === 'start') emit(`research brief: planning "${String(args.topic).slice(0, 80)}"`);
+        else if (stage === 'search') emit(`research brief: found ${data.count} papers`);
+        else if (stage === 'read') emit(`research brief: read ${data.count} papers, drafting`);
+        else if (stage === 'critique') emit(`research brief: review ${data.score == null ? 'unavailable' : `${data.score}/10`}`);
+        else if (stage === 'error') emit(`research brief: ${data.message}`);
+      };
+      const res = await runBrief(ctx.cfg, {
+        topic: args.topic,
+        goal: args.goal,
+        maxPapers: args.papers,
+        maxRounds: args.rounds,
+        signal: ctx.signal,
+        onStage,
+        ctx: { cfg: ctx.cfg, sentinel: ctx.sentinel, tainted: ctx.tainted, netPolicy: ctx.netPolicy },
+      });
+      if (!res.ok) return { ok: false, stage: res.stage, error: res.error, outDir: res.outDir };
+      let brief = '';
+      try { brief = fs.readFileSync(res.briefPath, 'utf8'); } catch {}
+      return {
+        ok: true,
+        topic: args.topic,
+        briefPath: res.briefPath,
+        outDir: res.outDir,
+        score: res.score,
+        papers: res.papers,
+        brief: brief.length > 12000 ? `${brief.slice(0, 12000)}\n[truncated; the full brief is in ${res.briefPath}]` : brief,
+      };
+    },
+  };
+}
+
+module.exports = { runBrief, mkResearchBriefTool, slug };

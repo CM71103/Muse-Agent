@@ -601,6 +601,11 @@ footer{padding:18px 26px 22px}
 /* ---- 5. Dialogs ------------------------------------------------------------- */
 .overlay,#backdrop,#mem-backdrop{display:none;position:fixed;inset:0;background:var(--color-scrim);z-index:40;align-items:center;justify-content:center;padding:24px}
 .overlay.active,#backdrop.active,#mem-backdrop.active{display:flex}
+/* An open sheet or drawer owns the screen: the page behind keeps its layout but
+   stops rendering, so nothing under an overlay can be tabbed into, read out, or
+   mistaken for a collision with it. */
+body.settings-open > *:not(#backdrop),
+body.mobile-history-open > *:not(.history):not(#history-backdrop){visibility:hidden}
 #settings{background:var(--color-surface-floating);color:var(--color-foreground);width:min(880px,95vw);max-height:90vh;overflow:auto;border-radius:var(--radius-floating);box-shadow:var(--shadow-floating)}
 #settings>h2{font-size:21px;padding:24px 30px 0;margin-bottom:16px}
 .settings-layout{display:grid;grid-template-columns:170px 1fr;min-height:360px}
@@ -630,6 +635,14 @@ footer{padding:18px 26px 22px}
 .sw-retro span{background:linear-gradient(135deg,#ffd79a 0 38%,#ffb642 39% 70%,#150e05 71%)}
 .sw-shiva span{background:linear-gradient(135deg,#0a0d11 0 40%,#d9a441 41% 63%,#4a6d8c 64%)}
 .swatch[aria-checked="true"]{background:var(--color-accent);border-color:var(--color-primary);color:var(--color-accent-fg);font-weight:600}
+.ins-density{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+.ins-density-title{font-weight:600;font-size:13px}
+.ins-density-hint{color:var(--color-muted-fg);font-size:12px;letter-spacing:.01em}
+.ins-density-group{display:inline-flex;gap:2px;padding:2px;align-self:flex-start;border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-surface-subtle)}
+.density-btn{min-height:40px;padding:0 16px;border:0;border-radius:calc(var(--radius) - 3px);background:transparent;color:var(--color-foreground);font:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:background var(--dur-fast) var(--ease-premium),color var(--dur-fast) var(--ease-premium)}
+.density-btn:hover{background:var(--color-card)}
+.density-btn[aria-pressed="true"]{background:var(--color-primary);color:var(--color-primary-fg);font-weight:600}
+.density-btn:focus-visible{outline:2px solid var(--color-ring);outline-offset:2px}
 .shortcut{display:flex;justify-content:space-between;padding:14px 0;border-bottom:1px solid var(--color-border-soft)}
 kbd{background:var(--color-surface-subtle);padding:2px 7px;border:1px solid var(--color-border);border-radius:4px;font-size:11px;font-family:var(--mono)}
 
@@ -902,7 +915,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
   #splash .s-fx{ display:none; }
   #splash .s-logo{ opacity:1; }
 }
-</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"><link rel="stylesheet" href="clean-ui.css"><link rel="stylesheet" href="gallery-themes.css"><link rel="stylesheet" href="../../node_modules/@astryxdesign/theme-neutral/dist/theme.css"><link rel="stylesheet" href="../../node_modules/@astryxdesign/theme-neutral/fonts.css"><link rel="stylesheet" href="workbench.css"></head><body data-theme="dark">
+</style><link rel="stylesheet" href="ember-theme.css"><link rel="stylesheet" href="activity-cards.css"><link rel="stylesheet" href="model-picker.css"><link rel="stylesheet" href="box-panel.css"><link rel="stylesheet" href="clean-ui.css"><link rel="stylesheet" href="gallery-themes.css"><link rel="stylesheet" href="../../node_modules/@astryxdesign/theme-neutral/dist/theme.css"><link rel="stylesheet" href="../../node_modules/@astryxdesign/theme-neutral/fonts.css"><link rel="stylesheet" href="workbench.css"><link rel="stylesheet" href="instrument-panel.css"></head><body data-theme="instrument">
 
 <div class="menubar" role="menubar" aria-label="Muse">
   <div class="menubar-left">
@@ -1014,7 +1027,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
     <div id="projects-list"></div>
   </section>
   </div>
-  <div class="rail-foot"><div class="rail-account"><span class="rail-account-mark" aria-hidden="true">✳</span><span class="rail-account-name" id="rail-account-name">Muse</span></div><div class="sidebar-actions"><button id="btn-settings" class="rail-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg><span>Settings</span></button></div>
+  <div class="rail-foot"><div class="rail-account"><span class="rail-account-mark" aria-hidden="true">✳</span><span class="rail-account-name" id="rail-account-name">Muse</span></div>
     <button class="switchrow" id="mode-toggle" aria-pressed="false" title="Click to cycle permission modes"><span id="mode-label">Mode: ask</span></button>
     <div class="pips"><div class="pip" id="pip-llm"></div><div class="pip" id="pip-sent"></div><div class="pip" id="pip-mem"></div></div>
     <div class="pips-labels"><i data-i18n="pips.model">Model</i><i data-i18n="pips.safety">Safety</i><i data-i18n="pips.memory">Memory</i></div>
@@ -1024,9 +1037,19 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
 <div class="pane-handle" id="sidebar-handle" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" tabindex="0"></div>
 
 <main>
+  <div class="status-strip" id="status-strip" role="group" aria-label="System status">
+    <span class="status-strip-brand"><i aria-hidden="true"></i>Muse Agent · Desktop runtime</span>
+    <span class="status-cell" data-live="run" data-optional><span class="status-k">Run</span><span class="status-v" id="strip-run">Ready</span></span>
+    <span class="status-cell"><span class="status-k">Model</span><span class="status-v" id="strip-model">—</span></span>
+    <span class="status-cell" data-live="permissions"><span class="status-k">Permissions</span><span class="status-v" id="strip-mode">Ask</span></span>
+    <span class="status-cell" data-live="approvals"><span class="status-k">Waiting</span><span class="status-v" id="strip-approvals">None</span></span>
+    <span class="status-cell" data-optional><span class="status-k">Memory</span><span class="status-v" id="strip-memory">—</span></span>
+    <span class="status-cell" data-optional data-live="project"><span class="status-k">Project</span><span class="status-v" id="strip-project">No folder</span></span>
+  </div>
   <nav class="navbar" aria-label="Primary">
     <div class="navbar-side left">
       <button id="btn-history" type="button" aria-label="Open sessions and projects" aria-controls="history" aria-expanded="false" title="Sessions and projects">☰</button>
+      <button id="btn-settings" type="button" class="icon-btn" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button>
       <span class="crumb" id="crumb" data-i18n="crumb.new">New session</span>
     </div>
     <div class="nav-links" role="toolbar" aria-label="Views">
@@ -1079,6 +1102,17 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <div class="permission-action-heading"><strong id="approval-action">Tool request</strong><span id="approval-tool"></span></div>
       <pre id="approval-args"></pre>
       <details class="permission-details"><summary>Full request details</summary><pre id="approval-raw"></pre></details>
+      <dl class="permission-facts" id="approval-facts" hidden>
+        <div><dt>Scope</dt><dd id="approval-scope"></dd></div>
+        <div><dt>On allow</dt><dd id="approval-exit-allow"></dd></div>
+        <div><dt>On deny</dt><dd id="approval-exit-deny"></dd></div>
+        <div><dt>If unanswered</dt><dd id="approval-exit-timeout"></dd></div>
+      </dl>
+      <p class="permission-record" id="approval-record" hidden>
+        <span class="permission-record-label">Record</span>
+        <code id="approval-record-id"></code>
+        <span class="permission-record-note" id="approval-record-note"></span>
+      </p>
       <div class="a-actions">
         <span>Allow once applies to this request.</span>
         <button id="btn-deny" data-i18n="approval.deny">Deny</button>
@@ -1121,7 +1155,8 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
       <div class="wb-section"><div class="wb-k" data-i18n="wb.model">Model</div><div id="wb-model" class="wb-v">Choose one in Settings</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.safetyMode">Safety mode</div><div id="wb-sentinel" class="wb-v">Ask before tools run</div></div>
       <div class="wb-section"><div class="wb-k" data-i18n="pips.memory">Memory</div><div id="wb-mem" class="wb-v">Starts with your first chat</div></div>
-      <div class="wb-section"><div class="wb-k" data-i18n="wb.activity">Activity</div><div id="wb-log" class="wb-log" aria-live="polite"></div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.runs">Runs</div><div id="wb-runs" class="wb-runs"><div class="wb-runs-empty">No runs yet. Each finished run opens to the files it read and wrote, its tokens and how it ended.</div></div></div>
+      <div class="wb-section"><div class="wb-k" data-i18n="wb.activityNotes">Event notes</div><div id="wb-log" class="wb-log" aria-live="polite"><div class="wb-empty">No activity yet. Send a message and every tool call, model step and approval lands here with its time.</div></div></div>
     </section>
     <section id="wb-panel-memory" role="tabpanel" aria-labelledby="wb-tab-memory" hidden>
       <div class="wb-section"><div class="wb-k" data-i18n="wb.memLayer">Memory layer</div><div id="wb-memstat" class="wb-v">Reading local memory…</div></div>
@@ -1204,7 +1239,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
           </div>
           </div>
           <details id="connection-advanced" class="settings-card settings-advanced">
-          <summary><span class="settings-card-icon" aria-hidden="true">✧</span><span>Memory embeddings<small id="embed-key-summary">Optional · customize how Muse recalls context</small></span><span class="settings-expand" aria-hidden="true">＋</span></summary>
+          <summary><span class="settings-card-icon" aria-hidden="true">✧</span><span class="settings-advanced-label">Memory embeddings</span><span class="settings-expand" aria-hidden="true">＋</span><small id="embed-key-summary">Optional · customize how Muse recalls context</small></summary>
           <div class="settings-advanced-body">
           <p class="sub" style="margin-top:0" data-i18n="settings.embedSub">Turns memories into vectors so old context can be recalled. Left empty, embeddings ride the chat endpoint above. Set these only if that endpoint has no /embeddings.</p>
           <div class="field">
@@ -1230,7 +1265,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
         </section>
         <section id="panel-workspace" role="tabpanel" aria-labelledby="tab-workspace" hidden>
           <h3 data-i18n="settings.workspaceTitle">Make room for your work</h3>
-          <p class="sub" data-i18n="settings.workspaceSub">Session-only preferences. Reset when this window reloads; changes apply immediately.</p>
+          <p class="sub" data-i18n="settings.workspaceSub">Changes apply immediately. Theme and density are kept on this device; the rest reset when this window reloads.</p>
           <div class="pref" style="flex-direction:column;gap:8px">
             <span style="font-weight:600;font-size:13px" data-i18n="settings.project">Project folder</span>
             <p class="hint" style="margin:0" data-i18n="settings.projectHint">Give Muse a working folder for files and project memory. Tool permissions follow your selected mode.</p>
@@ -1245,20 +1280,30 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
           <div class="pref" style="flex-direction:column;gap:10px">
             <span style="font-weight:600;font-size:13px" data-i18n="settings.appearance">Appearance</span>
             <div id="theme-picker" role="radiogroup" aria-label="Appearance">
+              <button type="button" role="radio" aria-checked="true" data-theme-pick="instrument" class="swatch sw-instrument"><span aria-hidden="true"></span>Instrument</button>
+              <button type="button" role="radio" aria-checked="false" data-theme-pick="instrument-night" class="swatch sw-instrument-night"><span aria-hidden="true"></span>Instrument Night</button>
               <button type="button" role="radio" aria-checked="false" data-theme-pick="light" class="swatch sw-terax-light"><span aria-hidden="true"></span>Light</button>
               <button type="button" role="radio" aria-checked="false" data-theme-pick="dark" class="swatch sw-terax-dark"><span aria-hidden="true"></span>Dark</button>
-              <button type="button" role="radio" aria-checked="true" data-theme-pick="krishna" class="swatch sw-krishna"><span aria-hidden="true"></span>Krishna</button>
+              <button type="button" role="radio" aria-checked="false" data-theme-pick="krishna" class="swatch sw-krishna"><span aria-hidden="true"></span>Krishna</button>
               <button type="button" role="radio" aria-checked="false" data-theme-pick="win7" class="swatch sw-win7"><span aria-hidden="true"></span>Windows 7</button>
               <button type="button" role="radio" aria-checked="false" data-theme-pick="retro" class="swatch sw-retro"><span aria-hidden="true"></span>Retro</button>
               <button type="button" role="radio" aria-checked="false" data-theme-pick="shiva" class="swatch sw-shiva"><span aria-hidden="true"></span>Shiva</button>
             </div>
-            <label class="pref"><input type="checkbox" id="pref-shader" checked><span>Ambient shader glow (background + emblem heat)</span></label>
+            <div id="instrument-density" class="ins-density" hidden>
+              <span class="ins-density-title">Row density</span>
+              <div class="ins-density-group" role="group" aria-label="Instrument row density">
+                <button type="button" class="density-btn" data-density-pick="comfortable" aria-pressed="true">Comfortable</button>
+                <button type="button" class="density-btn" data-density-pick="dense" aria-pressed="false">Tight</button>
+              </div>
+              <span class="ins-density-hint">Tight keeps more of a long session on screen.</span>
+            </div>
             <div class="pref" style="flex-direction:column;gap:8px">
               <label for="glass-opacity" style="font-weight:600;font-size:13px">Glass opacity <span id="glass-opacity-val" style="font-weight:400;color:var(--color-muted-fg)">78%</span></label>
               <input type="range" id="glass-opacity" min="10" max="95" step="1" value="78" aria-label="Glass pane opacity">
               <p class="hint" style="margin-top:0">Lower = more shader visible through the panes.</p>
             </div>
-            <p class="hint" data-i18n="settings.appearanceHint">Session-only; resets on reload.</p>
+            <label class="pref"><input type="checkbox" id="pref-shader" checked><span>Ambient shader glow (background + emblem heat)</span></label>
+            <p class="hint" data-i18n="settings.appearanceHint">Theme and density are saved on this device. Glass opacity and the shader glow reset on reload.</p>
           </div>
           <label class="pref"><input type="checkbox" id="pref-enter" checked><span data-i18n="settings.enterToSend">Enter to send</span></label>
           <div class="pref" style="flex-direction:column;gap:8px">
@@ -1350,7 +1395,7 @@ footer{background:transparent;padding:18px 26px 22px}.inputwrap{background:var(-
     <div id="settings-err" role="status"></div>
     <div class="actions settings-actions">
       <p id="settings-save-note" role="status">Connection is saved locally. Fetch models checks your endpoint.</p>
-      <button id="btn-cancel" data-i18n="common.close">Close</button>
+      <button id="settings-close" data-i18n="common.close">Close</button>
       <button id="btn-save" data-i18n="settings.saveConnection">Save connection</button>
     </div>
   </section>

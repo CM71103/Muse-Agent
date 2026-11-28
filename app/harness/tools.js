@@ -10,10 +10,92 @@ const fsp = require('fs/promises');
 const path = require('path');
 const net = require('net');
 
+const readline = require('readline');
+
 const IS_WIN = process.platform === 'win32';
 const MAXWebResponse = 24000;         // chars kept from any web response
 const MAXWebResponseBytes = 2 * 1024 * 1024;  // hard byte cap before decode
 const MAX_DIR_ENTRIES = 500;
+
+// Search tools stay bounded: a runaway walk must not stall the turn.
+const MAX_SCAN_FILES = 5000;
+const MAX_SEARCH_FILE_BYTES = 2 * 1024 * 1024;
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', '.cache', '.venv', 'venv', '__pycache__']);
+const BINARY_SAMPLE = 8000;
+
+function escapeRegExp(text) {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Glob -> RegExp. * is one path segment, ** is any depth, ? is one character,
+// {a,b} is alternation. Matching walks real files, so a pattern that escapes
+// the base folder can never reach outside it.
+function globToRegExp(glob) {
+  const src = String(glob || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  let re = '';
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === '*') {
+      if (src[i + 1] === '*') {
+        i++;
+        if (src[i + 1] === '/') { i++; re += '(?:.*/)?'; }
+        else re += '.*';
+      } else re += '[^/]*';
+    } else if (c === '?') re += '[^/]';
+    else if (c === '{') {
+      const end = src.indexOf('}', i);
+      if (end > i) {
+        re += '(?:' + src.slice(i + 1, end).split(',').map(part => escapeRegExp(part)).join('|') + ')';
+        i = end;
+      } else re += '\\{';
+    } else re += escapeRegExp(c);
+  }
+  return new RegExp(`^${re}$`, IS_WIN ? 'i' : '');
+}
+
+// Collect files under root without following symlinks or entering dependency
+// and VCS folders. Depth-first with a hard file cap keeps worst cases bounded.
+async function collectFiles(root) {
+  const out = [];
+  const stack = [root];
+  while (stack.length && out.length < MAX_SCAN_FILES) {
+    const dir = stack.pop();
+    let entries;
+    try { entries = await fsp.readdir(dir, { withFileTypes: true }); } catch { continue; }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name)) stack.push(full);
+      } else if (entry.isFile()) {
+        out.push(full);
+        if (out.length >= MAX_SCAN_FILES) break;
+      }
+    }
+  }
+  return out;
+}
+
+// Read a 1-based line range cheaply: the stream stops once the range or the
+// byte cap is reached instead of loading the whole file.
+async function readLineRange(p, start, count, cap) {
+  const rl = readline.createInterface({ input: fs.createReadStream(p, { encoding: 'utf8' }), crlfDelay: Infinity });
+  const lines = [];
+  let number = 0;
+  let bytes = 0;
+  let byteCapped = false;
+  try {
+    for await (const line of rl) {
+      number++;
+      if (number < start) continue;
+      if (bytes + line.length + 1 > cap) { byteCapped = true; break; }
+      lines.push(line);
+      bytes += line.length + 1;
+      if (lines.length >= count) break;
+    }
+  } finally { rl.close(); }
+  return { lines, lastLine: number, byteCapped };
+}
 
 function mkShellTool() {
   return {
@@ -67,11 +149,13 @@ function mkShellTool() {
 function mkFsTools() {
   const read = {
     name: 'read_file',
-    description: 'Read a text file. Approval follows the active permission mode; Auto reads without prompts, other modes ask outside the granted project scope. Reading private locations marks the session tainted; network egress then follows the sentinel allowlist.',
+    description: 'Read a text file. Pass offset and limit to page through a large file by line; without them it returns the first 24000 bytes. Approval follows the active permission mode; Auto reads without prompts, other modes ask outside the granted project scope. Reading private locations marks the session tainted; network egress then follows the sentinel allowlist.',
     parameters: {
       type: 'object',
       properties: {
         path: { type: 'string', description: 'Absolute or cwd-relative path' },
+        offset: { type: 'number', description: 'Optional 1-based first line to return' },
+        limit: { type: 'number', description: 'Optional number of lines to return (default 400, max 2000)' },
         max_bytes: { type: 'number', description: 'Optional byte cap; default and maximum 24000' },
       },
       required: ['path'],
@@ -79,18 +163,31 @@ function mkFsTools() {
     async run(args, ctx) {
       const p = path.resolve(ctx.cwd, args.path);
       const stat = await fsp.stat(p);   // throws for missing -> tool error, not sentinel bypass
+      if (stat.isDirectory()) return { ok: false, error: 'path is a directory; use list_dir or glob' };
+      if (ctx.onPrivateRead) {
+        try { ctx.onPrivateRead(p); } catch {}
+      }
       const cap = Math.min(args.max_bytes || 24000, 24000); // ~6.5k tokens cap
+      if (args.offset != null || args.limit != null) {
+        const start = Math.max(1, Math.floor(args.offset || 1));
+        const count = Math.min(Math.max(1, Math.floor(args.limit || 400)), 2000);
+        const { lines, lastLine, byteCapped } = await readLineRange(p, start, count, cap);
+        const end = lines.length ? start + lines.length - 1 : start - 1;
+        return {
+          ok: true, path: p, size: stat.size, first_line: start, last_line: end,
+          content: lines.join('\n'),
+          ...(lines.length >= count ? { next_offset: start + lines.length, note: `showing lines ${start}-${end}; pass offset ${start + lines.length} to continue` } : {}),
+          ...(byteCapped ? { truncated: true, note: `line range exceeded ${cap} bytes; read a smaller range` } : {}),
+        };
+      }
       const fh = await fsp.open(p, 'r');
       try {
         const buf = Buffer.alloc(Math.min(cap, stat.size));
         const { bytesRead } = await fh.read(buf, 0, buf.length, 0);
         const content = buf.slice(0, bytesRead).toString('utf8');
-        if (ctx.onPrivateRead) {
-          try { ctx.onPrivateRead(p); } catch {}
-        }
         return {
           ok: true, path: p, size: stat.size, truncated: stat.size > bytesRead, content,
-          ...(stat.size > bytesRead ? { note: `file is ${stat.size} bytes; showing first ${cap}. Use shell (grep/head) for more.` } : {}),
+          ...(stat.size > bytesRead ? { note: `file is ${stat.size} bytes; showing first ${cap}. Use offset/limit to page, or grep to find a section.` } : {}),
         };
       } finally { await fh.close(); }
     },
@@ -140,7 +237,153 @@ function mkFsTools() {
     },
   };
 
-  return [read, write, list];
+  const edit = {
+    name: 'edit_file',
+    description: 'Change part of an existing text file with an exact string replacement. old_string must match the file byte for byte, including indentation and line breaks; include surrounding lines so it is unique. Fails when old_string is missing or appears more than once (add context, or set replace_all). Use write_file only to create a file or replace all of it.',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        old_string: { type: 'string', description: 'Exact text to replace, copied from the file' },
+        new_string: { type: 'string', description: 'Replacement text; empty string deletes' },
+        replace_all: { type: 'boolean', description: 'Replace every occurrence instead of requiring a unique match' },
+      },
+      required: ['path', 'old_string', 'new_string'],
+    },
+    async run(args, ctx) {
+      const p = path.resolve(ctx.cwd, args.path);
+      const oldText = args.old_string;
+      const newText = args.new_string;
+      if (typeof oldText !== 'string' || !oldText.length) return { ok: false, error: 'old_string must be a non-empty string' };
+      if (typeof newText !== 'string') return { ok: false, error: 'new_string must be a string (use "" to delete)' };
+      if (oldText === newText) return { ok: false, error: 'old_string and new_string are identical; nothing to change' };
+      const stat = await fsp.stat(p);
+      if (stat.isDirectory()) return { ok: false, error: 'path is a directory; edit_file works on one file' };
+      const text = await fsp.readFile(p, 'utf8');
+      const hits = [];
+      let at = text.indexOf(oldText);
+      while (at !== -1) {
+        hits.push(at);
+        at = text.indexOf(oldText, at + oldText.length);
+      }
+      if (!hits.length) return { ok: false, error: 'old_string not found in the file; read the file again and copy the exact text' };
+      if (hits.length > 1 && !args.replace_all) {
+        const lines = hits.slice(0, 10).map(pos => text.slice(0, pos).split('\n').length);
+        return {
+          ok: false, error: `old_string matches ${hits.length} places (lines ${lines.join(', ')}); include more surrounding text to make it unique, or set replace_all to true`,
+          matches: hits.length,
+        };
+      }
+      const updated = args.replace_all
+        ? text.split(oldText).join(newText)
+        : text.slice(0, hits[0]) + newText + text.slice(hits[0] + oldText.length);
+      // checkpoint pre-image BEFORE the write so the run can be undone
+      if (ctx.checkpoint) await ctx.checkpoint.recordFile(p);
+      await fsp.writeFile(p, updated, 'utf8');
+      return {
+        ok: true, path: p, replacements: args.replace_all ? hits.length : 1,
+        first_line: text.slice(0, hits[0]).split('\n').length,
+        bytes: Buffer.byteLength(updated),
+      };
+    },
+  };
+
+  const grep = {
+    name: 'grep',
+    description: 'Search file contents with a regular expression and return matching lines with their line numbers. Skips node_modules, .git and other dependency folders, binary files and files over 2 MB. Narrow with path and glob rather than reading whole trees.',
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'JavaScript regular expression' },
+        path: { type: 'string', description: 'File or folder to search; default cwd' },
+        glob: { type: 'string', description: 'Optional file filter, e.g. **/*.js or *.{ts,tsx}' },
+        ignore_case: { type: 'boolean' },
+        max_results: { type: 'number', description: 'Default 80, max 500' },
+      },
+      required: ['pattern'],
+    },
+    async run(args, ctx) {
+      const root = path.resolve(ctx.cwd, args.path || '.');
+      const pattern = String(args.pattern || '');
+      if (!pattern) return { ok: false, error: 'pattern must be a non-empty string' };
+      let re;
+      try { re = new RegExp(pattern, args.ignore_case ? 'i' : ''); }
+      catch (e) { return { ok: false, error: `invalid regular expression: ${e.message}` }; }
+      const max = Math.min(Math.max(1, Math.floor(args.max_results || 80)), 500);
+      const rootStat = await fsp.stat(root);
+      const base = rootStat.isDirectory() ? root : path.dirname(root);
+      const globRe = args.glob ? globToRegExp(args.glob) : null;
+      const files = rootStat.isFile() ? [root] : await collectFiles(root);
+      if (ctx.onPrivateRead) { try { ctx.onPrivateRead(root); } catch {} }
+      const matches = [];
+      let scanned = 0;
+      let skippedLarge = 0;
+      let truncated = false;
+      for (const file of files) {
+        if (matches.length >= max) { truncated = true; break; }
+        if (globRe) {
+          const rel = path.relative(base, file).split(path.sep).join('/');
+          if (!globRe.test(rel)) continue;
+        }
+        let stat;
+        try { stat = await fsp.stat(file); } catch { continue; }
+        if (!stat.isFile() || stat.size > MAX_SEARCH_FILE_BYTES) { skippedLarge++; continue; }
+        let text;
+        try { text = await fsp.readFile(file, 'utf8'); } catch { continue; }
+        if (text.slice(0, BINARY_SAMPLE).includes('\u0000')) continue;
+        scanned++;
+        const lines = text.split(/\r?\n/);
+        const shown = path.relative(base, file).split(path.sep).join('/');
+        for (let i = 0; i < lines.length; i++) {
+          if (!re.test(lines[i])) continue;
+          matches.push({ path: shown, line: i + 1, text: lines[i].length > 300 ? lines[i].slice(0, 299) + '…' : lines[i] });
+          if (matches.length >= max) { truncated = true; break; }
+        }
+      }
+      return {
+        ok: true, pattern, path: root, matches, files_scanned: scanned, files_searched: files.length,
+        ...(truncated ? { truncated: true, note: `stopped at ${max} matches; narrow the pattern or path` } : {}),
+        ...(skippedLarge ? { files_skipped: skippedLarge } : {}),
+      };
+    },
+  };
+
+  const glob = {
+    name: 'glob',
+    description: 'Find files by glob pattern relative to a folder: * matches one path segment, ** any depth, ? one character, {a,b} alternatives. Skips dependency and VCS folders. Use it to locate files before reading them.',
+    parameters: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'e.g. src/**/*.ts or **/*.test.js' },
+        path: { type: 'string', description: 'Base folder; default cwd' },
+        max_results: { type: 'number', description: 'Default 200, max 1000' },
+      },
+      required: ['pattern'],
+    },
+    async run(args, ctx) {
+      const root = path.resolve(ctx.cwd, args.path || '.');
+      const pattern = String(args.pattern || '');
+      if (!pattern) return { ok: false, error: 'pattern must be a non-empty string' };
+      const re = globToRegExp(pattern);
+      const max = Math.min(Math.max(1, Math.floor(args.max_results || 200)), 1000);
+      const rootStat = await fsp.stat(root);
+      const base = rootStat.isDirectory() ? root : path.dirname(root);
+      const files = rootStat.isFile() ? [root] : await collectFiles(root);
+      const matches = [];
+      for (const file of files) {
+        const rel = path.relative(base, file).split(path.sep).join('/');
+        if (re.test(rel)) matches.push(rel);
+        if (matches.length >= max) break;
+      }
+      matches.sort();
+      return {
+        ok: true, pattern, path: root, matches,
+        ...(matches.length >= max ? { truncated: true, note: `stopped at ${max} files; tighten the pattern` } : {}),
+      };
+    },
+  };
+
+  return [read, write, list, edit, grep, glob];
 }
 
 // Private/looped-back address detection for outbound fetches.
@@ -270,7 +513,7 @@ function buildTools(cfg, opts = {}) {
     const tools = opts.disableSubagent ? [] : sandbox.mkSandboxTools();
     return { tools, map: new Map(tools.map(tool => [tool.name, tool])) };
   }
-  const tools = [...mkFsTools(), mkWebTool(), mkShellTool(), ...require('./datasources').dataTools(), ...require('./dashboards').dashboardTools(), ...require('./visual-tools.ts').mkVisualTools(), ...require('./critic').critiqueTools(), ...require('./research').researchTools(), ...require('./preview-tools.ts').mkPreviewTools(), ...require('./astryx-tools.ts').mkAstryxTools()];
+  const tools = [...mkFsTools(), mkWebTool(), mkShellTool(), ...require('./datasources').dataTools(), ...require('./dashboards').dashboardTools(), ...require('./visual-tools.ts').mkVisualTools(), ...require('./critic').critiqueTools(), ...require('./research').researchTools(), ...require('./preview-tools.ts').mkPreviewTools(), ...require('./astryx-tools.ts').mkAstryxTools(), require('./research-brief').mkResearchBriefTool()];
   // Subagent (Antigravity-style delegation). Not registered for child agents
   // — mkSubagentTool's own depth check also fails closed.
   if (!(opts.disableSubagent)) {

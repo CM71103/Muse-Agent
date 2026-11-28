@@ -1,0 +1,330 @@
+/* instrument-panel.css - the Instrument Panel direction: a light audit
+ * workspace. Paper canvas, ink chrome, one blue signal, hairline rules and
+ * ledger typography. Loaded last; overrides token values only, so every other
+ * theme is untouched. Contract: themes never restyle structure, only values.
+ */
+
+body[data-theme^="instrument"]{
+  /* paper and ink */
+  --color-background:#f6f5f1;
+  --color-foreground:#15191e;
+  --color-muted:#f0eee8;
+  --color-muted-fg:#59616c;
+  --color-card:#fcfbf7;
+  --color-popover:#fcfbf7;
+  --color-secondary:#efede6;
+  --color-secondary-fg:#15191e;
+  --color-input:#fcfbf7;
+  --color-border:#d9d5ca;
+  --color-border-soft:#e7e4db;
+  --color-surface-app:#f6f5f1;
+  --color-surface-sidebar:#f1efe9;
+  --color-surface-panel:#fcfbf7;
+  --color-surface-subtle:#efede6;
+  --color-surface-floating:#fcfbf7;
+  --color-user-bubble:#eeece5;
+  --frame:#ebe8e0;
+  --field-bg:#eceae3;
+
+  /* one restrained blue signal */
+  --color-primary:#15191e;
+  --color-primary-fg:#fbfaf7;
+  --color-brand:#1f4fd8;
+  --color-accent:#e7ecfa;
+  --color-accent-fg:#1b3ea8;
+  --color-ring:#1f4fd8;
+  --color-success:#1c7a4b;
+  --color-warn:#8a5a06;
+  --color-warn-bg:#faf1de;
+  --color-warn-border:#d9b26a;
+  --color-warn-fg:#5f4004;
+  --color-destructive:#b02a1c;
+
+  /* ink chrome */
+  --color-rail:#15191e;
+  --color-rail-hover:#262c34;
+  --color-rail-fg:#e7e9ec;
+  --color-rail-logo:#7fa3ff;
+  --sidebar:#f1efe9;
+  --sidebar-accent:#e7e4da;
+
+  /* flat panes, hairline edges, no glass */
+  --glass-opacity:1;
+  --glass-fill:#fcfbf7;
+  --glass-blur:none;
+  --glass-border:#d9d5ca;
+  --shader-opacity:0;
+  --hero-ink:#15191e;
+  --hero-disc:#fcfbf7;
+  --hero-lime:#1f4fd8;
+  --splash-dot:#d9d5ca;
+
+  /* shape: 8px is the whole system */
+  --radius:.5rem;
+  --radius-sm:.375rem;
+  --radius-md:.5rem;
+  --radius-lg:.5rem;
+  --radius-xl:.5rem;
+  --radius-2xl:.5rem;
+  --radius-3xl:.75rem;
+  --radius-4xl:.75rem;
+  --radius-floating:.5rem;
+  --radius-input-dock:.5rem;
+  --pane-radius:.5rem;
+
+  /* two shadow levels: a hairline and one floating layer */
+  --pane-shadow:none;
+  --shadow-panel:none;
+  --shadow-floating:0 1px 0 rgb(21 25 30 / .04),0 12px 32px rgb(21 25 30 / .10);
+  --shadow-input-dock:0 1px 0 rgb(21 25 30 / .05),0 8px 24px rgb(21 25 30 / .06);
+
+  /* charts: blue ramp, semantics reserved for state */
+  --chart-1:#1f4fd8;--chart-2:#5b78c9;--chart-3:#8ba0d6;--chart-4:#b9c6e4;--chart-5:#5d6470;
+  --scrollbar-thumb:#cdc8bc;
+
+  /* density: comfortable, the default half of the pair */
+  --ins-strip-h:30px;
+  --ins-strip-pad:14px;
+  --ins-strip-font:10.5px;
+  --ins-cell-pad:14px;
+  --ins-idea-pad:12px;
+  --ins-log-font:11.5px;
+  --ins-log-time:10px;
+  --ins-log-row-y:6px;
+  --ins-log-row-x:10px;
+  --ins-log-max:360px;
+  --ins-empty-pad:3vh;
+}
+
+/* Night: the same instrument, read by lamplight. Ink canvas, paper type, the
+ * blue signal lifted so it still carries on a dark ground. */
+body[data-theme="instrument-night"]{
+  color-scheme:dark;
+
+  --color-background:#0e1114;
+  --color-foreground:#e8ebef;
+  --color-muted:#151a1f;
+  --color-muted-fg:#9ba5b1;
+  --color-card:#141920;
+  --color-popover:#161b22;
+  --color-secondary:#1b2129;
+  --color-secondary-fg:#e8ebef;
+  --color-input:#141920;
+  --color-border:#2a313a;
+  --color-border-soft:#1f252d;
+  --color-surface-app:#0e1114;
+  --color-surface-sidebar:#11161b;
+  --color-surface-panel:#141920;
+  --color-surface-subtle:#1b2129;
+  --color-surface-floating:#161b22;
+  --color-user-bubble:#1a2028;
+  --frame:#101419;
+  --field-bg:#1b2129;
+
+  --color-primary:#e8ebef;
+  --color-primary-fg:#0e1114;
+  --color-brand:#8fb0ff;
+  --color-accent:#16223c;
+  --color-accent-fg:#b6caff;
+  --color-ring:#8fb0ff;
+  --color-success:#5fc48e;
+  --color-warn:#d7ab5c;
+  --color-warn-bg:#241d0e;
+  --color-warn-border:#6d5526;
+  --color-warn-fg:#f0cd8d;
+  --color-destructive:#f0705f;
+  --color-destructive-fg:#140b09;
+  --warn-btn:#8a6a2a;
+  --pip-off:#3a424c;
+  --violet:#8fb0ff;
+  --pink:#8fb0ff;
+
+  --color-rail:#080a0d;
+  --color-rail-hover:#1a212a;
+  --color-rail-fg:#dfe4ea;
+  --color-rail-logo:#8fb0ff;
+  --sidebar:#11161b;
+  --sidebar-accent:#1d242c;
+
+  --glass-opacity:1;
+  --glass-fill:#141920;
+  --glass-blur:none;
+  --glass-border:#2a313a;
+  --shader-opacity:0;
+  --hero-ink:#e8ebef;
+  --hero-disc:#141920;
+  --hero-lime:#8fb0ff;
+  --splash-dot:#2a313a;
+
+  --shadow-floating:0 1px 0 rgb(0 0 0 / .4),0 14px 36px rgb(0 0 0 / .55);
+  --shadow-input-dock:0 1px 0 rgb(0 0 0 / .35),0 8px 24px rgb(0 0 0 / .45);
+  --dlg-shadow:0 4px 12px rgb(0 0 0 / .5),0 16px 40px rgb(0 0 0 / .6);
+
+  --chart-1:#8fb0ff;--chart-2:#6b87d6;--chart-3:#5470b8;--chart-4:#3f5688;--chart-5:#9ba5b1;
+  --scrollbar-thumb:#39424d;
+  --color-code-bg:#0a0d11;
+  --color-code-fg:#e8ebef;
+  --color-code-border:#2a313a;
+  --color-tok-com:#7d8794;
+  --color-tok-str:#8fd6a8;
+  --color-tok-kw:#9fb9ff;
+  --color-tok-num:#e3b97a;
+}
+
+/* Dense: the tight half. Same ink, less air, so a long session keeps more
+ * runs on screen without shrinking the type past reading size. */
+body[data-theme^="instrument"][data-density="dense"]{
+  --ins-strip-h:24px;
+  --ins-strip-pad:10px;
+  --ins-strip-font:10px;
+  --ins-cell-pad:10px;
+  --ins-idea-pad:8px 10px;
+  --ins-log-font:11px;
+  --ins-log-time:9.5px;
+  --ins-log-row-y:2px;
+  --ins-log-row-x:8px;
+  --ins-log-max:460px;
+  --ins-empty-pad:2vh;
+}
+
+/* ---------- system status strip ---------- */
+
+.sw-instrument span{background:#f6f5f1;box-shadow:inset 0 0 0 3px #f6f5f1,inset 0 0 0 4px #1f4fd8}
+.sw-instrument-night span{background:#0e1114;box-shadow:inset 0 0 0 3px #0e1114,inset 0 0 0 4px #8fb0ff}
+
+.status-strip{display:none}
+body[data-theme^="instrument"] .status-strip{
+  display:flex;align-items:stretch;gap:0;flex:0 0 auto;
+  min-height:var(--ins-strip-h);padding:0 var(--ins-strip-pad);
+  background:var(--color-surface-app);
+  border-bottom:1px solid var(--color-border);
+  font-family:var(--mono);font-size:var(--ins-strip-font);line-height:1;
+  color:var(--color-muted-fg);
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  container-type:inline-size;
+}
+/* The strip's width is the chat column's, not the window's, so it answers to
+ * its own size: optional cells drop out before anything is cut in half. */
+@container (max-width:860px){
+  body[data-theme^="instrument"] .status-strip .status-cell[data-optional]{display:none}
+}
+/* Phones: the strip keeps the model and anything waiting on you; the rest is a
+ * tap away in the workspace panel. A container cannot restyle itself, so the
+ * strip's own padding comes from the base rule. */
+@container (max-width:460px){
+  body[data-theme^="instrument"] .status-strip .status-cell[data-live="permissions"]{display:none}
+  body[data-theme^="instrument"] .status-strip .status-cell{padding:0 8px;gap:5px}
+  body[data-theme^="instrument"] .status-strip .status-v{max-width:12ch}
+}
+body[data-theme^="instrument"] .status-strip::-webkit-scrollbar{display:none}
+.status-strip-brand{
+  display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
+  padding-right:14px;margin-right:2px;
+  font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--color-foreground);
+}
+.status-strip-brand i{width:6px;height:6px;background:var(--color-brand);display:inline-block}
+.status-cell{
+  display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
+  padding:0 var(--ins-cell-pad);border-left:1px solid var(--color-border);
+  white-space:nowrap;
+}
+.status-cell .status-k{letter-spacing:.09em;text-transform:uppercase;color:var(--color-muted-fg)}
+.status-cell .status-v{color:var(--color-foreground);font-weight:500;font-variant-numeric:tabular-nums;max-width:22ch;overflow:hidden;text-overflow:ellipsis}
+/* The project cell is the elastic one: when the chat column narrows it takes
+ * the squeeze and ellipsizes, instead of the strip cutting a word in half. */
+body[data-theme^="instrument"] .status-cell[data-live="project"]{flex:0 1 auto;min-width:0;overflow:hidden}
+body[data-theme^="instrument"] .status-cell[data-live="project"] .status-v{max-width:100%}
+body[data-theme^="instrument"] .status-cell[data-live="run"] .status-v::before{
+  content:"";display:inline-block;width:5px;height:5px;margin-right:6px;vertical-align:1px;
+  background:var(--color-muted-fg);border-radius:50%;
+}
+body[data-theme^="instrument"] .status-cell[data-live="run"].is-running .status-v::before{
+  background:var(--color-brand);animation:strip-pulse 1.4s ease-in-out infinite;
+}
+body[data-theme^="instrument"] .status-cell[data-live="approvals"].is-waiting .status-v{color:var(--color-brand);font-weight:600}
+@keyframes strip-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.status-cell[data-live="run"] .status-v::before{animation:none!important}}
+@media (max-width:860px){
+  .status-cell[data-optional]{display:none}
+  .status-strip-brand{display:none}
+  body[data-theme^="instrument"] .status-strip{padding:0 10px}
+}
+
+/* ---------- ledger typography ---------- */
+
+body[data-theme^="instrument"] #empty-title{
+  font-family:var(--sans);
+  font-size:clamp(26px,3vw,34px);line-height:1.14;letter-spacing:-.022em;font-weight:600;
+  max-width:18ch;
+}
+body[data-theme^="instrument"] .empty-eyebrow{
+  font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--color-muted-fg);margin:0 0 10px;
+}
+.empty-eyebrow{display:none}
+body[data-theme^="instrument"] .empty-eyebrow{display:block}
+body[data-theme^="instrument"] .empty-lead{max-width:58ch;color:var(--color-muted-fg);line-height:1.55}
+body[data-theme^="instrument"] .home-ideas-label{
+  font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--color-muted-fg);
+}
+body[data-theme^="instrument"] .home-idea{
+  border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-card);
+  padding:var(--ins-idea-pad);
+  transition:border-color var(--dur-fast) var(--ease-premium),background var(--dur-fast) var(--ease-premium);
+}
+body[data-theme^="instrument"] .home-idea:hover{border-color:var(--color-brand);background:var(--color-card)}
+body[data-theme^="instrument"] .home-idea:focus-visible{outline:2px solid var(--color-ring);outline-offset:2px}
+body[data-theme^="instrument"] .home-idea-words strong{line-height:1.35}
+body[data-theme^="instrument"] .home-idea-words span{line-height:1.4}
+
+/* ---------- run ledger ---------- */
+
+body[data-theme^="instrument"] #wb-log{
+  font-family:var(--mono);font-size:var(--ins-log-font);line-height:1.45;color:var(--color-foreground);
+  border:1px solid var(--color-border);border-radius:var(--radius);background:var(--color-card);
+  gap:0;padding:0;max-height:var(--ins-log-max);overflow:auto;
+}
+body[data-theme^="instrument"] #wb-log .wb-ev{
+  display:grid;grid-template-columns:42px 6px minmax(0,1fr);align-items:baseline;gap:8px;
+  padding:var(--ins-log-row-y) var(--ins-log-row-x);border-left:0;border-bottom:1px solid var(--color-border-soft);
+}
+body[data-theme^="instrument"] #wb-log .wb-ev:last-child{border-bottom:0}
+body[data-theme^="instrument"] #wb-log time{
+  color:var(--color-muted-fg);font-size:var(--ins-log-time);font-variant-numeric:tabular-nums;
+}
+body[data-theme^="instrument"] #wb-log .wb-ev-dot{
+  width:5px;height:5px;border-radius:50%;background:var(--color-muted-fg);align-self:center;
+}
+body[data-theme^="instrument"] #wb-log .wb-ev.tool .wb-ev-dot{background:var(--color-brand)}
+body[data-theme^="instrument"] #wb-log .wb-ev.err .wb-ev-dot{background:var(--color-destructive)}
+body[data-theme^="instrument"] #wb-log .wb-ev-text{min-width:0;overflow-wrap:anywhere}
+body[data-theme^="instrument"] #wb-log .wb-empty{
+  padding:12px;color:var(--color-muted-fg);font-family:var(--mono);font-size:10.5px;line-height:1.6;
+}
+
+/* workbench counters read as a record */
+body[data-theme^="instrument"] .wb-v,
+body[data-theme^="instrument"] .workspace-stats strong{font-variant-numeric:tabular-nums}
+body[data-theme^="instrument"] .wb-k{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-muted-fg);
+}
+
+/* composer and shell edges: hairline, not glow */
+body[data-theme^="instrument"] #composer,
+body[data-theme^="instrument"] .composer{
+  border:1px solid var(--color-border);background:var(--color-card);box-shadow:var(--shadow-input-dock);
+}
+body[data-theme^="instrument"] :is(button,input,textarea,select,[tabindex]):focus-visible{
+  outline:2px solid var(--color-ring);outline-offset:2px;
+}
+
+/* settings: the palette row wraps instead of clipping at the panel edge */
+body[data-theme^="instrument"] #panel-workspace #theme-picker{flex-wrap:wrap}
+
+@media (max-width:760px){
+  body[data-theme^="instrument"] #empty{padding:var(--ins-empty-pad) 12px 1vh}
+  body[data-theme^="instrument"] #empty-title{font-size:25px;max-width:20ch}
+  body[data-theme^="instrument"] .empty-lead{font-size:14px;line-height:1.5;margin-bottom:20px;max-width:36ch}
+  body[data-theme^="instrument"] .home-ideas{margin-top:18px}
+  body[data-theme^="instrument"] .home-idea{padding:var(--ins-idea-pad)}
+}

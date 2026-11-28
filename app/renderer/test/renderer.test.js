@@ -81,12 +81,12 @@ test('connection save is single-flight, keeps progress visible and clears typed 
  await t.run('openSettings()');assert.equal(t.nodes.get('btn-save').disabled,true);
  editSetting(t,'model-list','new-model');editSetting(t,'f-key','typed-secret');
  const pending=saveConnection(t);await saveConnection(t);assert.equal(calls,1);
- assert.equal(t.nodes.get('btn-save').textContent,'Saving…');assert.equal(t.nodes.get('btn-cancel').disabled,true);
+ assert.equal(t.nodes.get('btn-save').textContent,'Saving…');assert.equal(t.nodes.get('settings-close').disabled,true);
  t.run('closeSettings()');assert.equal(t.run('settingsOpen'),true);
  assert.equal(Object.hasOwn(patch,'embed_api_key'),false,'blank embedding key preserves the stored credential');
  release({ok:true,model:'new-model'});await pending;
  assert.equal(t.run('settingsOpen'),true);assert.equal(t.nodes.get('btn-save').textContent,'Saved');
- assert.equal(t.nodes.get('btn-save').disabled,true);assert.equal(t.nodes.get('btn-cancel').disabled,false);
+ assert.equal(t.nodes.get('btn-save').disabled,true);assert.equal(t.nodes.get('settings-close').disabled,false);
  assert.equal(t.nodes.get('f-key').value,'');assert.doesNotMatch(t.nodes.get('settings-model-preview').textContent,/typed-secret/);
  assert.equal(t.nodes.get('settings-endpoint-preview').textContent,'models.example');
 });
@@ -103,7 +103,7 @@ test('connection form validates before IPC and tab actions match immediate works
  let calls=0;const t=setup({getSettings:async()=>connectionSettings,saveSettings:async()=>{calls++;return {ok:true};}});
  await t.run('openSettings()');editSetting(t,'f-base','invalid');await saveConnection(t);
  assert.equal(calls,0);assert.match(t.nodes.get('settings-err').textContent,/valid endpoint/);
- assert.equal(t.nodes.get('btn-cancel').disabled,false);
+ assert.equal(t.nodes.get('settings-close').disabled,false);
  editSetting(t,'f-base','https://models.example/v1');editSetting(t,'model-list','');await saveConnection(t);
  assert.equal(calls,0);assert.match(t.nodes.get('settings-err').textContent,/enter a model/);
  t.nodes.get('tab-workspace').click();assert.equal(t.nodes.get('btn-save').hidden,true);
@@ -261,6 +261,60 @@ test('concurrent mode resolution suppresses stale approval-response errors',asyn
  assert.equal(t.run('currentApproval'),null);assert.doesNotMatch(t.nodes.get('transcript').textContent,/stale approval/);
 });
 
+const signedRequest={id:'a',tool:'shell',args:{command:'npm test'},
+ scope:{kind:'device',label:'This device',detail:'runs in .'},
+ exit:[{when:'allow',then:'Runs once with exactly these arguments; the output returns to the agent.'},
+       {when:'deny',then:'Nothing runs and the agent is told the request was denied.'},
+       {when:'timeout',then:'No answer for 1 hour → denied automatically.'},
+       {when:'drift',then:'Target or permission mode changes before it starts → refused, no run.'}],
+ digest:'abc123def456'+'0'.repeat(52),short:'abc123def456',keyFingerprint:'9f2c1a7b'};
+
+test('approval card states scope, exit conditions and the signed record before the decision',()=>{
+ const t=setup();t.approval({id:'a',tool:'shell',args:{command:'npm test'},record:{...signedRequest}});
+ assert.equal(t.nodes.get('approval-facts').hidden,false);
+ assert.equal(t.nodes.get('approval-scope').textContent,'This device — runs in .');
+ assert.match(t.nodes.get('approval-exit-allow').textContent,/Runs once with exactly these arguments/);
+ assert.match(t.nodes.get('approval-exit-deny').textContent,/Nothing runs/);
+ assert.match(t.nodes.get('approval-exit-timeout').textContent,/1 hour/);
+ assert.equal(t.nodes.get('approval-record').hidden,false);
+ assert.equal(t.nodes.get('approval-record-id').textContent,'abc123def456');
+ assert.match(t.nodes.get('approval-record-note').textContent,/signed by this install · key 9f2c1a7b/);
+});
+
+test('approval without a record hides the facts instead of showing placeholders',()=>{
+ const t=setup();t.approval({id:'b',tool:'shell',args:{}});
+ assert.equal(t.nodes.get('approval-facts').hidden,true);
+ assert.equal(t.nodes.get('approval-record').hidden,true);
+});
+
+test('answered approval leaves an inspectable signed record in the transcript',async()=>{
+ const digest='a'.repeat(64);
+ const receipt={type:'approval',id:'a',decision:'allow',decidedBy:'user',decidedAt:'2026-11-27T10:00:00.000Z',
+   tool:'shell',action:'npm test',scope:{label:'This device',detail:'runs in .'},requestDigest:digest,sig:'f'.repeat(64),keyFingerprint:'9f2c1a7b'};
+ let asked=null;
+ const t=setup({respondApproval:async()=>({ok:true,receipt}),
+   inspectApproval:async d=>{asked=d;return {ok:true,receipt,valid:true};}});
+ t.approval({id:'a',tool:'shell',args:{}});
+ await t.run('answerApproval(true)');
+ const note=t.nodes.get('transcript').children.find(n=>String(n.className||'').startsWith('record-note'));
+ assert.ok(note);assert.match(note.textContent,/approved by you · record aaaaaaaaaaaa/);
+ const inspect=note.children.find(n=>n.className==='record-inspect');await inspect.listeners.click[0]();
+ assert.equal(asked,digest);assert.equal(inspect['aria-expanded'],'true');
+ assert.match(note.textContent,/Decided byyou/);assert.match(note.textContent,/Signaturevalid · key 9f2c1a7b/);
+});
+
+test('tampered approval record is reported as not valid',async()=>{
+ const receipt={type:'approval',id:'a',decision:'deny',decidedBy:'timeout',decidedAt:'2026-11-27T10:00:00.000Z',
+   tool:'shell',scope:{label:'This device',detail:'runs in .'},requestDigest:'b'.repeat(64),sig:'f'.repeat(64),keyFingerprint:'9f2c1a7b'};
+ const t=setup({inspectApproval:async()=>({ok:true,receipt,valid:false})});
+ t.approval({id:'a',tool:'shell',args:{}});t.resolved({id:'a',decision:'deny',reason:'mode_changed',receipt});
+ const note=t.nodes.get('transcript').children.find(n=>String(n.className||'').startsWith('record-note'));
+ const inspect=note.children.find(n=>n.className==='record-inspect');await inspect.listeners.click[0]();
+ assert.match(note.textContent,/NOT valid/);
+ const bad=note.children.find(n=>n.className==='record-detail').children.find(r=>String(r.className||'').includes('bad'));
+ assert.ok(bad);
+});
+
 function modeHandler({failWrite=false,configFile}={}) {
  const main=fs.readFileSync(path.join(__dirname,'../../main/index.js'),'utf8');
  const match=main.match(/ipcMain\.handle\('sentinel:setMode', async \(e, mode\) => \{([\s\S]*?)\n\}\);/);
@@ -379,4 +433,87 @@ test('denied result renders denied card with reason',()=>{
  assert.ok(card,'denied card rendered');
  assert.ok(String(card.className).includes('denied')||[...card.classes].includes('denied'),'card flagged denied');
  assert.match(card.textContent,/denied/,'reason text present');
+});
+
+/* Phase 3: run ledger */
+const storedRun={runId:'run-42',request:'fix the login form',startedAt:'2026-11-27T10:00:00.000Z',endedAt:'2026-11-27T10:01:05.000Z',durationMs:65000,outcome:'complete',turns:3,usage:{prompt_tokens:1200,completion_tokens:300,total_tokens:1500},tokensMissing:false,toolErrors:0,files:{read:['app/main/index.js'],written:[{path:'app/renderer/renderer.js',hash:'h1',existed:true}],truncated:false}};
+function openFirstRun(t){const list=t.nodes.get('wb-runs');const row=list.children[0];const head=row.children[0];head.click();return{row,head,body:row.children[1]};}
+
+test('run ledger rows come from stored receipts and open to files, tokens and status',async()=>{
+ const t=setup({listRuns:async()=>({ok:true,runs:[storedRun]})});
+ await t.run('loadRunLedger()');
+ const list=t.nodes.get('wb-runs');
+ assert.equal(list.children.length,1,'one stored run is one row');
+ const row=list.children[0];const head=row.children[0];const body=row.children[1];
+ assert.equal(head['aria-expanded'],'false');assert.equal(body.hidden,true);
+ assert.match(row.textContent,/fix the login form/);
+ assert.match(row.textContent,/1\.5k|1500|done/);
+ head.click();
+ assert.equal(head['aria-expanded'],'true');assert.equal(body.hidden,false);
+ const text=body.textContent;
+ assert.match(text,/app\/main\/index\.js/,'the file it read is listed');
+ assert.match(text,/app\/renderer\/renderer\.js/,'the file it wrote is listed');
+ assert.match(text,/1\.2k in · 300 out/);
+ assert.match(text,/done/);
+ head.listeners.keydown[0]({key:'Escape'});
+ assert.equal(body.hidden,true);assert.equal(head['aria-expanded'],'false');
+});
+
+test('opening a run asks main for the written file state and shows changed and gone files',async()=>{
+ const t=setup({listRuns:async()=>({ok:true,runs:[storedRun]}),inspectRun:async(id)=>({ok:true,run:{...storedRun,runId:id,files:{...storedRun.files,written:[{path:'app/renderer/renderer.js',hash:'h1',state:'changed'}]}}})});
+ await t.run('loadRunLedger()');const {body}=openFirstRun(t);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(body.textContent,/changed since this run/);
+});
+
+test('a finished run adds its own ledger row without waiting for a reload',async()=>{
+ const t=setup();
+ t.event({type:'done',reason:'complete',outcome:'complete',runId:'run-9',request:'add a retry button',durationMs:5000,usage:{prompt_tokens:10,completion_tokens:5,total_tokens:15},toolErrors:0,files:{read:['a.js'],written:[],truncated:false}});
+ const list=t.nodes.get('wb-runs');
+ assert.equal(list.children.length,1);
+ assert.match(list.children[0].textContent,/add a retry button/);
+ openFirstRun(t);
+ assert.match(list.children[0].children[0].textContent,/1 file/);
+ assert.match(list.children[0].children[1].textContent,/No files written\./);
+});
+
+test('an interrupted run says so instead of pretending it finished',async()=>{
+ const t=setup({listRuns:async()=>({ok:true,runs:[{runId:'run-x',request:'half done',startedAt:'2026-11-27T10:00:00.000Z',outcome:'interrupted',interrupted:true,files:{read:[],written:[],truncated:false}}]})});
+ await t.run('loadRunLedger()');const {body}=openFirstRun(t);
+ assert.match(body.textContent,/interrupted/i);
+ assert.match(body.textContent,/closed before this run finished/);
+ assert.match(body.textContent,/No files read\./);
+});
+
+test('toggling appearance and density leaves the chat space unmarked',()=>{
+ const t=setup({setAppearance:async()=>({ok:true})});
+ const log=t.nodes.get('transcript');const before=log.children.length;
+ t.run("setTheme('instrument-night');setDensity('dense');setDensity('comfortable');setTheme('light')");
+ assert.equal(log.children.length,before,'no chat row for an appearance or density change');
+ assert.equal(log.children.some(n=>n.classList&&n.classList.contains('sysnote')),false);
+ assert.equal(t.c.document.body['data-density'],'comfortable');
+});
+
+test('changing the permission mode updates the label without a chat row',async()=>{
+ const t=setup({getConfig:async()=>({llm:{model:'test'},sentinel:{mode:'ask'}}),setMode:async()=>({ok:true})});
+ const log=t.nodes.get('transcript');const before=log.children.length;
+ t.nodes.get('mode-toggle').click();
+ await new Promise(r=>setImmediate(r));await new Promise(r=>setImmediate(r));
+ assert.equal(log.children.length,before,'no chat row for a permission mode change');
+ assert.match(t.nodes.get('mode-label').textContent,/^Mode: /);
+});
+
+test('every element the settings panel touches exists in the real markup',()=>{
+ // The fake DOM above creates a node for any id on demand, so a renamed id in
+ // index.html stays invisible here and throws "Cannot set properties of null"
+ // in the browser instead. Pin the panel's ids against the shipped HTML.
+ const panel=fs.readFileSync(path.join(__dirname,'../../../scripts/renderer/settings-panel.ts'),'utf8');
+ const ids=new Set();
+ for(const m of panel.matchAll(/\b(?:el|input)\(['"]([^'"]+)['"]\)/g)) ids.add(m[1]);
+ const fieldList=panel.match(/const fieldIds = \[([^\]]+)\]/);
+ if(fieldList) for(const m of fieldList[1].matchAll(/['"]([^'"]+)['"]/g)) ids.add(m[1]);
+ const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
+ assert.ok(ids.size>10,'settings panel id scan found the markup ids');
+ const missing=[...ids].filter(id=>!html.includes(`id="${id}"`));
+ assert.deepEqual(missing,[],'settings panel ids missing from index.html');
 });

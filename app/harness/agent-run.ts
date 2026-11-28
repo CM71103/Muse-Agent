@@ -1,6 +1,7 @@
 async function run(this: any, userText: string | null, opts: any = {}) {
   const { Agent, systemPrompt } = require('./agent');
   const { designContext } = require('./design.ts');
+  const runLog = require('./run-log');
   this._cancelRequested = false;
   Agent.repairHistory(this.history);   // cheap no-op; heals interrupted history before the request
   this._runToolErrors = 0;             // per-run tool error metric (surfaced on done)
@@ -28,7 +29,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   if (!this.history.length) {
     const design = this.cwdOverride ? designContext(this.cwdOverride) : null;
     const systemExtra = [opts.systemExtra || '', design?.text || ''].filter(Boolean).join('\n\n');
-    const base = systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard'), this.toolMap.has('visual_render'), this.toolMap.has('critique'), this.toolMap.has('search_papers'), this.toolMap.has('preview_run'), this.toolMap.has('astryx_docs'));
+    const base = systemPrompt(this.cfg, systemExtra, this.cwdOverride, this.toolMap.has('spawn_agent'), this.sentinel.mode, this.hasViking, this.toolMap.has('sqlite_run_sql'), this.toolMap.has('create_dashboard'), this.toolMap.has('visual_render'), this.toolMap.has('critique'), this.toolMap.has('search_papers'), this.toolMap.has('preview_run'), this.toolMap.has('astryx_docs'), this.toolMap.has('research_brief'));
     const voiceGuide = readVoice();
     const antiGuide = readAnti();
     this._voiceGuideApplied = voiceGuide;
@@ -71,7 +72,13 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   const receipt = (status: string, extra: any = {}) => {
     try { session.appendReceipt(this.sessionId, { runId: this._runEventId, commandId: opts.commandId || null, status, ...extra }); } catch { /* receipts never break a run */ }
   };
-  receipt('run_accepted');
+  receipt('run_accepted', { request: runLog.clipRequest(userText, opts.content) });
+  // What this run touched: file tools are noted here, the checkpoint adds the
+  // hash each written file was left in, and the same facts close the receipt
+  // and ride the done event so the ledger row needs no reconstruction.
+  this._runTouched = runLog.fresh();
+  this._runStartedAt = new Date().toISOString();
+  this._runRequest = runLog.clipRequest(userText, opts.content);
   // File-change checkpoint (undo): write_file pre-images collected via
   // ctx.checkpoint land here; finalize pins post-run hashes for safe undo.
   const checkpoint = require('./checkpoint').begin(this._runEventId, this.sessionId);
@@ -79,6 +86,7 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   const ckpt = () => {
     try {
       const entries = checkpoint.finalize();
+      runLog.mergeCheckpoint(this._runTouched, entries, this.cwdOverride || process.cwd());
       return entries.length ? { runId: this._runEventId, files: entries.map((e: any) => e.path) } : undefined;
     } catch { return undefined; }
   };
@@ -114,6 +122,20 @@ async function run(this: any, userText: string | null, opts: any = {}) {
   const usage: Record<string, number> = {};
   let missingUsage = false;
   let finalText = '';
+  // The run's own facts, taken once so the receipt and the done event cannot
+  // disagree about files, tokens or status.
+  const runFacts = (outcome: string, extra: any = {}) => runLog.runRecord({
+    runId: this._runEventId,
+    request: this._runRequest,
+    startedAt: this._runStartedAt,
+    endedAt: new Date().toISOString(),
+    outcome,
+    usage,
+    tokensMissing: missingUsage,
+    toolErrors: this._runToolErrors || 0,
+    touched: this._runTouched,
+    ...extra,
+  });
   const send = async (tools: any = this.toolSchemas()) => {
     if (this._cancelRequested) throw Object.assign(new Error('User cancelled'), { name: 'AbortError' });
     restoreMemory();
@@ -191,17 +213,20 @@ async function run(this: any, userText: string | null, opts: any = {}) {
         await finishMemory(response.finish_reason === 'stop' ? null : 'partial_response');
         this.history.push({ role: 'assistant', content: finalText });
         this.persist();
-        receipt('run_finished', { outcome: 'complete', turns: turn + 1 });
         const ckComplete = ckpt();
+        const runComplete = runFacts('complete', { turns: turn + 1 });
+        receipt('run_finished', runComplete);
         this.events({ type: 'message', text: finalText });
-        this.events({ type: 'done', reason: 'complete', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckComplete });
+        this.events({ type: 'done', reason: 'complete', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckComplete, request: runComplete.request, files: runComplete.files, durationMs: runComplete.durationMs, outcome: runComplete.outcome });
         return { text: finalText, turns: turn + 1, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage, checkpoint: ckComplete };
       }
       this.history.push(toWireAssistant(canon));
       if (canon.text) this.events({ type: 'message', text: canon.text });
-      for (const call of canon.toolCalls) {
-        const content = await this.executeToolCall(call);
-        this.history.push({ role: 'tool', tool_call_id: call.id, content });
+      // Independent calls from one reply run in parallel; history keeps call order.
+      const contents = await this.executeToolCalls(canon.toolCalls);
+      for (let i = 0; i < canon.toolCalls.length; i++) {
+        const call = canon.toolCalls[i];
+        this.history.push({ role: 'tool', tool_call_id: call.id, content: contents[i] });
       }
     }
     this.history.push({ role: 'user', name: 'synthetic', content: 'Turn limit reached. Please summarize progress so far and stop.' });
@@ -210,10 +235,11 @@ async function run(this: any, userText: string | null, opts: any = {}) {
     await finishMemory('turn_limit');
     this.history.push({ role: 'assistant', content: finalText });
     this.persist();
-    receipt('run_finished', { outcome: 'max_turns', turns: this.maxTurns });
     const ckMax = ckpt();
+    const runMax = runFacts('max_turns', { turns: this.maxTurns });
+    receipt('run_finished', runMax);
     this.events({ type: 'message', text: finalText });
-    this.events({ type: 'done', reason: 'max_turns', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckMax });
+    this.events({ type: 'done', reason: 'max_turns', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckMax, request: runMax.request, files: runMax.files, durationMs: runMax.durationMs, outcome: runMax.outcome });
     return { text: finalText, turns: this.maxTurns, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage, checkpoint: ckMax };
   } catch (error) {
     const cancelled = this._cancelRequested || (error as Error).name === 'AbortError';
@@ -225,14 +251,15 @@ async function run(this: any, userText: string | null, opts: any = {}) {
       // slow synchronous JSON write, and doing it before done made Stop look
       // like it hung for seconds.
       const ckCancel = ckpt();
-      receipt('run_finished', { outcome: 'cancelled' });
-      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckCancel });
+      const runCancel = runFacts('cancelled');
+      receipt('run_finished', runCancel);
+      this.events({ type: 'done', reason: 'cancelled', usage, tokensMissing: missingUsage, toolErrors: this._runToolErrors || 0, runId: this._runEventId, checkpoint: ckCancel, request: runCancel.request, files: runCancel.files, durationMs: runCancel.durationMs, outcome: runCancel.outcome });
       setImmediate(() => { try { this.persist(); } catch { /* partial progress is best-effort */ } });
       return { text: finalText || '(cancelled)', turns: 0, cancelled: true, memory_turn_id: memoryContext?.turn_id, usage, tokensMissing: missingUsage };
     }
     this.persist();   // a failed run still leaves resumable context behind
-    receipt('run_finished', { outcome: 'error', error: String((error as Error).message || error).slice(0, 200) });
     ckpt();   // partial writes on a failed run stay undoable on disk
+    receipt('run_finished', runFacts('error', { error: String((error as Error).message || error).slice(0, 200) }));
     throw error;
   } finally { this.stripMemory(); }
 }

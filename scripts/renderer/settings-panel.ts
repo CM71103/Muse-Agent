@@ -23,7 +23,7 @@ function createSettingsPanel(options: { visibleModels?: () => string[] } = {}) {
     el('settings-save-note').textContent = tab !== 'connection' ? ({ workspace: 'Workspace preferences apply immediately.', mcp: 'Add or update a server to apply your changes.', shortcuts: 'Your shortcuts are always a keypress away.' }[tab] || '') : saving
       ? 'Applying your connection. Updating memory may take longer.' : changed ? 'You have unsaved connection changes.'
       : state === 'saved' ? 'Connection saved. Ready for your next message.' : 'Connection is saved locally. Fetch models checks your endpoint.';
-    (el('btn-cancel') as HTMLButtonElement).disabled = saving;
+    (el('settings-close') as HTMLButtonElement).disabled = saving;
     for (const id of [...fieldIds, 'btn-fetch', 'btn-eye', 'btn-embed-eye']) (el(id) as HTMLInputElement).disabled = saving || !loaded;
     const pendingEmbedKey = !!input('f-embed-key').value.trim();
     input('f-embed-key').placeholder = savedEmbedKey ? '•••••••• · saved key' : 'Enter a key, or use the chat key';

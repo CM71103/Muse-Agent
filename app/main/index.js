@@ -43,6 +43,8 @@ protocol.registerSchemesAsPrivileged([
 const { loadConfig, configDir, userConfigFile } = require('../harness/config');
 const { Agent } = require('../harness/agent');
 const sessionStore = require('../harness/session');   // used by sessions:* IPC below
+const approvalRecord = require('../harness/approval-record');
+const runLog = require('../harness/run-log');   // run ledger rows (runs:* IPC)
 
 let mainWindow = null;
 let agent = null;
@@ -61,8 +63,28 @@ function queueState() {
     running: agentBusy,
   };
 }
-let pendingApprovals = new Map(); // id -> {resolve, request}
+let pendingApprovals = new Map(); // id -> {resolve, request, record, sessionId}
 let pendingQuestions = new Map(); // id -> {resolve, q}
+
+// Approval receipts: every gate decision is signed with the per-install key
+// and appended to the session, so the record can be verified later.
+let approvalKey = null;
+function approvalSigningKey() {
+  if (!approvalKey) approvalKey = approvalRecord.signingKey(configDir());
+  return approvalKey;
+}
+function recordApproval(pending, decision) {
+  if (!pending || !pending.record) return null;
+  try {
+    const receipt = approvalRecord.makeReceipt(pending.record, { ...decision, key: approvalSigningKey() });
+    const sessionId = pending.sessionId || (agent && agent.sessionId);
+    if (sessionId) sessionStore.appendReceipt(sessionId, receipt);
+    return receipt;
+  } catch (error) {
+    console.error('approval receipt failed:', error && error.message);
+    return null;
+  }
+}
 let currentProjectDir = null;
 let currentProjectId = null;
 let designSiteView = null;
@@ -457,9 +479,23 @@ async function mkAgent(opts = {}) {
   const a = new Agent(cfg, {
     approver: (request) => new Promise((resolve) => {
       const id = crypto.randomUUID();
-      pendingApprovals.set(id, { resolve, request });
+      const built = approvalRecord.buildRequest(request, {
+        id,
+        sessionId: a && a.sessionId,
+        projectDir: currentProjectDir,
+        mode: a && a.sentinel && a.sentinel.mode,
+        timeoutS: cfg.approval_timeout_s || 3600,
+      });
+      let record = null;
+      try { record = approvalRecord.publicRecord(built, approvalSigningKey()); }
+      catch (error) { console.error('approval signing failed:', error && error.message); }
+      const entry = {
+        resolve, request, record: built, sessionId: a && a.sessionId,
+        finish: (decision) => recordApproval(entry, decision),
+      };
+      pendingApprovals.set(id, entry);
       notify('Muse needs approval', `Tool "${request.tool}" is waiting for you${request.subagent ? ' (subagent)' : ''}`);
-      send('approval-request', { id, tool: request.tool, args: request.args, subagent: !!request.subagent, subagentId: request.subagentId });
+      send('approval-request', { id, tool: request.tool, args: request.args, subagent: !!request.subagent, subagentId: request.subagentId, record });
     }),
     questionAsker: (q) => new Promise((resolve) => {
       const id = crypto.randomUUID();
@@ -498,12 +534,16 @@ async function mkAgent(opts = {}) {
   a.sentinel.onExpiry((request) => {
     // Sentinel passes the original request object. Remove only its matching
     // entries so stale timeouts cannot block model changes after a turn ends.
+    // Resolve before the receipt: a receipt failure must never leave the
+    // prompt unanswered or the approval half-removed.
     for (const [id, pending] of pendingApprovals) {
       if (pending.request !== request) continue;
       pendingApprovals.delete(id);
       pending.resolve(false);
+      let receipt = null;
+      try { receipt = recordApproval(pending, { decision: 'deny', decidedBy: 'timeout' }); } catch { receipt = null; }
+      send('approval-expired', { id, receipt });
     }
-    send('approval-expired', {});
   });
   // memory layer (R-49 host contract) — only when enabled; failures degrade to memoryless
   if (cfg.memory && cfg.memory.enabled && !opts.skipMemory) {
@@ -765,7 +805,7 @@ sandboxService = require('./sandbox-service.ts').createSandboxService({
   busy:()=>agentBusy||pendingApprovals.size>0||pendingQuestions.size>0,
   refreshTools:refreshBoxTools, cancelAgent:()=>{
     agent?.requestCancel();
-    for(const [id,pending] of pendingApprovals){pendingApprovals.delete(id);pending.resolve(false);send('approval-resolved',{id,decision:'deny',reason:'sandbox_stopped'});}
+    for(const [id,pending] of pendingApprovals){pendingApprovals.delete(id);const receipt=recordApproval(pending,{decision:'deny',decidedBy:'sandbox_stopped'});pending.resolve(false);send('approval-resolved',{id,decision:'deny',reason:'sandbox_stopped',receipt});}
     for(const [id,pending] of pendingQuestions){pendingQuestions.delete(id);pending.resolve({cancelled:true});send('agent-event',{type:'question_resolved',id,cancelled:true});}
   },
   chooseISO:async()=>{const result=await dialog.showOpenDialog(mainWindow,{title:'Choose Ubuntu installation ISO',properties:['openFile'],filters:[{name:'Ubuntu ISO image',extensions:['iso']}]});return result.canceled?null:result.filePaths[0];},
@@ -1129,8 +1169,63 @@ ipcMain.handle('approval:respond', async (e, { id, approved }) => {
   const p = pendingApprovals.get(String(id || ''));
   if (!p) return { ok: false, error: 'stale approval' };
   pendingApprovals.delete(String(id));
+  const receipt = recordApproval(p, { decision: approved ? 'allow' : 'deny', decidedBy: 'user' });
   p.resolve(!!approved);
-  return { ok: true };
+  return { ok: true, receipt };
+});
+
+// Verify one approval record against the install key. The renderer can show
+// the decision, the scope it covered and whether the signature still holds.
+ipcMain.handle('approval:inspect', async (e, digest) => {
+  requireTrusted(e);
+  const wanted = String(digest || '');
+  if (!/^[0-9a-f]{12,64}$/i.test(wanted)) return { ok: false, error: 'invalid record id' };
+  const sessionId = (agent && agent.sessionId) || null;
+  if (!sessionId) return { ok: false, error: 'No session is open.' };
+  let stored = null;
+  try { stored = sessionStore.load(sessionId); } catch { return { ok: false, error: 'Could not read this session.' }; }
+  const receipts = (stored && stored.receipts) || [];
+  const receipt = receipts.find(r => r.type === 'approval' && String(r.requestDigest || '').startsWith(wanted.toLowerCase()));
+  if (!receipt) return { ok: false, error: 'No record with that id in this session.' };
+  let valid = false;
+  try { valid = approvalRecord.verifyReceipt(receipt, approvalSigningKey()); }
+  catch (error) { console.error('approval verify failed:', error && error.message); }
+  return { ok: true, receipt, valid };
+});
+
+// Run ledger: one row per run, read from the session's durable receipts.
+// Newest first; a run whose accept never got a finish is an interrupted run.
+ipcMain.handle('runs:list', async (e) => {
+  requireTrusted(e);
+  const sessionId = (agent && agent.sessionId) || null;
+  if (!sessionId) return { ok: true, runs: [] };
+  let stored = null;
+  try { stored = sessionStore.load(sessionId); } catch { return { ok: false, error: 'Could not read this session.' }; }
+  return { ok: true, runs: runLog.runsFromReceipts((stored && stored.receipts) || []) };
+});
+
+// One run's detail plus the state of each file it wrote, hashed now: the
+// receipt carries the hash the checkpoint left, so "changed since this run"
+// is a fact about the disk, not a guess from timestamps.
+ipcMain.handle('runs:detail', async (e, runId) => {
+  requireTrusted(e);
+  const wanted = String(runId || '');
+  if (!wanted) return { ok: false, error: 'No run id given.' };
+  const sessionId = (agent && agent.sessionId) || null;
+  if (!sessionId) return { ok: false, error: 'No session is open.' };
+  let stored = null;
+  try { stored = sessionStore.load(sessionId); } catch { return { ok: false, error: 'Could not read this session.' }; }
+  const run = runLog.runsFromReceipts((stored && stored.receipts) || []).find(r => r.runId === wanted);
+  if (!run) return { ok: false, error: 'No run with that id in this session.' };
+  const cwd = (agent && agent.projectDir) || currentProjectDir || process.cwd();
+  const written = run.files.written.map(entry => {
+    const abs = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
+    if (!entry.hash) return { ...entry, state: 'unrecorded' };
+    let current = null;
+    try { current = crypto.createHash('sha256').update(fs.readFileSync(abs)).digest('hex'); } catch { current = null; }
+    return { ...entry, state: current === null ? 'gone' : current === entry.hash ? 'unchanged' : 'changed' };
+  });
+  return { ok: true, run: { ...run, files: { ...run.files, written } } };
 });
 
 ipcMain.handle('question:respond', async (e, { id, answer, cancelled }) => {
@@ -1594,8 +1689,9 @@ ipcMain.handle('sentinel:setMode', async (e, mode) => {
       const verdict = agent.sentinel.decide(pending.request);
       if (verdict.decision === 'ask') continue;
       pendingApprovals.delete(id);
+      const receipt = pending.finish ? pending.finish({ decision: verdict.decision === 'allow' ? 'allow' : 'deny', decidedBy: 'mode_changed' }) : null;
       pending.resolve(verdict.decision === 'allow');
-      send('approval-resolved', { id, decision: verdict.decision, reason: 'mode_changed' });
+      send('approval-resolved', { id, decision: verdict.decision, reason: 'mode_changed', receipt });
     }
   }
   send('agent-event', { type: 'info', text: `sentinel mode → ${cfg.sentinel.mode}` });
@@ -2231,13 +2327,20 @@ ipcMain.handle('appearance:get', (e) => {
   requireTrusted(e);
   try {
     const data = JSON.parse(fs.readFileSync(path.join(configDir(), 'appearance.json'), 'utf8'));
-    return { ok: true, theme: typeof data.theme === 'string' ? data.theme : 'krishna' };
-  } catch { return { ok: true, theme: 'krishna' }; }
+    return {
+      ok: true,
+      theme: typeof data.theme === 'string' ? data.theme : 'instrument',
+      density: data.density === 'dense' ? 'dense' : 'comfortable',
+    };
+  } catch { return { ok: true, theme: 'instrument', density: 'comfortable' }; }
 });
-ipcMain.handle('appearance:set', (e, theme) => {
+ipcMain.handle('appearance:set', (e, theme, density) => {
   requireTrusted(e);
   try {
-    fs.writeFileSync(path.join(configDir(), 'appearance.json'), JSON.stringify({ theme: String(theme || 'krishna') }));
+    fs.writeFileSync(path.join(configDir(), 'appearance.json'), JSON.stringify({
+      theme: String(theme || 'instrument'),
+      density: density === 'dense' ? 'dense' : 'comfortable',
+    }));
     return { ok: true };
   } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
 });

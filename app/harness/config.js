@@ -35,7 +35,7 @@ const DEFAULTS = {
     include_arxiv: true,              // include preprints alongside the main index
   },
   agent: {
-    max_turns: 40,                    // hard cap on tool loop
+    max_turns: 80,                    // hard cap on tool loop (multi-file tasks need room)
     approval_timeout_s: 3600,         // auto-deny after this (nanoMuse default)
     always_ask_tools: [],             // legacy config compatibility; Auto never prompts
     sandbox: 'none',                  // none (Windows reality) | bubblewrap (Linux only, v2)

@@ -52,8 +52,8 @@ class Sentinel {
     this.timeoutMs = (this.agentCfg.approval_timeout_s || 3600) * 1000;
     this.denyRules = this.cfg.deny_rules || [];
     // Central policy. Tool registry `alwaysAsk` is advisory; this is the law.
-    this.sideEffectTools = new Set(['write_file', 'web_fetch', 'shell', 'windows_click', 'windows_type', 'windows_key', 'windows_scroll', 'sandbox_click', 'sandbox_type', 'sandbox_key', 'sandbox_scroll', 'create_dashboard', 'edit_dashboard', 'delete_dashboard', 'search_papers', 'read_paper', 'cite_source']);
-    this.readTools = new Set(['read_file', 'list_dir', 'list_data_sources', 'sqlite_tables', 'sqlite_run_sql', 'list_dashboards']);
+    this.sideEffectTools = new Set(['write_file', 'edit_file', 'web_fetch', 'shell', 'windows_click', 'windows_type', 'windows_key', 'windows_scroll', 'sandbox_click', 'sandbox_type', 'sandbox_key', 'sandbox_scroll', 'create_dashboard', 'edit_dashboard', 'delete_dashboard', 'search_papers', 'read_paper', 'cite_source']);
+    this.readTools = new Set(['read_file', 'list_dir', 'grep', 'glob', 'list_data_sources', 'sqlite_tables', 'sqlite_run_sql', 'list_dashboards']);
     // Design Studio tools: reads of the shared design registry, and writes that
     // can only land inside the selected project folder (.od metadata, template
     // scaffolding, artifact manifest). Registered with the sentinel so an
@@ -76,7 +76,10 @@ class Sentinel {
     // reads the built output).
     const astryxTools = require('./astryx-tools.ts');
     for (const name of astryxTools.ASTRYX_READ_NAMES) this.readTools.add(name);
-    this.projectWriteTools = new Set(['write_file', ...designTools.DESIGN_WRITE_NAMES, ...visualTools.VISUAL_WRITE_NAMES]);
+    this.projectWriteTools = new Set(['write_file', 'edit_file', ...designTools.DESIGN_WRITE_NAMES, ...visualTools.VISUAL_WRITE_NAMES]);
+    // A research brief spends model calls and writes files: side effect, so it
+    // asks outside Auto and is denied in Plan.
+    this.sideEffectTools.add('research_brief');
     // Legacy always_ask_tools values are accepted in config but do not override Auto.
     // Modes live on the sentinel so a running agent picks up a switch
     // immediately (host calls setMode). Config value is the boot default.

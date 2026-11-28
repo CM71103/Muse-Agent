@@ -29,12 +29,21 @@ class Checkpoint {
     this.sessionId = sessionId;
     this.dir = path.join(checkpointsDir(), checkId(runId));
     this.files = new Map();   // absPath -> { beforePath, existed, skipped, size }
+    this._queue = Promise.resolve();  // serializes recordFile across parallel tool calls
     this.finalized = false;
   }
 
   // Called from write_file BEFORE the write mutates the file. First touch per
-  // run wins: that pre-image is what undo must restore.
-  async recordFile(absPath) {
+  // run wins: that pre-image is what undo must restore. Tool calls can run in
+  // parallel, so touches are serialized below: two writes must not race the map
+  // or pick the same snapshot slot.
+  recordFile(absPath) {
+    const next = this._queue.then(() => this._record(absPath));
+    this._queue = next.catch(() => {});
+    return next;
+  }
+
+  async _record(absPath) {
     if (this.finalized || this.files.has(absPath)) return;
     let existed = true;
     let stat;

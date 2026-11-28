@@ -172,12 +172,15 @@ test('tool registry keeps central policy (no alwaysAsk drift)', () => {
   // visual_render, see visual-tools.ts) joined with it: two more schemas that
   // trade context for page-grade explanations instead of ASCII art. The
   // critique tool (critic.js) is the PaperOrchestra reviewer port: a
-  // read-class quality gate that never mutates anything.
+  // read-class quality gate that never mutates anything. research_brief
+  // (research-brief.js) is the agent-facing end of the same pipeline: it
+  // spends model calls and writes the brief, so it is a gated side effect.
   assert.deepEqual(names.sort(),['list_dir','read_file','shell','spawn_agent','web_fetch','write_file',
+    'edit_file','grep','glob',
     'list_data_sources','sqlite_tables','sqlite_run_sql',
     'list_dashboards','create_dashboard','edit_dashboard','delete_dashboard',
     'visual_kit_docs','visual_render','list_visual_pages',
-    'critique',
+    'critique','research_brief',
     'search_papers','read_paper','cite_source',
     'preview_run','preview_status',
     'astryx_docs','astryx_check'].sort());

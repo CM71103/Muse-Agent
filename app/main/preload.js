@@ -94,6 +94,9 @@ contextBridge.exposeInMainWorld('muse', {
   browseProject: () => ipcRenderer.invoke('project:browse'),
   answerQuestion: (id, answer, cancelled) => ipcRenderer.invoke('question:respond', { id, answer, cancelled: !!cancelled }),
   respondApproval: (id, approved) => ipcRenderer.invoke('approval:respond', { id, approved }),
+  inspectApproval: (digest) => ipcRenderer.invoke('approval:inspect', digest),
+  listRuns: () => ipcRenderer.invoke('runs:list'),
+  inspectRun: (runId) => ipcRenderer.invoke('runs:detail', runId),
   getConfig: () => ipcRenderer.invoke('config:get'),
   setMode: (mode) => ipcRenderer.invoke('sentinel:setMode', mode),
   selectModel: (model) => ipcRenderer.invoke('model:select', model),
@@ -150,7 +153,7 @@ contextBridge.exposeInMainWorld('muse', {
   windowReload: () => ipcRenderer.invoke('window:reload'),
   windowDevTools: () => ipcRenderer.invoke('window:devtools'),
   windowZoom: (dir) => ipcRenderer.invoke('window:zoom', dir),
-  setAppearance: (theme) => ipcRenderer.invoke('appearance:set', theme),
+  setAppearance: (theme, density) => ipcRenderer.invoke('appearance:set', theme, density),
   designSiteClose: () => ipcRenderer.invoke('design:site:close'),
   designSitePackage: (request) => ipcRenderer.invoke('design:site:package', request),
   onAgentEvent: (cb) => {
